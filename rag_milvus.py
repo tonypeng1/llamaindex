@@ -52,6 +52,7 @@ query_engine = index.as_query_engine()
 response = query_engine.query("What did the author do growing up?")  ## This command still needs connection to Milvus 
 print(response)
 
+vector_store.client.load_collection(collection_name="llamacollection") 
 vector_store.client.close()  # Need to close connection (otherwise Milvus server will hault)
 
 print("Document ID:", documents[0].doc_id)
