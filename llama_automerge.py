@@ -18,8 +18,10 @@ from llama_index.core.retrievers import AutoMergingRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.openai import OpenAI
+from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.vector_stores.milvus import MilvusVectorStore
 import openai
+
 
 # Set up logging
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -28,7 +30,7 @@ logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 # Set OpenAI API key
 openai.api_key = os.environ['OPENAI_API_KEY']
 
-# Create vector database
+# Create Milvus vector database
 collection_name = "merging_index"
 vector_store = MilvusVectorStore(
     uri="http://localhost:19530",
@@ -36,6 +38,9 @@ vector_store = MilvusVectorStore(
     dim=384,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
     overwrite=True  ## If True, erase all content in the collection
 )
+
+# Create MongoDB docstore
+docstore = MongoDocumentStore.from_uri(uri="mongodb://localhost:27017/")
 
 # load documents
 documents = SimpleDirectoryReader("./data/andrew/").load_data()
@@ -54,7 +59,7 @@ node_parser = HierarchicalNodeParser.from_defaults(
 nodes = node_parser.get_nodes_from_documents([document])
 leaf_nodes = get_leaf_nodes(nodes)
 
-print(leaf_nodes[30].text)
+# print(leaf_nodes[30].text)
 # print("\n\n".join([f"Node number: {i}, \n{leaf_nodes[i].text}" for i in range(15, 25)]))
 # print("\n\n".join([f"Node number: {i}, \n{nodes[i].node_id}" for i in range(len(nodes))]))
 
@@ -69,23 +74,25 @@ Settings.llm = llm
 Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 Settings.node_parser = node_parser
 
-# Use Milvus as the storage context and add nodes to docstore (not to Milvus database)
+# Use Milvus as vector store and Mongo as docstore as the storage context 
 storage_context = StorageContext.from_defaults(
-    vector_store=vector_store
+    vector_store=vector_store,
+    docstore=docstore
     )
+# Save nodes to Mongodb docstore (not to Milvus database)
 storage_context.docstore.add_documents(nodes)
 
 # for i in list(storage_context.docstore.get_all_ref_doc_info().keys()):
 #     print(i)
 # print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
 
-# Create new index 
+# Save index (embedding) to Milvus database
 automerging_index = VectorStoreIndex(
     nodes=leaf_nodes, 
     storage_context=storage_context, 
     )
 
-# Save to Milvus database
+# Count number of items in Milvus database
 vector_store.client.load_collection(collection_name=collection_name)
 element_count = vector_store.client.query(
     collection_name=collection_name,
