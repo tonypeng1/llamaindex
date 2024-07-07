@@ -30,6 +30,8 @@ from pathlib import Path
 from llama_index.readers.file import PDFReader
 from llama_index.readers.file import PyMuPDFReader
 
+from trulens_eval import Tru
+
 
 def check_if_milvus_database_exists(uri, db_name) -> bool:
     connections.connect(uri=uri)
