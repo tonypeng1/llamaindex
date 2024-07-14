@@ -146,11 +146,11 @@ def check_if_mongo_database_namespace_exist(db_name, col_name):
             add_doc = False
     return add_doc
 
-def automerge_create_or_load_index(save_ind):
+def automerge_create_or_load_index(save_ind, l_nodes):
     if save_ind == True:
         # Create and save index (embedding) to Milvus database
         base_ind = VectorStoreIndex(
-            nodes=leaf_nodes, 
+            nodes=l_nodes, 
             storage_context=storage_context, 
             )
     else:
@@ -158,9 +158,77 @@ def automerge_create_or_load_index(save_ind):
         base_ind = VectorStoreIndex.from_vector_store(
             vector_store=vector_store
         )
+    return base_ind
 
-    return(base_ind)
+def build_automerge_index_and_docstore(
+    art_link,
+    save_ind,
+    add_doc,
+    chunck_size,
+    ):
 
+    if save_ind or add_doc:  # Only load and parse document if either index or docstore not saved.
+        document = load_document_pdf(art_link)
+        (nodes, leaf_n) = get_notes_from_document_automerge(document, chunck_size)
+
+    if save_ind == True:
+        # Create and save index (embedding) to Milvus database
+        base_ind = VectorStoreIndex(
+            nodes=leaf_n,
+            storage_context=storage_context,
+            )
+    else:
+        # load from Milvus database
+        base_ind = VectorStoreIndex.from_vector_store(
+            vector_store=vector_store
+            )
+
+    if add_doc == True:
+        # Save document nodes to Mongodb docstore at the server
+        storage_context.docstore.add_documents(nodes)
+
+    return base_ind
+
+
+def get_automerge_retriever(
+        base_ind,
+        similar_top_k,
+        ):
+    # Create the retriever
+    base_retrieve = base_ind.as_retriever(similarity_top_k=similar_top_k)
+
+    retrieve = AutoMergingRetriever(
+        vector_retriever=base_retrieve, 
+        # storage_context=automerging_index.storage_context,  # This does not work, results in dim mismatch. 
+        storage_context=storage_context, 
+        verbose=True
+        )
+    
+    return base_retrieve, retrieve
+
+def get_automerge_query_engine(
+    base_retrieve,
+    retrieve,
+    rank_model,
+    rank_top_n,
+    ):
+    base_query_engi = RetrieverQueryEngine.from_args(
+        retriever=base_retrieve
+        )
+    query_engi = RetrieverQueryEngine.from_args(
+        retriever=retrieve
+        )
+    rerank = SentenceTransformerRerank(
+        top_n=rank_top_n,
+        model=rank_model,
+        )
+    rerank_engine = RetrieverQueryEngine.from_args(
+        retriever=retrieve, 
+        node_postprocessors=[rerank],
+        )
+    return base_query_engi, query_engi, rerank_engine
+
+    
 # # Set up logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 # logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -170,20 +238,12 @@ openai.api_key = os.environ['OPENAI_API_KEY']
 llm = OpenAI(model="gpt-3.5-turbo", temperature=0.1)
 Settings.llm = llm
 Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+embed_model_dim = 384
 
 uri_milvus = "http://localhost:19530"
 uri_mongo = "mongodb://localhost:27017/"
 
-# datbase_name: article + RAG approach, collection_name: configuration
-# database_name = "andrew_ai_article_automerge"
-# collection_name = "three_layer_2048_512_128"
-
-# article_link = "./data/andrew/eBook-How-to-Build-a-Career-in-AI.pdf" 
-# article_link = "./data/paul_graham/paul_graham_essay.pdf" 
-
-# article_link = "./data/andrew/"
-# article_link = "./data/llama/"
-# article_link = "./data/llama_2.pdf"  # not working
+# Create database and collection names
 article_dictory = "paul_graham"
 article_name = "paul_graham_essay.pdf"
 article_link = "./data/" + article_dictory + "/" + article_name
@@ -193,42 +253,25 @@ automerge_chuck_size = [2048, 512, 128]
 database_name = article_dictory + "_" + chuck_method
 collection_name = "size_2048_512_128"
 
-# database_name = "llama2_article_automerge"
-# collection_name = "three_layer_2048_512_128"
+
+# Check if index and docstore have already been saved to Milvus and MongoDB.
 
 # In Milvus database, if the specific collection exists , do not save the index.
-# If the database does not exist, create one.
+# Otherwise, create one.
 save_index = check_if_milvus_database_collection_exist(database_name, collection_name)
-
-# save_index = True
-# if check_if_milvus_database_exists(uri_milvus, database_name):
-#     if check_if_milvus_collection_exists(uri_milvus, database_name, collection_name):
-#         num_count = milvus_collection_item_count(uri_milvus, database_name, collection_name)
-#         if num_count > 0:  # account for the case of 0 item in the collection
-#             save_index = False
-# else:
-#     create_database_milvus(uri_milvus, database_name)
 
 # In MongoDB, if the specific namespace exists, do not add document nodes to MongoDB.
 add_document = check_if_mongo_database_namespace_exist(database_name, collection_name)
 
-# add_document = True
-# if check_if_mongo_database_exists(uri_mongo, database_name):
-#     if check_if_mongo_namespace_exists(uri_mongo, database_name, collection_name):
-#         add_document = False
 
+# Initiate vector store, docstore, and storage context.
 
-if save_index or add_document:  # Only load and parse document if new
-    document = load_document_pdf(article_link)
-    (nodes, leaf_nodes) = get_notes_from_document_automerge(document, automerge_chuck_size)
-
-
-# Initiate vector store (a new empty collection created in Milvus server)
+# Initiate vector store (a new empty collection will be created in Milvus server)
 vector_store = MilvusVectorStore(
     uri=uri_milvus,
     db_name=database_name,
     collection_name=collection_name,
-    dim=384,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
+    dim=embed_model_dim,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
     )
 
 # Initiate MongoDB docstore (Not yet save to MongoDB server)
@@ -247,89 +290,54 @@ storage_context = StorageContext.from_defaults(
 #     print(i)
 # print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
 
-# if save_index == True:
-#     # Create and save index (embedding) to Milvus database
-#     base_index = VectorStoreIndex(
-#         nodes=leaf_nodes, 
-#         storage_context=storage_context, 
-#         )
-# else:
-#     # load from Milvus database
-#     base_index = VectorStoreIndex.from_vector_store(
-#         vector_store=vector_store
-#     )
 
-# if add_document == True:
-#     # Save document nodes to Mongodb docstore at the server
-#     storage_context.docstore.add_documents(nodes)
-
-if add_document == True:
-    # Save document nodes to Mongodb docstore at the server
-    storage_context.docstore.add_documents(nodes)
-
-base_index = automerge_create_or_load_index(save_index)
-
-# Create the retriever
-base_retriever = base_index.as_retriever(
-    similarity_top_k=12
+# Get base index
+base_index = build_automerge_index_and_docstore(
+    article_link,
+    save_index,
+    add_document,
+    automerge_chuck_size,
 )
 
-retriever = AutoMergingRetriever(
-    vector_retriever=base_retriever, 
-    # storage_context=automerging_index.storage_context,  # This does not work, results in dim mismatch. 
-    storage_context=storage_context, 
-    verbose=True
-)
+# Get retrievers and query engines
+similarity_top_k = 12
+rerank_model = "BAAI/bge-reranker-base"
+rerank_top_n =6
 
-query_str = "What happened at Interleafe and Viaweb?"
+base_retriever, retriever = get_automerge_retriever(base_index, similarity_top_k)
+base_query_engine, query_engine, rerank_query_engine = get_automerge_query_engine(base_retriever,
+                                                                                  retriever,
+                                                                                  rerank_model,
+                                                                                  rerank_top_n)
+
+query_str = "What happened in New York?"
+# query_str = "What happened at Interleafe and Viaweb?"
 # query_str = "What is the importance of networking in AI?"
 # query_str = (
 #     "What could be the potential outcomes of adjusting the amount of safety"
 #     " data used in the RLHF stage?"
 # )
 
+# Print retrieved nodes
 vector_store.client.load_collection(collection_name=collection_name)
+
 base_nodes_retrieved = base_retriever.retrieve(query_str)
 print_retreived_nodes(base_nodes_retrieved)
 
 nodes_retrieved = retriever.retrieve(query_str)
 print_retreived_nodes(nodes_retrieved)
 
-# len(retrieved_base)
-# len(retrieved)
-
-base_query_engine = RetrieverQueryEngine.from_args(
-    retriever=base_retriever
-    )
+# Prints responses 
 base_response = base_query_engine.query(query_str)
 print("\n" + str(base_response))
 
-query_engine = RetrieverQueryEngine.from_args(
-    retriever=retriever
-    )
 response = query_engine.query(query_str)
 print("\n" + str(response))
 
-# print(base_response.get_formatted_sources(length=200))
-
-
-# rerank_model = HuggingFaceEmbedding(model_name="BAAI/bge-reranker-base")  #error
-rerank_model = "BAAI/bge-reranker-base"
-rerank = SentenceTransformerRerank(
-    top_n=6,
-    model=rerank_model,
-    )
-
-auto_merging_engine = RetrieverQueryEngine.from_args(
-    retriever=retriever, 
-    node_postprocessors=[rerank],
-    )
-
-vector_store.client.load_collection(collection_name=collection_name)
-rerank_response = auto_merging_engine.query(query_str)
+rerank_response = rerank_query_engine.query(query_str)
 print("\n" + str(rerank_response))
 
-# print(auto_merging_response.get_formatted_sources(length=200))
+# print(rerank_response.get_formatted_sources(length=1000))
 
 
 
