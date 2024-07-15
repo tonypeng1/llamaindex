@@ -1,7 +1,8 @@
 from pymilvus import MilvusClient
 
 client = MilvusClient(
-    uri="http://localhost:19530"
+    uri="http://localhost:19530",
+    db_name="paul_graham_automerge",
 )
 
 client.load_collection(
@@ -9,6 +10,7 @@ client.load_collection(
     replica_number=1
 )
 
+client.drop_collection("openai_embedding_3_small_size_2048_512_128")
 
 client.list_partitions(collection_name="quick_setup")
 
