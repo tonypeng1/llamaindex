@@ -2,7 +2,8 @@ from pymilvus import MilvusClient
 
 client = MilvusClient(
     uri="http://localhost:19530",
-    db_name="paul_graham_automerge",
+    # db_name="paul_graham_automerge",
+    db_name="paul_graham_sentence_window",
 )
 
 client.load_collection(
@@ -10,7 +11,8 @@ client.load_collection(
     replica_number=1
 )
 
-client.drop_collection("openai_embedding_3_small_size_2048_512_128")
+# client.drop_collection("openai_embedding_3_small_size_2048_512_128")
+client.drop_collection("huggingface_embedding_bge_small_window_size_12")
 
 client.list_partitions(collection_name="quick_setup")
 

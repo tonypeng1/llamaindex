@@ -179,11 +179,11 @@ def build_automerge_index_and_docstore(
 
 
 def get_automerge_retriever(
-        base_ind,
-        similar_top_k,
+        _base_index,
+        _similarity_top_k,
         ):
     # Create the retriever
-    base_retrieve = base_ind.as_retriever(similarity_top_k=similar_top_k)
+    base_retrieve = _base_index.as_retriever(similarity_top_k=_similarity_top_k)
 
     retrieve = AutoMergingRetriever(
         vector_retriever=base_retrieve, 
