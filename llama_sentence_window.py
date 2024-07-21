@@ -91,6 +91,12 @@ def print_retreived_nodes(_retriever):
         # print("\n")
 
 
+def display_prompt_dict(_prompts_dict):
+    for k, p in _prompts_dict.items():
+        print(f"\nPrompt Key: {k} \nText:\n")
+        print(p.get_template() + "\n")
+
+
 def load_document_pdf(doc_link):
     loader = PyMuPDFReader()
     docs0 = loader.load(file_path=Path(doc_link))
@@ -229,8 +235,12 @@ postproc = MetadataReplacementPostProcessor(
 #     )  
 
 # query_str = "What are the keys to building a career in AI?"
-query_str = "What happened in New York?"
-# query_str = "What happened at Interleafe and Viaweb?"
+# query_str = "What happened in New York?"
+# query_str = "Describe everything that is mentioned about Interleaf one by one?"
+# query_str = "Describe everything that is mentioned about Viaweb one by one?"
+query_str = "Describe everything that is mentioned about Viaweb."
+# query_str = "What happened at Interleaf?"
+# query_str = "What happened at Interleaf and Viaweb?"
 # query_str = "What is the importance of networking in AI?"
 # query_str = (
 #     "What could be the potential outcomes of adjusting the amount of safety"
@@ -268,22 +278,82 @@ print_retreived_nodes(rerank_nodes)
 window_engine = index.as_query_engine(
                             similarity_top_k=similarity_top_k,
                             node_postprocessors=[postproc],
+                            # response_mode="compact",
                             )
+
+compact_window_engine = index.as_query_engine(
+                            similarity_top_k=similarity_top_k,
+                            node_postprocessors=[postproc],
+                            response_mode="compact",
+                            )
+
+tree_window_engine = index.as_query_engine(
+                            similarity_top_k=similarity_top_k,
+                            node_postprocessors=[postproc],
+                            response_mode="tree_summarize",
+                            )
+
+accumulate_window_engine = index.as_query_engine(
+                            similarity_top_k=similarity_top_k,
+                            node_postprocessors=[postproc],
+                            response_mode="accumulate",
+                            )
+
 
 rerank_engine = index.as_query_engine(
                             similarity_top_k=similarity_top_k,
                             node_postprocessors=[postproc, rerank],
                             )
 
+compact_rerank_engine = index.as_query_engine(
+                            similarity_top_k=similarity_top_k,
+                            node_postprocessors=[postproc, rerank],
+                            response_mode="compact",
+                            )
 
+tree_rerank_engine = index.as_query_engine(
+                            similarity_top_k=similarity_top_k,
+                            node_postprocessors=[postproc, rerank],
+                            response_mode="tree_summarize",
+                            )
+
+accumulate_rerank_engine = index.as_query_engine(
+                            similarity_top_k=similarity_top_k,
+                            node_postprocessors=[postproc, rerank],
+                            response_mode="accumulate",
+                            )
+
+# window_prompts_dict = window_engine.get_prompts()
+# display_prompt_dict(window_prompts_dict)
+
+# rerank_prompts_dict = rerank_engine.get_prompts()
+# display_prompt_dict(rerank_prompts_dict)
 
 # Prints window response
 response = window_engine.query(query_str)
 print("\nSENTENCE-WINDOW:\n\n" + str(response))
 
+compact_response = compact_window_engine.query(query_str)
+print("\nCOMPACT-SENTENCE-WINDOW:\n\n" + str(compact_response))
+
+tree_response = tree_window_engine.query(query_str)
+print("\nTREE-SENTENCE-WINDOW:\n\n" + str(tree_response))
+
+accumulate_response = accumulate_window_engine.query(query_str)
+print("\nACCUMULATE-SENTENCE-WINDOW:\n\n" + str(accumulate_response))
+
 # Prints rerank response 
 rerank_response = rerank_engine.query(query_str)
 print("\nRE-RANK:\n\n" + str(rerank_response))
+
+compact_rerank_response = compact_rerank_engine.query(query_str)
+print("\nCOMPACT-RE-RANK:\n\n" + str(compact_rerank_response))
+
+tree_rerank_response = tree_rerank_engine.query(query_str)
+print("\nTREE-RE-RANK:\n\n" + str(tree_rerank_response))
+
+accumulate_rerank_response = accumulate_rerank_engine.query(query_str)
+print("\nACCUMULATE-RE-RANK:\n\n" + str(accumulate_rerank_response))
 
 # print(rerank_response.get_formatted_sources(length=2000))
 
