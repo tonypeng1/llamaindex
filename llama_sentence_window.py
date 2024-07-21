@@ -5,7 +5,6 @@ import sys
 from llama_index.core import (
                         Document,
                         Settings,
-                        SimpleDirectoryReader,
                         StorageContext,
                         VectorStoreIndex,
                         )
@@ -20,7 +19,6 @@ from llama_index.llms.openai import OpenAI
 from llama_index.vector_stores.milvus import MilvusVectorStore
 
 from pymilvus import connections, db, MilvusClient
-# from pymongo import MongoClient
 import openai
 
 from pathlib import Path
@@ -29,12 +27,20 @@ from llama_index.readers.file import PyMuPDFReader
 
 from trulens_eval import Tru
 
+from utility import (
+                get_article_link, 
+                get_compact_tree_and_accumulate_engine,
+                get_database_and_window_collection_name,
+                get_rerank_compact_tree_and_accumulate_engine,
+                print_retreived_nodes,
+                )
 
-def check_if_milvus_database_exists(uri, db_name) -> bool:
+
+def check_if_milvus_database_exists(uri, _database_name) -> bool:
     connections.connect(uri=uri)
     db_names = db.list_database()
     connections.disconnect("default")
-    return db_name in db_names
+    return _database_name in db_names
 
 def check_if_milvus_collection_exists(uri, db_name, collect_name) -> bool:
     client = MilvusClient(
@@ -52,43 +58,20 @@ def create_database_milvus(uri, db_name):
     db.create_database(db_name)
     connections.disconnect("default")
 
-def milvus_collection_item_count(uri, db_name, collect_name) -> int:
+def milvus_collection_item_count(uri, 
+                                 _database_name, 
+                                 _collection_name) -> int:
     client = MilvusClient(
         uri=uri,
-        db_name=db_name
+        db_name=_database_name
         )
-    client.load_collection(collection_name=collect_name)
+    client.load_collection(collection_name=_collection_name)
     element_count = client.query(
-        collection_name=collection_name,
+        collection_name=_collection_name,
         output_fields=["count(*)"],
         )
     client.close()
     return element_count[0]['count(*)']
-
-def print_retreived_nodes(_retriever):
-    # Loop through each NodeWithScore in the retreived nodes
-    for (i, node_with_score) in enumerate(_retriever):
-        node = node_with_score.node  # The TextNode object
-        score = node_with_score.score  # The similarity score
-        chunk_id = node.id_  # The chunk ID
-
-        # Extract the relevant metadata from the node
-        file_name = node.metadata.get("file_name", "Unknown")
-        file_path = node.metadata.get("file_path", "Unknown")
-
-        # Extract the text content from the node
-        text_content = node.text if node.text else "No content available"
-
-        # Print the results in a user-friendly format
-        print(f"\n\nItem number: {i+1}")
-        print(f"Score: {score}")
-        # print(f"File Name: {file_name}")
-        # print(f"File Path: {file_path}")
-        print(f"Id: {chunk_id}")
-        print("\nExtracted Content:\n")
-        print(text_content)
-        # print("\n" + "=" * 40 + " End of Result " + "=" * 40 + "\n")
-        # print("\n")
 
 
 def display_prompt_dict(_prompts_dict):
@@ -107,7 +90,10 @@ def load_document_pdf(doc_link):
     # print(documents[0])
     return docs
 
-def get_notes_from_document_sentence_window(docs, win_size):
+def get_notes_from_document_sentence_window(
+        docs, 
+        win_size
+        ):
     # create the sentence window node parser w/ default settings
     node_parser = SentenceWindowNodeParser.from_defaults(
         window_size=win_size,
@@ -118,15 +104,20 @@ def get_notes_from_document_sentence_window(docs, win_size):
     return nodes
 
 
-def check_if_milvus_database_collection_exist(db_name, col_name):
+def check_if_milvus_database_collection_exist(
+        uri, 
+        _database_name, 
+        _collection_name
+        ):
+                                                                           
     save_ind = True
-    if check_if_milvus_database_exists(uri_milvus, db_name):
-        if check_if_milvus_collection_exists(uri_milvus, db_name, col_name):
-            num_count = milvus_collection_item_count(uri_milvus, database_name, collection_name)
+    if check_if_milvus_database_exists(uri, _database_name):
+        if check_if_milvus_collection_exists(uri, _database_name, _collection_name):
+            num_count = milvus_collection_item_count(uri, _database_name, _collection_name)
             if num_count > 0:  # account for the case of 0 item in the collection
                 save_ind = False
     else:
-        create_database_milvus(uri_milvus, database_name)
+        create_database_milvus(uri, _database_name)
     return save_ind
 
 
@@ -160,40 +151,46 @@ def build_sentence_window_index(
 
 # Set OpenAI API key, LLM, and embedding model
 openai.api_key = os.environ['OPENAI_API_KEY']
+
 llm = OpenAI(model="gpt-3.5-turbo", temperature=0.1)
 Settings.llm = llm
 
-# Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+# embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+# Settings.embed_model = embed_model
 # embed_model_dim = 384  # for bge-small-en-v1.5
-# embed_model = "huggingface_embedding_bge_small"
+# embed_model_name = "huggingface_embedding_bge_small"
 
-Settings.embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
+embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
+Settings.embed_model = embed_model
 embed_model_dim = 1536  # for text-embedding-3-small
-embed_model = "openai_embedding_3_small"
+embed_model_name = "openai_embedding_3_small"
 
-uri_milvus = "http://localhost:19530"
-
-# Create database and collection names
+# Create article link
 article_dictory = "paul_graham"
 article_name = "paul_graham_essay.pdf"
+article_link = get_article_link(article_dictory,
+                                article_name
+                                )
 
 # article_dictory = "andrew"
 # article_name = "eBook-How-to-Build-a-Career-in-AI.pdf"
 
-article_link = "./data/" + article_dictory + "/" + article_name
+# Create database and collection names
 chuck_method = "sentence_window"
 window_size = 3
+(database_name, 
+ collection_name) = get_database_and_window_collection_name(article_dictory, 
+                                                            chuck_method, 
+                                                            embed_model_name, 
+                                                            window_size)
 
-database_name = article_dictory + "_" + chuck_method
-collection_name = embed_model + "_window_size_" + str(window_size)
-# collection_name = embed_model + "_size_" + str(parent_2) + "_" + str(parent_1) + "_" + str(leaf)
-
-
-# Check if index and docstore have already been saved to Milvus and MongoDB.
-
+# Check if index has already been saved to Milvus database.
 # In Milvus database, if the specific collection exists , do not save the index.
 # Otherwise, create one.
-save_index = check_if_milvus_database_collection_exist(database_name, collection_name)
+uri_milvus = "http://localhost:19530"
+save_index = check_if_milvus_database_collection_exist(uri_milvus, 
+                                                       database_name, 
+                                                       collection_name)
 
 # Initiate vector store (a new empty collection will be created in Milvus server)
 vector_store = MilvusVectorStore(
@@ -224,9 +221,6 @@ base_retriever = index.as_retriever(
     similarity_top_k=similarity_top_k,
     )
 
-postproc = MetadataReplacementPostProcessor(
-    target_metadata_key="window"
-    )
 
 # The code below does not work (cannot put node_postprocessors here)
 # window_retriever = index.as_retriever(
@@ -236,9 +230,10 @@ postproc = MetadataReplacementPostProcessor(
 
 # query_str = "What are the keys to building a career in AI?"
 # query_str = "What happened in New York?"
-# query_str = "Describe everything that is mentioned about Interleaf one by one?"
-# query_str = "Describe everything that is mentioned about Viaweb one by one?"
-query_str = "Describe everything that is mentioned about Viaweb."
+# query_str = "Describe everything that is mentioned about Interleaf one by one."
+# query_str = "Describe everything that is mentioned about Interleaf one by one."
+query_str = "Describe everything that is mentioned about Interleaf."
+# query_str = "Describe everything that is mentioned about Viaweb."
 # query_str = "What happened at Interleaf?"
 # query_str = "What happened at Interleaf and Viaweb?"
 # query_str = "What is the importance of networking in AI?"
@@ -247,15 +242,15 @@ query_str = "Describe everything that is mentioned about Viaweb."
 #     " data used in the RLHF stage?"
 # )
 
-# Print retrieved nodes
+# Define window post processor
+postproc = MetadataReplacementPostProcessor(
+    target_metadata_key="window"
+    )
+
+# Retrieve base and window nodes
 vector_store.client.load_collection(collection_name=collection_name)
-
 base_nodes = base_retriever.retrieve(query_str)
-print_retreived_nodes(base_nodes)
-
 window_nodes = postproc.postprocess_nodes(base_nodes)
-print_retreived_nodes(window_nodes)
-
 
 # Define reranker
 rerank_model = "BAAI/bge-reranker-base"
@@ -265,63 +260,50 @@ rerank = SentenceTransformerRerank(
     model=rerank_model,
     )
 
+# Get rerank nodes
 rerank_nodes = rerank.postprocess_nodes(
     nodes=window_nodes,
     query_str=query_str,
     )
+
+# Print retrieved nodes
+print_retreived_nodes(base_nodes)
+print_retreived_nodes(window_nodes)
 print_retreived_nodes(rerank_nodes)
 
 # Since postproc and rerank are both post processors, there are no corresponding 
-# retreivers, therefore, query enginers are not created using RetrieverQueryEngine.from_args()
+# retreivers, therefore, query enginers are not created using RetrieverQueryEngine.from_args().
+# Rarher, a wrapper index.as_query_engine() is used.
 
 # Directly use postprocessing in creating the query engines
+# Create default engine ("create and refine")
 window_engine = index.as_query_engine(
                             similarity_top_k=similarity_top_k,
                             node_postprocessors=[postproc],
-                            # response_mode="compact",
                             )
 
-compact_window_engine = index.as_query_engine(
-                            similarity_top_k=similarity_top_k,
-                            node_postprocessors=[postproc],
-                            response_mode="compact",
-                            )
+(compact_engine, 
+ tree_engine, 
+ accumulate_engine) = get_compact_tree_and_accumulate_engine(
+                                                            index,
+                                                            similarity_top_k,
+                                                            postproc,
+                                                            )
 
-tree_window_engine = index.as_query_engine(
-                            similarity_top_k=similarity_top_k,
-                            node_postprocessors=[postproc],
-                            response_mode="tree_summarize",
-                            )
-
-accumulate_window_engine = index.as_query_engine(
-                            similarity_top_k=similarity_top_k,
-                            node_postprocessors=[postproc],
-                            response_mode="accumulate",
-                            )
-
-
+# Create default rerank engine ("create and refine")
 rerank_engine = index.as_query_engine(
                             similarity_top_k=similarity_top_k,
                             node_postprocessors=[postproc, rerank],
                             )
 
-compact_rerank_engine = index.as_query_engine(
-                            similarity_top_k=similarity_top_k,
-                            node_postprocessors=[postproc, rerank],
-                            response_mode="compact",
-                            )
-
-tree_rerank_engine = index.as_query_engine(
-                            similarity_top_k=similarity_top_k,
-                            node_postprocessors=[postproc, rerank],
-                            response_mode="tree_summarize",
-                            )
-
-accumulate_rerank_engine = index.as_query_engine(
-                            similarity_top_k=similarity_top_k,
-                            node_postprocessors=[postproc, rerank],
-                            response_mode="accumulate",
-                            )
+(compact_rerank_engine, 
+ tree_rerank_engine, 
+ accumulate_rerank_engine) = get_rerank_compact_tree_and_accumulate_engine(
+                                                                        index,
+                                                                        similarity_top_k,
+                                                                        postproc,
+                                                                        rerank
+                                                                        )
 
 # window_prompts_dict = window_engine.get_prompts()
 # display_prompt_dict(window_prompts_dict)
@@ -329,35 +311,31 @@ accumulate_rerank_engine = index.as_query_engine(
 # rerank_prompts_dict = rerank_engine.get_prompts()
 # display_prompt_dict(rerank_prompts_dict)
 
-# Prints window response
+# Get responses
 response = window_engine.query(query_str)
+compact_response = compact_engine.query(query_str)
+tree_response = tree_engine.query(query_str)
+accumulate_response = accumulate_engine.query(query_str)
+
+# Prints responses
 print("\nSENTENCE-WINDOW:\n\n" + str(response))
-
-compact_response = compact_window_engine.query(query_str)
 print("\nCOMPACT-SENTENCE-WINDOW:\n\n" + str(compact_response))
-
-tree_response = tree_window_engine.query(query_str)
 print("\nTREE-SENTENCE-WINDOW:\n\n" + str(tree_response))
-
-accumulate_response = accumulate_window_engine.query(query_str)
 print("\nACCUMULATE-SENTENCE-WINDOW:\n\n" + str(accumulate_response))
 
-# Prints rerank response 
+# Get rerank respanses
 rerank_response = rerank_engine.query(query_str)
-print("\nRE-RANK:\n\n" + str(rerank_response))
-
 compact_rerank_response = compact_rerank_engine.query(query_str)
-print("\nCOMPACT-RE-RANK:\n\n" + str(compact_rerank_response))
-
 tree_rerank_response = tree_rerank_engine.query(query_str)
-print("\nTREE-RE-RANK:\n\n" + str(tree_rerank_response))
-
 accumulate_rerank_response = accumulate_rerank_engine.query(query_str)
+
+# Prints rerank response 
+print("\nRE-RANK:\n\n" + str(rerank_response))
+print("\nCOMPACT-RE-RANK:\n\n" + str(compact_rerank_response))
+print("\nTREE-RE-RANK:\n\n" + str(tree_rerank_response))
 print("\nACCUMULATE-RE-RANK:\n\n" + str(accumulate_rerank_response))
 
 # print(rerank_response.get_formatted_sources(length=2000))
-
-
 
 vector_store.client.release_collection(collection_name=collection_name)
 vector_store.client.close()  # Need to do this (otherwise Milvus container will hault when closing)
