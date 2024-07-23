@@ -29,9 +29,9 @@ from trulens_eval import Tru
 
 from utility import (
                 get_article_link, 
-                get_compact_tree_and_accumulate_engine,
+                get_compact_tree_and_accumulate_engine_from_index,
                 get_database_and_window_collection_name,
-                get_rerank_compact_tree_and_accumulate_engine,
+                get_rerank_compact_tree_and_accumulate_engine_from_index,
                 print_retreived_nodes,
                 )
 
@@ -168,6 +168,7 @@ embed_model_name = "openai_embedding_3_small"
 # Create article link
 article_dictory = "paul_graham"
 article_name = "paul_graham_essay.pdf"
+
 article_link = get_article_link(article_dictory,
                                 article_name
                                 )
@@ -178,6 +179,7 @@ article_link = get_article_link(article_dictory,
 # Create database and collection names
 chuck_method = "sentence_window"
 window_size = 3
+
 (database_name, 
  collection_name) = get_database_and_window_collection_name(article_dictory, 
                                                             chuck_method, 
@@ -284,7 +286,7 @@ window_engine = index.as_query_engine(
 
 (compact_engine, 
  tree_engine, 
- accumulate_engine) = get_compact_tree_and_accumulate_engine(
+ accumulate_engine) = get_compact_tree_and_accumulate_engine_from_index(
                                                             index,
                                                             similarity_top_k,
                                                             postproc,
@@ -298,7 +300,7 @@ rerank_engine = index.as_query_engine(
 
 (compact_rerank_engine, 
  tree_rerank_engine, 
- accumulate_rerank_engine) = get_rerank_compact_tree_and_accumulate_engine(
+ accumulate_rerank_engine) = get_rerank_compact_tree_and_accumulate_engine_from_index(
                                                                         index,
                                                                         similarity_top_k,
                                                                         postproc,

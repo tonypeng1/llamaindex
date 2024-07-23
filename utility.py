@@ -9,27 +9,40 @@ def get_article_link(
 
 def get_database_and_window_collection_name(
         _article_dictory, 
-        _chuck_method, 
+        _chunk_method, 
         _embed_model_name,
         _window_size
         ):
     
-    _database_name = _article_dictory + "_" + _chuck_method
+    _database_name = _article_dictory + "_" + _chunk_method
     _collection_name = _embed_model_name + "_window_size_" + str(_window_size)
     return _database_name, _collection_name
 
 
-def get_compact_tree_and_accumulate_engine(
+def get_database_and_sentence_splitter_collection_name(
+        _article_dictory, 
+        _chunk_method, 
+        _embed_model_name,
+        _chunk_size,
+        _chunk_overlap,
+        ):
+    
+    _database_name = _article_dictory + "_" + _chunk_method
+    _collection_name = _embed_model_name + "_chunk_size_" + str(_chunk_size) + "_chunk_overlap_" + str(_chunk_overlap)
+    return _database_name, _collection_name
+
+
+def get_compact_tree_and_accumulate_engine_from_index(
         _index,
         _similarity_top_k,
         _postproc
         ):
     
     _compact_engine = _index.as_query_engine(
-                            similarity_top_k=_similarity_top_k,
-                            node_postprocessors=[_postproc],
-                            response_mode="compact",
-                            )
+                                similarity_top_k=_similarity_top_k,
+                                node_postprocessors=[_postproc],
+                                response_mode="compact",
+                                )
     _tree_engine = _index.as_query_engine(
                                 similarity_top_k=_similarity_top_k,
                                 node_postprocessors=[_postproc],
@@ -43,7 +56,7 @@ def get_compact_tree_and_accumulate_engine(
     return _compact_engine, _tree_engine, _accumulate_engine
 
 
-def get_rerank_compact_tree_and_accumulate_engine(
+def get_rerank_compact_tree_and_accumulate_engine_from_index(
         _index,
         _similarity_top_k,
         _postproc,

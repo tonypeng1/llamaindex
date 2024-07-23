@@ -156,8 +156,8 @@ def build_automerge_index_and_docstore(
     ):
 
     if save_ind or add_doc:  # Only load and parse document if either index or docstore not saved.
-        document = load_document_pdf(art_link)
-        (nodes, leaf_n) = get_notes_from_document_automerge(document, chunck_size)
+        _document = load_document_pdf(art_link)
+        (nodes, leaf_n) = get_notes_from_document_automerge(_document, chunck_size)
 
     if save_ind == True:
         # Create and save index (embedding) to Milvus database
@@ -295,7 +295,7 @@ storage_context = StorageContext.from_defaults(
 # print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
 
 
-# Get base index
+# Get base index and build docstore
 base_index = build_automerge_index_and_docstore(
     article_link,
     save_index,
@@ -308,7 +308,10 @@ similarity_top_k = 12
 rerank_model = "BAAI/bge-reranker-base"
 rerank_top_n =6
 
-base_retriever, retriever = get_automerge_retriever(base_index, similarity_top_k)
+base_retriever, retriever = get_automerge_retriever(
+                                                    base_index, 
+                                                    similarity_top_k
+                                                    )
 base_query_engine, query_engine, rerank_query_engine = get_automerge_query_engine(base_retriever,
                                                                                   retriever,
                                                                                   rerank_model,
@@ -323,23 +326,24 @@ query_str = "What are the keys to building a career in AI?"
 #     " data used in the RLHF stage?"
 # )
 
-# Print retrieved nodes
 vector_store.client.load_collection(collection_name=collection_name)
 
+# Get retrieved nodes
 base_nodes_retrieved = base_retriever.retrieve(query_str)
-print_retreived_nodes(base_nodes_retrieved)
-
 nodes_retrieved = retriever.retrieve(query_str)
+
+# Print retrieved nodes
+print_retreived_nodes(base_nodes_retrieved)
 print_retreived_nodes(nodes_retrieved)
 
-# Prints responses 
+# Get responses 
 base_response = base_query_engine.query(query_str)
-print("\nBASE:\n" + str(base_response))
-
 response = query_engine.query(query_str)
-print("\nAUTO-MERGE:\n" + str(response))
-
 rerank_response = rerank_query_engine.query(query_str)
+
+# Print responses 
+print("\nBASE:\n" + str(base_response))
+print("\nAUTO-MERGE:\n" + str(response))
 print("\nRE-RANK:\n" + str(rerank_response))
 
 # print(rerank_response.get_formatted_sources(length=2000))
