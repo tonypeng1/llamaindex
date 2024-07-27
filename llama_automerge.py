@@ -31,6 +31,14 @@ from pathlib import Path
 from llama_index.readers.file import PDFReader
 from llama_index.readers.file import PyMuPDFReader
 
+from utility import (
+                change_default_engine_prompt_to_in_detail,
+                change_tree_engine_prompt_to_in_detail,
+                get_article_link, 
+                get_database_and_automerge_collection_name,
+                print_retreived_nodes,
+                )
+
 from trulens_eval import Tru
 
 
@@ -82,31 +90,6 @@ def milvus_collection_item_count(uri, db_name, collect_name) -> int:
         )
     client.close()
     return element_count[0]['count(*)']
-
-def print_retreived_nodes(retrieve):
-    # Loop through each NodeWithScore in the retreived nodes
-    for (i, node_with_score) in enumerate(retrieve):
-        node = node_with_score.node  # The TextNode object
-        score = node_with_score.score  # The similarity score
-        chunk_id = node.id_  # The chunk ID
-
-        # Extract the relevant metadata from the node
-        file_name = node.metadata.get("file_name", "Unknown")
-        file_path = node.metadata.get("file_path", "Unknown")
-
-        # Extract the text content from the node
-        text_content = node.text if node.text else "No content available"
-
-        # Print the results in a user-friendly format
-        print(f"\n\nItem number: {i+1}")
-        print(f"Score: {score}")
-        # print(f"File Name: {file_name}")
-        # print(f"File Path: {file_path}")
-        print(f"Id: {chunk_id}")
-        print("\nExtracted Content:")
-        print(text_content)
-        # print("\n" + "=" * 40 + " End of Result " + "=" * 40 + "\n")
-        # print("\n")
 
 
 def load_document_pdf(doc_link):
@@ -223,52 +206,68 @@ def get_automerge_query_engine(
 
 # Set OpenAI API key, LLM, and embedding model
 openai.api_key = os.environ['OPENAI_API_KEY']
+
 llm = OpenAI(model="gpt-3.5-turbo", temperature=0.1)
 Settings.llm = llm
-# Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-# embed_model_dim = 384  # for bge-small-en-v1.5
-Settings.embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
-embed_model_dim = 1536  # for text-embedding-3-small
 
-uri_milvus = "http://localhost:19530"
-uri_mongo = "mongodb://localhost:27017/"
+# embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+# Settings.embed_model = embed_model
+# embed_model_dim = 384  # for bge-small-en-v1.5
+# embed_model_name = "huggingface_embedding_bge_small"
+
+embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
+Settings.embed_model = embed_model
+embed_model_dim = 1536  # for text-embedding-3-small
+embed_model_name = "openai_embedding_3_small"
+
+# Create article link
+article_dictory = "paul_graham"
+article_name = "paul_graham_essay.pdf"
+
+article_link = get_article_link(
+                                article_dictory,
+                                article_name
+                                )
+
+# article_dictory = "andrew"
+# article_name = "eBook-How-to-Build-a-Career-in-AI.pdf"
 
 # Create database and collection names
+chunk_method = "automerge"
+leaf = 256
+parent_1 = 1024
+parent_2 = 4096
 
-# article_dictory = "paul_graham"
-# article_name = "paul_graham_essay.pdf"
-
-article_dictory = "andrew"
-article_name = "eBook-How-to-Build-a-Career-in-AI.pdf"
-
-article_link = "./data/" + article_dictory + "/" + article_name
-
-chuck_method = "automerge"
-leaf = 128
-parent_1 = 512
-parent_2 = 2048
-# leaf = 256
-# parent_1 = 1024
-# parent_2 = 4096
 automerge_chuck_size = [leaf, parent_1, parent_2]
-embed_model = "openai_embedding_3_small"
-# embed_model = "huggingface_embedding_bge_small"
 
-database_name = article_dictory + "_" + chuck_method
-collection_name = embed_model + "_size_" + str(parent_2) + "_" + str(parent_1) + "_" + str(leaf)
+# leaf = 128
+# parent_1 = 512
+# parent_2 = 2048
 
+(database_name, 
+collection_name) = get_database_and_automerge_collection_name(
+                                                        article_dictory, 
+                                                        chunk_method, 
+                                                        embed_model_name,
+                                                        leaf, 
+                                                        parent_1,
+                                                        parent_2
+                                                        )
 
-# Check if index and docstore have already been saved to Milvus and MongoDB.
-
+# Check if index has already been saved to Milvus database.
 # In Milvus database, if the specific collection exists , do not save the index.
 # Otherwise, create one.
-save_index = check_if_milvus_database_collection_exist(database_name, collection_name)
+uri_milvus = "http://localhost:19530"
+save_index = check_if_milvus_database_collection_exist(uri_milvus, 
+                                                       database_name, 
+                                                       collection_name)
 
+# Check if MongoDB already has the namespace
 # In MongoDB, if the specific namespace exists, do not add document nodes to MongoDB.
-add_document = check_if_mongo_database_namespace_exist(database_name, collection_name)
-
-
-# Initiate vector store, docstore, and storage context.
+uri_mongo = "mongodb://localhost:27017/"
+add_document = check_if_mongo_database_namespace_exist(uri_mongo, 
+                                                       database_name, 
+                                                       collection_name)
 
 # Initiate vector store (a new empty collection will be created in Milvus server)
 vector_store = MilvusVectorStore(
@@ -290,9 +289,14 @@ storage_context = StorageContext.from_defaults(
     vector_store=vector_store,
     docstore=docstore
     )
+
 # for i in list(storage_context.docstore.get_all_ref_doc_info().keys()):
 #     print(i)
 # print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
+
+
+
+
 
 
 # Get base index and build docstore
@@ -306,18 +310,24 @@ base_index = build_automerge_index_and_docstore(
 # Get retrievers and query engines
 similarity_top_k = 12
 rerank_model = "BAAI/bge-reranker-base"
-rerank_top_n =6
+rerank_top_n = 8
 
-base_retriever, retriever = get_automerge_retriever(
-                                                    base_index, 
-                                                    similarity_top_k
-                                                    )
-base_query_engine, query_engine, rerank_query_engine = get_automerge_query_engine(base_retriever,
-                                                                                  retriever,
-                                                                                  rerank_model,
-                                                                                  rerank_top_n)
+(base_retriever, 
+ retriever) = get_automerge_retriever(
+                                    base_index, 
+                                    similarity_top_k
+                                    )
+(base_query_engine, 
+ query_engine, 
+ rerank_query_engine) = get_automerge_query_engine(
+                                                base_retriever,
+                                                retriever,
+                                                rerank_model,
+                                                rerank_top_n
+                                                )
 
-query_str = "What are the keys to building a career in AI?"
+# query_str = "What are the keys to building a career in AI?"
+query_str = "What are the thinkgs happened in New York?"
 # query_str = "What happened in New York?"
 # query_str = "What happened at Interleafe and Viaweb?"
 # query_str = "What is the importance of networking in AI?"
@@ -333,8 +343,8 @@ base_nodes_retrieved = base_retriever.retrieve(query_str)
 nodes_retrieved = retriever.retrieve(query_str)
 
 # Print retrieved nodes
-print_retreived_nodes(base_nodes_retrieved)
-print_retreived_nodes(nodes_retrieved)
+print_retreived_nodes("automerge base", base_nodes_retrieved)
+print_retreived_nodes("automerge", nodes_retrieved)
 
 # Get responses 
 base_response = base_query_engine.query(query_str)
@@ -342,12 +352,11 @@ response = query_engine.query(query_str)
 rerank_response = rerank_query_engine.query(query_str)
 
 # Print responses 
-print("\nBASE:\n" + str(base_response))
-print("\nAUTO-MERGE:\n" + str(response))
-print("\nRE-RANK:\n" + str(rerank_response))
+print("\nAUTOMERGE-BASE:\n" + str(base_response))
+print("\nAUTOMERGE:\n" + str(response))
+print("\nRERANK:\n" + str(rerank_response))
 
 # print(rerank_response.get_formatted_sources(length=2000))
-
 
 
 vector_store.client.release_collection(collection_name=collection_name)

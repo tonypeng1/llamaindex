@@ -34,6 +34,22 @@ def get_database_and_sentence_splitter_collection_name(
     return _database_name, _collection_name
 
 
+def get_database_and_automerge_collection_name(
+        _article_dictory, 
+        _chunk_method, 
+        _embed_model_name,
+        _leaf,
+        _parent_1,
+        _parent_2,
+        ):
+    
+    _database_name = _article_dictory + "_" + _chunk_method
+    _collection_name = _embed_model_name + "_size_" + str(_parent_2) + "_" + \
+                        str(_parent_1) + "_" + str(_leaf)
+    
+    return _database_name, _collection_name
+
+
 def get_compact_tree_and_accumulate_engine_from_index(
         _index,
         _similarity_top_k,
