@@ -1,3 +1,5 @@
+from llama_index.core import PromptTemplate
+
 
 def get_article_link(
         _article_dictory, 
@@ -81,9 +83,80 @@ def get_rerank_compact_tree_and_accumulate_engine_from_index(
                                 response_mode="accumulate",
                                 )
     return _compact_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
-    
 
-def print_retreived_nodes(_retriever):
+
+def change_default_engine_prompt_to_in_detail(engine):
+
+    new_text_qa_tmpl_str = (
+    "Context information is below.\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "Given the context information and not prior knowledge, answer the query. \n"
+    "Try to include as many key details as possible.\n"
+    "Query: {query_str}\n"
+    "Answer: "
+    )
+
+    new_refine_tmpl_str = (
+    "The original query is as follows:\n"
+    "---------------------\n"
+    "{query_str}\n"
+    "---------------------\n"
+    "We have provided an existing answer:\n"
+    "---------------------\n"
+    "{existing_answer}\n"
+    "---------------------\n"
+    "We have the opportunity to refine the existing answer (only if needed) \n"
+    "with some more context below.\n"
+    "---------------------\n"
+    "{context_msg}\n"
+    "---------------------\n"
+    "Given the new context, refine the original answer to better answer the query. \n"
+    "Try to include as many key details as possible. \n"
+    "If the context isn't useful, return the original answer.\n"
+    "Refined Answer: "
+    )
+
+    new_text_qa_tmpl = PromptTemplate(new_text_qa_tmpl_str)
+    engine.update_prompts(
+                    {"response_synthesizer:text_qa_template": 
+                                            new_text_qa_tmpl}
+                                            )
+    
+    new_refine_tmpl = PromptTemplate(new_refine_tmpl_str)
+    engine.update_prompts(
+                    {"response_synthesizer:refine_template": 
+                                            new_refine_tmpl}
+                                            )
+    return engine
+
+
+def change_tree_engine_prompt_to_in_detail(engine):
+
+    new_summary_tmpl_str = (
+    "Context information from multiple sources is below.\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "Given the information from multiple sources and not prior knowledge, "
+    "answer the query below.\n"
+    "Try to include as many key details as possible.\n"
+    "Query: {query_str}\n"
+    "Answer: "
+    )
+
+    new_summary_tmpl = PromptTemplate(new_summary_tmpl_str)
+    engine.update_prompts(
+                    {"response_synthesizer:summary_template": 
+                                            new_summary_tmpl}
+                                            )
+    return engine
+
+
+def print_retreived_nodes(method, _retriever):
+
+    print(f"\n\nMETHOD: {method.upper()}")
     # Loop through each NodeWithScore in the retreived nodes
     for (i, node_with_score) in enumerate(_retriever):
         node = node_with_score.node  # The TextNode object
@@ -98,7 +171,8 @@ def print_retreived_nodes(_retriever):
         text_content = node.text if node.text else "No content available"
 
         # Print the results in a user-friendly format
-        print(f"\n\nItem number: {i+1}")
+        print(f"\n\n{method.upper()}:")
+        print(f"Item number: {i+1}")
         print(f"Score: {score}")
         # print(f"File Name: {file_name}")
         # print(f"File Path: {file_path}")

@@ -5,6 +5,7 @@ import sys
 
 from llama_index.core import (
                         Document,
+                        PromptTemplate,
                         Settings,
                         StorageContext,
                         VectorStoreIndex,
@@ -37,6 +38,8 @@ import openai
 from pymongo import MongoClient
 from trulens_eval import Tru
 from utility import (
+                change_default_engine_prompt_to_in_detail,
+                change_tree_engine_prompt_to_in_detail,
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
                 print_retreived_nodes,
@@ -82,7 +85,8 @@ def milvus_collection_item_count(uri,
     return element_count[0]['count(*)']
 
 
-def display_prompt_dict(_prompts_dict):
+def display_prompt_dict(type, _prompts_dict):
+    print(f"\n{type}\n")
     for k, p in _prompts_dict.items():
         print(f"\nPrompt Key: {k} \nText:\n")
         print(p.get_template() + "\n")
@@ -217,14 +221,18 @@ def get_sentence_splitter_index_bm25_and_fusion_retriever(
     return _retriever, _bm25_retriever, _fusion_retriever
 
 
-def get_default_vector_bm25_and_fusion_engine_from_retriever(
+def get_default_engine_from_retriever(
         _retriever,
         _bm25_retriever,
         _fusion_retriever,
         ):
+    """
+    default mode is response_mode="compact".
+    """
 
     _default_vector_engine = RetrieverQueryEngine.from_args(
                                             retriever=_retriever,
+                                            # response_mode="default"  # Unknown mode "default"
                                             )
     _default_bm25_engine = RetrieverQueryEngine.from_args(
                                             retriever=_bm25_retriever,
@@ -236,15 +244,37 @@ def get_default_vector_bm25_and_fusion_engine_from_retriever(
     return _default_vector_engine, _default_bm25_engine, _default_fusion_engine
 
 
-def get_fusion_compact_tree_and_accumulate_engine_from_retriever(
+def get_tree_engine_from_retriever(
+        _vector_retriever,
+        _bm25_retriever,
+        _fusion_retriever,
+        ):
+
+    _tree_vector_engine = RetrieverQueryEngine.from_args(
+                                    retriever=_vector_retriever, 
+                                    response_mode="tree_summarize",
+                                    )
+
+    _tree_bm25_engine = RetrieverQueryEngine.from_args(
+                                        retriever=_bm25_retriever, 
+                                        response_mode="tree_summarize",
+                                        )
+
+    _tree_fusion_engine = RetrieverQueryEngine.from_args(
+                                        retriever=_fusion_retriever, 
+                                        response_mode="tree_summarize",
+                                        )
+    return _tree_vector_engine, _tree_bm25_engine, _tree_fusion_engine
+
+def get_fusion_refine_tree_and_accumulate_engine_from_retriever(
         _fusion_retriever,
         _similarity_top_k
         ):
 
-    _compact_fusion_engine = RetrieverQueryEngine.from_args(
+    _refine_fusion_engine = RetrieverQueryEngine.from_args(
                                     retriever=_fusion_retriever, 
                                     similarity_top_k=_similarity_top_k,
-                                    response_mode="compact",
+                                    response_mode="refine",
                                     )
     _tree_fusion_engine = RetrieverQueryEngine.from_args(
                                     retriever=_fusion_retriever, 
@@ -257,20 +287,20 @@ def get_fusion_compact_tree_and_accumulate_engine_from_retriever(
                                     response_mode="accumulate",
                                     )
     
-    return _compact_fusion_engine, _tree_fusion_engine, _accumulate_fusion_engine
+    return _refine_fusion_engine, _tree_fusion_engine, _accumulate_fusion_engine
 
 
-def get_rerank_compact_tree_and_accumulate_engine_from_retriever(
+def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
         _fusion_retriever,
         _rerank_top_n,
         _rerank
         ):
     
-    _compact_rerank_engine = RetrieverQueryEngine.from_args(
+    _refine_rerank_engine = RetrieverQueryEngine.from_args(
                                     retriever=_fusion_retriever, 
                                     similarity_top_k=_rerank_top_n,
                                     node_postprocessors=[_rerank],
-                                    response_mode="compact",
+                                    response_mode="refine",
                                     )
     _tree_rerank_engine = RetrieverQueryEngine.from_args(
                                     retriever=_fusion_retriever, 
@@ -285,7 +315,7 @@ def get_rerank_compact_tree_and_accumulate_engine_from_retriever(
                                     response_mode="accumulate",
                                     )
     
-    return _compact_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
+    return _refine_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
 
     
 # # Set up logging
@@ -389,7 +419,7 @@ similarity_top_k = 12
 num_queries = 1  # for QueryFusionRetriever()
 fusion_top_n = 10
 
-(retriever, 
+(vector_retriever, 
 bm25_retriever,
 fusion_retriever) = get_sentence_splitter_index_bm25_and_fusion_retriever(
                                                             index,
@@ -405,9 +435,11 @@ fusion_retriever) = get_sentence_splitter_index_bm25_and_fusion_retriever(
 #     )  
 
 # query_str = "What are the keys to building a career in AI?"
+query_str = "What are the thinkgs happened in New York?"
+# query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
 # query_str = "Describe everything that is mentioned about Interleaf one by one."
-query_str = "Describe everything that is mentioned about Interleaf one by one in detail."
+# query_str = "Describe everything that is mentioned about Interleaf one by one in detail."
 # query_str = "Describe everything that is mentioned about Interleaf."
 # query_str = "Describe everything that is mentioned about Viaweb."
 # query_str = "What happened at Interleaf?"
@@ -426,7 +458,7 @@ query_str = "Describe everything that is mentioned about Interleaf one by one in
 vector_store.client.load_collection(collection_name=collection_name)
 
 # Retrieve nodes, bm25 nodes, and fusion nodes
-nodes = retriever.retrieve(query_str)
+nodes = vector_retriever.retrieve(query_str)
 bm25_nodes = bm25_retriever.retrieve(query_str)
 fusion_nodes = fusion_retriever.retrieve(query_str)
 
@@ -445,81 +477,103 @@ rerank_nodes = rerank.postprocess_nodes(
     )
 
 # Print retrieved nodes
-print_retreived_nodes(nodes)
-print_retreived_nodes(bm25_nodes)
-print_retreived_nodes(fusion_nodes)
-print_retreived_nodes(rerank_nodes)
+print_retreived_nodes("vector", nodes)
+print_retreived_nodes("bm25", bm25_nodes)
+print_retreived_nodes("fusion", fusion_nodes)
+print_retreived_nodes("rerank", rerank_nodes)
 
 
-# Create default engines ("create and refine")
-(default_vector_engine,
- default_bm25_dngine,
- default_fusion_engine) = get_default_vector_bm25_and_fusion_engine_from_retriever(
-                                                                    retriever,
-                                                                    bm25_retriever,
-                                                                    fusion_retriever
-                                                                    )
-# Create compact, tree, and accumulate fusion engines 
-(compact_fusion_engine,
- tree_fusion_engine,
- accumulate_fusion_engine) = get_fusion_compact_tree_and_accumulate_engine_from_retriever(
-                                                                    fusion_retriever,
-                                                                    fusion_top_n,
-                                                                    )
 
-# Create default rerank engine ("create and refine")
+# Create default engines (query_mode="compact")
+(vector_engine,
+ bm25_engine,
+ fusion_engine) = get_default_engine_from_retriever(
+                                                vector_retriever,
+                                                bm25_retriever,
+                                                fusion_retriever
+ )
+
+# Create tree engines (query_mode="tree_summary")
+(tree_vector_engine,
+ tree_bm25_engine,
+ tree_fusion_engine) = get_tree_engine_from_retriever(
+                                                vector_retriever,
+                                                bm25_retriever,
+                                                fusion_retriever
+ )
+
+# Create default rerank engine (query_mode="compact")
 rerank_engine = RetrieverQueryEngine.from_args(
     retriever=fusion_retriever, 
     node_postprocessors=[rerank],
     )
 
-# Create compact, tree, and accumulate rerank engines 
-(compact_rerank_engine, 
- tree_rerank_engine, 
- accumulate_rerank_engine) = get_rerank_compact_tree_and_accumulate_engine_from_retriever(
-                                                                        fusion_retriever,
-                                                                        rerank_top_n,
-                                                                        rerank
-                                                                        )
+# Create tree rerank engine (query_mode="compact")
+tree_rerank_engine = RetrieverQueryEngine.from_args(
+    retriever=fusion_retriever, 
+    node_postprocessors=[rerank],
+    response_mode="tree_summarize"
+    )
+
+# # Create refine, tree, and accumulate fusion engines 
+# (refine_fusion_engine,
+#  tree_fusion_engine,
+#  accumulate_fusion_engine) = get_fusion_refine_tree_and_accumulate_engine_from_retriever(
+#                                                                     fusion_retriever,
+#                                                                     fusion_top_n,
+#                                                                     )
+
+# Change engine promps to "in detail"
+vector_engine = change_default_engine_prompt_to_in_detail(vector_engine) 
+bm25_engine = change_default_engine_prompt_to_in_detail(bm25_engine) 
+fusion_engine = change_default_engine_prompt_to_in_detail(fusion_engine)
+rerank_engine = change_default_engine_prompt_to_in_detail(rerank_engine)
+
+tree_vector_engine = change_tree_engine_prompt_to_in_detail(tree_vector_engine) 
+tree_bm25_engine = change_tree_engine_prompt_to_in_detail(tree_bm25_engine) 
+tree_fusion_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_engine) 
+tree_rerank_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_engine) 
+
+
+# # Create refine, tree, and accumulate rerank engines 
+# (refine_rerank_engine, 
+#  tree_rerank_engine, 
+#  accumulate_rerank_engine) = get_rerank_refine_tree_and_accumulate_engine_from_retriever(
+#                                                                         fusion_retriever,
+#                                                                         rerank_top_n,
+#                                                                         rerank
+#                                                                         )
 
 # window_prompts_dict = window_engine.get_prompts()
-# display_prompt_dict(window_prompts_dict)
+# type = "tree_fusion_engine:"
+# display_prompt_dict(type.upper(), window_prompts_dict)
 
-# rerank_prompts_dict = rerank_engine.get_prompts()
-# display_prompt_dict(rerank_prompts_dict)
+# Get default responses
+vector_response = vector_engine.query(query_str)
+bm25_response = bm25_engine.query(query_str)
+fusion_response = fusion_engine.query(query_str)
+rerank_response = rerank_engine.query(query_str)
 
-# Get default vector and bm25 responses
-vector_response = default_vector_engine.query(query_str)
-bm25_response = default_bm25_dngine.query(query_str)
+# Get tree responses
+tree_vector_response = tree_vector_engine.query(query_str)
+tree_bm25_response = tree_bm25_engine.query(query_str)
+tree_fusion_response = tree_fusion_engine.query(query_str)
+tree_rerank_response = tree_rerank_engine.query(query_str)
 
-# Get fusion responses
-response = default_fusion_engine.query(query_str)
-compact_response = compact_fusion_engine.query(query_str)
-tree_response = tree_fusion_engine.query(query_str)
-accumulate_response = accumulate_fusion_engine.query(query_str)
+# print(rerank_response.get_formatted_sources(length=2000))
 
 # Prints responses
 print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
 print("\nBM25-ENGINE:\n\n" + str(bm25_response))
-
-print("\nFUSION-ENGINE:\n\n" + str(response))
-print("\nCOMPACT-FUSION-ENGINE:\n\n" + str(compact_response))
-print("\nTREE-FUSION-ENGINE:\n\n" + str(tree_response))
-print("\nACCUMULATE-FUSION-ENGINE:\n\n" + str(accumulate_response))
-
-# Get rerank respanses
-rerank_response = rerank_engine.query(query_str)
-compact_rerank_response = compact_rerank_engine.query(query_str)
-tree_rerank_response = tree_rerank_engine.query(query_str)
-accumulate_rerank_response = accumulate_rerank_engine.query(query_str)
-
-# Prints rerank response 
+print("\nFUSION-ENGINE:\n\n" + str(fusion_response))
 print("\nRERANK-ENGINE:\n\n" + str(rerank_response))
-print("\nCOMPACT-RERANK-ENGINE:\n\n" + str(compact_rerank_response))
-print("\nTREE-RERANK-ENGINE:\n\n" + str(tree_rerank_response))
-print("\nACCUMULATE-RERANK:\n\n" + str(accumulate_rerank_response))
 
-# print(rerank_response.get_formatted_sources(length=2000))
+# Print tree responses
+print("\nTREE-VECTOR-ENGINE:\n\n" + str(tree_vector_response))
+print("\nTREE-BM25-ENGINE:\n\n" + str(tree_bm25_response))
+print("\nTREE-FUSION-ENGINE:\n\n" + str(tree_fusion_response))
+print("\nTREE-RERANK-ENGINE:\n\n" + str(tree_rerank_response))
+
 
 vector_store.client.release_collection(collection_name=collection_name)
 vector_store.client.close()  # Need to do this (otherwise Milvus container will hault when closing)
