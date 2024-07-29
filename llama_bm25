@@ -40,21 +40,16 @@ from trulens_eval import Tru
 from utility import (
                 change_default_engine_prompt_to_in_detail,
                 change_tree_engine_prompt_to_in_detail,
+                display_prompt_dict,
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
+                get_tree_engine_from_retriever,
                 print_retreived_nodes,
                 )
 from database_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
-
-
-def display_prompt_dict(type, _prompts_dict):
-    print(f"\n{type}\n")
-    for k, p in _prompts_dict.items():
-        print(f"\nPrompt Key: {k} \nText:\n")
-        print(p.get_template() + "\n")
 
 
 def load_document_pdf(doc_link):
@@ -163,28 +158,6 @@ def get_default_engine_from_retriever(
     
     return _default_vector_engine, _default_bm25_engine, _default_fusion_engine
 
-
-def get_tree_engine_from_retriever(
-        _vector_retriever,
-        _bm25_retriever,
-        _fusion_retriever,
-        ):
-
-    _tree_vector_engine = RetrieverQueryEngine.from_args(
-                                    retriever=_vector_retriever, 
-                                    response_mode="tree_summarize",
-                                    )
-
-    _tree_bm25_engine = RetrieverQueryEngine.from_args(
-                                        retriever=_bm25_retriever, 
-                                        response_mode="tree_summarize",
-                                        )
-
-    _tree_fusion_engine = RetrieverQueryEngine.from_args(
-                                        retriever=_fusion_retriever, 
-                                        response_mode="tree_summarize",
-                                        )
-    return _tree_vector_engine, _tree_bm25_engine, _tree_fusion_engine
 
 def get_fusion_refine_tree_and_accumulate_engine_from_retriever(
         _fusion_retriever,

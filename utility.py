@@ -1,4 +1,5 @@
 from llama_index.core import PromptTemplate
+from llama_index.core.query_engine import RetrieverQueryEngine
 
 
 def get_article_link(
@@ -38,14 +39,12 @@ def get_database_and_automerge_collection_name(
         _article_dictory, 
         _chunk_method, 
         _embed_model_name,
-        _leaf,
-        _parent_1,
-        _parent_2,
+        chunk_sizes,
         ):
     
     _database_name = _article_dictory + "_" + _chunk_method
-    _collection_name = _embed_model_name + "_size_" + str(_parent_2) + "_" + \
-                        str(_parent_1) + "_" + str(_leaf)
+    _collection_name = _embed_model_name + "_size_" + str(chunk_sizes[0]) + "_" + \
+                        str(chunk_sizes[1]) + "_" + str(chunk_sizes[2])
     
     return _database_name, _collection_name
 
@@ -99,6 +98,57 @@ def get_rerank_compact_tree_and_accumulate_engine_from_index(
                                 response_mode="accumulate",
                                 )
     return _compact_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
+
+
+def get_default_query_engine_from_retriever(
+    retriever_1,
+    retriever_2,
+    ):
+
+    query_engine_1 = RetrieverQueryEngine.from_args(
+        retriever=retriever_1
+        )
+    query_engine_2 = RetrieverQueryEngine.from_args(
+        retriever=retriever_2
+        )
+
+    return query_engine_1, query_engine_2
+
+
+def get_tree_query_engine_from_retriever(
+        retriever_1,
+        retriever_2,
+        ):
+
+    query_engine_1 = RetrieverQueryEngine.from_args(
+        retriever=retriever_1, 
+        response_mode="tree_summarize",
+        )
+
+    query_engine_2 = RetrieverQueryEngine.from_args(
+        retriever=retriever_2, 
+        response_mode="tree_summarize",
+        )
+
+    return query_engine_1, query_engine_2
+
+
+def get_accumulate_query_engine_from_retriever(
+        retriever_1,
+        retriever_2,
+        ):
+
+    query_engine_1 = RetrieverQueryEngine.from_args(
+        retriever=retriever_1, 
+        response_mode="accumulate",
+        )
+
+    retriever_2_engine = RetrieverQueryEngine.from_args(
+        retriever=retriever_2, 
+        response_mode="accumulate",
+        )
+
+    return query_engine_1, retriever_2_engine
 
 
 def change_default_engine_prompt_to_in_detail(engine):
@@ -168,6 +218,34 @@ def change_tree_engine_prompt_to_in_detail(engine):
                                             new_summary_tmpl}
                                             )
     return engine
+
+
+def change_accumulate_engine_prompt_to_in_detail(engine):
+
+    new_text_qa_tmpl_str = (
+    "Context information is below.\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "Given the context information and not prior knowledge, answer the query. \n"
+    "Try to include as many key details as possible.\n"
+    "Query: {query_str}\n"
+    "Answer: "
+    )
+
+    new_text_qa_tmpl = PromptTemplate(new_text_qa_tmpl_str)
+    engine.update_prompts(
+                    {"response_synthesizer:text_qa_template": 
+                                            new_text_qa_tmpl}
+                                            )
+    return engine
+
+
+def display_prompt_dict(type, _prompts_dict):
+    print(f"\n{type}\n")
+    for k, p in _prompts_dict.items():
+        print(f"\nPrompt Key: {k} \nText:\n")
+        print(p.get_template() + "\n")
 
 
 def print_retreived_nodes(method, _retriever):

@@ -27,69 +27,28 @@ from pymilvus import connections, db, MilvusClient
 from pymongo import MongoClient
 import openai
 
+from trulens_eval import Tru
+
 from pathlib import Path
 from llama_index.readers.file import PDFReader
 from llama_index.readers.file import PyMuPDFReader
 
 from utility import (
+                change_accumulate_engine_prompt_to_in_detail,
                 change_default_engine_prompt_to_in_detail,
                 change_tree_engine_prompt_to_in_detail,
+                display_prompt_dict,
                 get_article_link, 
                 get_database_and_automerge_collection_name,
+                get_default_query_engine_from_retriever,
+                get_tree_query_engine_from_retriever,
+                get_accumulate_query_engine_from_retriever,
                 print_retreived_nodes,
                 )
-
-from trulens_eval import Tru
-
-
-def check_if_milvus_database_exists(uri, db_name) -> bool:
-    connections.connect(uri=uri)
-    db_names = db.list_database()
-    connections.disconnect("default")
-    return db_name in db_names
-
-def check_if_milvus_collection_exists(uri, db_name, collect_name) -> bool:
-    client = MilvusClient(
-        uri=uri,
-        db_name=db_name
-        )
-    # client.load_collection(collection_name=collect_name)
-    collect_names = client.list_collections()
-    client.close()
-    return collect_name in collect_names
-
-
-def check_if_mongo_database_exists(uri, db_name) -> bool:
-    client = MongoClient(uri)
-    db_names = client.list_database_names()
-    client.close()
-    return db_name in db_names
-
-
-def check_if_mongo_namespace_exists(uri, db_name, namespace) -> bool:
-    client = MongoClient(uri)
-    db = client[db_name]
-    collection_names = db.list_collection_names()
-    client.close()
-    return namespace + "/data" in collection_names  # Choose from 3 in the list
-
-def create_database_milvus(uri, db_name):
-    connections.connect(uri=uri)
-    db.create_database(db_name)
-    connections.disconnect("default")
-
-def milvus_collection_item_count(uri, db_name, collect_name) -> int:
-    client = MilvusClient(
-        uri=uri,
-        db_name=db_name
-        )
-    client.load_collection(collection_name=collect_name)
-    element_count = client.query(
-        collection_name=collection_name,
-        output_fields=["count(*)"],
-        )
-    client.close()
-    return element_count[0]['count(*)']
+from database_operation import (
+                check_if_milvus_database_collection_exist,
+                check_if_mongo_database_namespace_exist
+                )
 
 
 def load_document_pdf(doc_link):
@@ -102,33 +61,14 @@ def load_document_pdf(doc_link):
     # print(documents[0])
     return docs
 
-def get_notes_from_document_automerge(docs, sizes=[2048, 512, 1]):
+def get_notes_from_document_automerge(docs, sizes):
     # create the hierarchical node parser w/ default settings
     node_parser = HierarchicalNodeParser.from_defaults(
         chunk_sizes=sizes
     )
-    nodes = node_parser.get_nodes_from_documents([docs])
-    leaf_nodes = get_leaf_nodes(nodes)
-    return nodes, leaf_nodes
-
-
-def check_if_milvus_database_collection_exist(db_name, col_name):
-    save_ind = True
-    if check_if_milvus_database_exists(uri_milvus, db_name):
-        if check_if_milvus_collection_exists(uri_milvus, db_name, col_name):
-            num_count = milvus_collection_item_count(uri_milvus, database_name, collection_name)
-            if num_count > 0:  # account for the case of 0 item in the collection
-                save_ind = False
-    else:
-        create_database_milvus(uri_milvus, database_name)
-    return save_ind
-
-def check_if_mongo_database_namespace_exist(db_name, col_name):
-    add_doc = True
-    if check_if_mongo_database_exists(uri_mongo, db_name):
-        if check_if_mongo_namespace_exists(uri_mongo, db_name, col_name):
-            add_doc = False
-    return add_doc
+    _nodes = node_parser.get_nodes_from_documents([docs])
+    _leaf_nodes = get_leaf_nodes(_nodes)
+    return _nodes, _leaf_nodes
 
 
 def build_automerge_index_and_docstore(
@@ -140,12 +80,16 @@ def build_automerge_index_and_docstore(
 
     if save_ind or add_doc:  # Only load and parse document if either index or docstore not saved.
         _document = load_document_pdf(art_link)
-        (nodes, leaf_n) = get_notes_from_document_automerge(_document, chunck_size)
-
+        
+        (_nodes, 
+         _leaf_nodes) = get_notes_from_document_automerge(
+                                                    _document, 
+                                                    chunck_size
+                                                    )
     if save_ind == True:
         # Create and save index (embedding) to Milvus database
         base_ind = VectorStoreIndex(
-            nodes=leaf_n,
+            nodes=_leaf_nodes,
             storage_context=storage_context,
             )
     else:
@@ -156,7 +100,7 @@ def build_automerge_index_and_docstore(
 
     if add_doc == True:
         # Save document nodes to Mongodb docstore at the server
-        storage_context.docstore.add_documents(nodes)
+        storage_context.docstore.add_documents(_nodes)
 
     return base_ind
 
@@ -164,40 +108,24 @@ def build_automerge_index_and_docstore(
 def get_automerge_retriever(
         _base_index,
         _similarity_top_k,
+        _simple_ratio_thresh
         ):
     # Create the retriever
-    base_retrieve = _base_index.as_retriever(similarity_top_k=_similarity_top_k)
+    _base_retriever = _base_index.as_retriever(
+        similarity_top_k=_similarity_top_k
+        )
 
     retrieve = AutoMergingRetriever(
-        vector_retriever=base_retrieve, 
+        vector_retriever=_base_retriever, 
         # storage_context=automerging_index.storage_context,  # This does not work, results in dim mismatch. 
         storage_context=storage_context, 
+        simple_ratio_thresh=_simple_ratio_thresh,
         verbose=True
         )
     
-    return base_retrieve, retrieve
+    return _base_retriever, retrieve
 
-def get_automerge_query_engine(
-    base_retrieve,
-    retrieve,
-    rank_model,
-    rank_top_n,
-    ):
-    base_query_engi = RetrieverQueryEngine.from_args(
-        retriever=base_retrieve
-        )
-    query_engi = RetrieverQueryEngine.from_args(
-        retriever=retrieve
-        )
-    rerank = SentenceTransformerRerank(
-        top_n=rank_top_n,
-        model=rank_model,
-        )
-    rerank_engine = RetrieverQueryEngine.from_args(
-        retriever=retrieve, 
-        node_postprocessors=[rerank],
-        )
-    return base_query_engi, query_engi, rerank_engine
+
 
     
 # # Set up logging
@@ -238,7 +166,7 @@ leaf = 256
 parent_1 = 1024
 parent_2 = 4096
 
-automerge_chuck_size = [leaf, parent_1, parent_2]
+automerge_chuck_sizes = [parent_2, parent_1, leaf]
 
 # leaf = 128
 # parent_1 = 512
@@ -249,9 +177,7 @@ collection_name) = get_database_and_automerge_collection_name(
                                                         article_dictory, 
                                                         chunk_method, 
                                                         embed_model_name,
-                                                        leaf, 
-                                                        parent_1,
-                                                        parent_2
+                                                        automerge_chuck_sizes,
                                                         )
 
 # Check if index has already been saved to Milvus database.
@@ -293,38 +219,29 @@ storage_context = StorageContext.from_defaults(
 # for i in list(storage_context.docstore.get_all_ref_doc_info().keys()):
 #     print(i)
 # print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
-
-
-
-
+# print(storage_context.docstore.get_node('0bc2db9b-9e4b-4426-9c13-7156ba0f3309').text)
 
 
 # Get base index and build docstore
 base_index = build_automerge_index_and_docstore(
-    article_link,
-    save_index,
-    add_document,
-    automerge_chuck_size,
-)
+                                        article_link,
+                                        save_index,
+                                        add_document,
+                                        automerge_chuck_sizes,
+                                        )
 
 # Get retrievers and query engines
 similarity_top_k = 12
 rerank_model = "BAAI/bge-reranker-base"
+simple_ratio_thresh = 0.4
 rerank_top_n = 8
 
 (base_retriever, 
  retriever) = get_automerge_retriever(
                                     base_index, 
-                                    similarity_top_k
+                                    similarity_top_k,
+                                    simple_ratio_thresh
                                     )
-(base_query_engine, 
- query_engine, 
- rerank_query_engine) = get_automerge_query_engine(
-                                                base_retriever,
-                                                retriever,
-                                                rerank_model,
-                                                rerank_top_n
-                                                )
 
 # query_str = "What are the keys to building a career in AI?"
 query_str = "What are the thinkgs happened in New York?"
@@ -339,22 +256,112 @@ query_str = "What are the thinkgs happened in New York?"
 vector_store.client.load_collection(collection_name=collection_name)
 
 # Get retrieved nodes
-base_nodes_retrieved = base_retriever.retrieve(query_str)
-nodes_retrieved = retriever.retrieve(query_str)
+base_nodes = base_retriever.retrieve(query_str)
+automerge_nodes = retriever.retrieve(query_str)
+
+# Define reranker
+rerank_model = "BAAI/bge-reranker-base"
+rerank_top_n = 6
+rerank = SentenceTransformerRerank(
+    top_n=rerank_top_n,
+    model=rerank_model,
+    )
+
+# Get re-ranked fusion nodes
+rerank_nodes = rerank.postprocess_nodes(
+    nodes=automerge_nodes,
+    query_str=query_str,
+    )
 
 # Print retrieved nodes
-print_retreived_nodes("automerge base", base_nodes_retrieved)
-print_retreived_nodes("automerge", nodes_retrieved)
+print_retreived_nodes("automerge base", base_nodes)
+print_retreived_nodes("automerge", automerge_nodes)
+print_retreived_nodes("rerank-automerge", rerank_nodes)
+
+
+# Create default engines (query_mode="compact")
+(base_engine, 
+ engine) = get_default_query_engine_from_retriever(
+                                        base_retriever,
+                                        retriever,
+                                        )
+
+rerank_engine = RetrieverQueryEngine.from_args(
+    retriever=retriever, 
+    node_postprocessors=[rerank],
+    )
+
+# Create tree engines (query_mode="tree_summary")
+(tree_base_engine,
+ tree_engine) = get_tree_query_engine_from_retriever(
+                                        base_engine,
+                                        engine,
+                                        )
+
+tree_rerank_engine = RetrieverQueryEngine.from_args(
+    retriever=retriever, 
+    node_postprocessors=[rerank],
+    response_mode="tree_summarize",
+    )
+
+# Create accumulate engines (query_mode="accumulate")
+(accumulate_base_engine, 
+ accumulate_engine) = get_accumulate_query_engine_from_retriever(
+                                                base_retriever,
+                                                retriever,
+                                                )
+
+accumulate_rerank_engine = RetrieverQueryEngine.from_args(
+    retriever=retriever, 
+    node_postprocessors=[rerank],
+    response_mode="accumulate",
+    )
+
+
+# Change default engine promps to "in detail"
+base_engine = change_default_engine_prompt_to_in_detail(base_engine) 
+engine = change_default_engine_prompt_to_in_detail(engine) 
+rerank_engine = change_default_engine_prompt_to_in_detail(rerank_engine) 
+
+# Change tree engine prompt to "in detail"
+tree_base_engine = change_tree_engine_prompt_to_in_detail(tree_base_engine) 
+tree_engine = change_tree_engine_prompt_to_in_detail(tree_engine) 
+tree_rerank_engine = change_tree_engine_prompt_to_in_detail(tree_rerank_engine) 
+
+# Change accumulate engine prompt to "in detail"
+accumulate_base_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_base_engine) 
+accumulate_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_engine) 
+accumulate_rerank_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_rerank_engine) 
+
+# window_prompts_dict = window_engine.get_prompts()
+# type = "tree_fusion_engine:"
+# display_prompt_dict(type.upper(), window_prompts_dict)
 
 # Get responses 
-base_response = base_query_engine.query(query_str)
-response = query_engine.query(query_str)
-rerank_response = rerank_query_engine.query(query_str)
+base_response = base_engine.query(query_str)
+response = engine.query(query_str)
+rerank_response = rerank_engine.query(query_str)
+
+tree_base_query_response = tree_base_engine.query(query_str)
+tree_query_response = tree_engine.query(query_str)
+tree_rerank_response = tree_rerank_engine.query(query_str)
+
+accumulate_base_query_response = accumulate_base_engine.query(query_str)
+accumulate_query_response = accumulate_engine.query(query_str)
+accumulate_rerank_query_response = accumulate_rerank_engine.query(query_str)
 
 # Print responses 
-print("\nAUTOMERGE-BASE:\n" + str(base_response))
-print("\nAUTOMERGE:\n" + str(response))
-print("\nRERANK:\n" + str(rerank_response))
+print("\nBASE-AUTOMERGE:\n\n" + str(base_response))
+print("\nAUTOMERGE:\n\n" + str(response))
+print("\nRERANK-AUTOMERGE:\n\n" + str(rerank_response))
+
+print("\nTREE-BASE-AUTOMERGE:\n\n" + str(tree_base_query_response))
+print("\nTREE-AUTOMERGE:\n\n" + str(tree_query_response))
+print("\nTREE-RERANK-AUTOMERGE:\n\n" + str(tree_rerank_response))
+
+print("\nACCUMULATE-BASE-AUTOMERGE:\n\n" + str(accumulate_base_query_response))
+print("\nACCUMULATE-AUTOMERGE:\n\n" + str(accumulate_query_response))
+print("\nACCUMULATE-RERANK-AUTOMERGE:\n\n" + str(accumulate_rerank_query_response))
 
 # print(rerank_response.get_formatted_sources(length=2000))
 
