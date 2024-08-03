@@ -1,5 +1,34 @@
-from llama_index.core import PromptTemplate
+from typing import List, Optional
+
+from llama_index.core import (
+                        QueryBundle,
+                        PromptTemplate,
+                        )
 from llama_index.core.query_engine import RetrieverQueryEngine
+
+from llama_index.core.postprocessor.types import BaseNodePostprocessor
+from llama_index.core.schema import NodeWithScore
+
+
+class SortNodePostprocessor(BaseNodePostprocessor):
+    def _postprocess_nodes(
+            self, 
+            nodes: List[NodeWithScore], 
+            query_bundle: Optional[QueryBundle]
+            ) -> List[NodeWithScore]:
+        
+        # Custom post-processor: Order nodes based on the order it appears in a document (using "start_char_idx")
+
+        # Create new node dictionary
+        _nodes_dic = [{"start_char_idx": node.node.start_char_idx, "node": node} for node in nodes]
+
+        # Sort based on start_char_idx
+        sorted_nodes_dic = sorted(_nodes_dic, key=lambda x: x["start_char_idx"])
+
+        # Get the new nodes from the sorted node dic
+        sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
+
+        return sorted_new_nodes
 
 
 def get_article_link(
@@ -133,6 +162,57 @@ def get_tree_query_engine_from_retriever(
     return query_engine_1, query_engine_2
 
 
+def get_tree_engine_from_retriever(
+        retriever_1,
+        retriever_2,
+        retriever_3,
+        ):
+
+    query_engine_1 = RetrieverQueryEngine.from_args(
+        retriever=retriever_1, 
+        response_mode="tree_summarize",
+        )
+
+    query_engine_2 = RetrieverQueryEngine.from_args(
+        retriever=retriever_2, 
+        response_mode="tree_summarize",
+        )
+
+    query_engine_3 = RetrieverQueryEngine.from_args(
+        retriever=retriever_3, 
+        response_mode="tree_summarize",
+        )
+
+    return query_engine_1, query_engine_2, query_engine_3
+
+
+def get_tree_engine_with_sort_from_retriever(
+        retriever_1,
+        retriever_2,
+        retriever_3,
+        ):
+
+    query_engine_1 = RetrieverQueryEngine.from_args(
+        retriever=retriever_1, 
+        response_mode="tree_summarize",
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+
+    query_engine_2 = RetrieverQueryEngine.from_args(
+        retriever=retriever_2, 
+        response_mode="tree_summarize",
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+
+    query_engine_3 = RetrieverQueryEngine.from_args(
+        retriever=retriever_3, 
+        response_mode="tree_summarize",
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+
+    return query_engine_1, query_engine_2, query_engine_3
+
+
 def get_accumulate_query_engine_from_retriever(
         retriever_1,
         retriever_2,
@@ -248,21 +328,21 @@ def display_prompt_dict(type, _prompts_dict):
         print(p.get_template() + "\n")
 
 
-def print_retreived_nodes(method, _retriever):
+def print_retreived_nodes(method, _retrieved_nodes):
 
     print(f"\n\nMETHOD: {method.upper()}")
     # Loop through each NodeWithScore in the retreived nodes
-    for (i, node_with_score) in enumerate(_retriever):
-        node = node_with_score.node  # The TextNode object
+    for (i, node_with_score) in enumerate(_retrieved_nodes):
+        _node = node_with_score.node  # The TextNode object
         score = node_with_score.score  # The similarity score
-        chunk_id = node.id_  # The chunk ID
+        chunk_id = _node.id_  # The chunk ID
 
         # Extract the relevant metadata from the node
-        file_name = node.metadata.get("file_name", "Unknown")
-        file_path = node.metadata.get("file_path", "Unknown")
+        file_name = _node.metadata.get("file_name", "Unknown")
+        file_path = _node.metadata.get("file_path", "Unknown")
 
         # Extract the text content from the node
-        text_content = node.text if node.text else "No content available"
+        text_content = _node.text if _node.text else "No content available"
 
         # Print the results in a user-friendly format
         print(f"\n\n{method.upper()}:")

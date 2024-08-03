@@ -2,12 +2,14 @@ import logging
 import os
 from pathlib import Path
 import sys
+from typing import List, Optional
 
 from llama_index.core import (
                         Document,
                         PromptTemplate,
                         Settings,
                         StorageContext,
+                        QueryBundle,
                         VectorStoreIndex,
                         )
 from llama_index.core.indices.postprocessor import (
@@ -18,7 +20,9 @@ from llama_index.core.node_parser import (
                         SentenceWindowNodeParser,
                         SentenceSplitter,
                         )
+from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.retrievers import QueryFusionRetriever
+from llama_index.core.schema import NodeWithScore
 from llama_index.core.query_engine import RetrieverQueryEngine
 
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -44,12 +48,35 @@ from utility import (
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
                 get_tree_engine_from_retriever,
+                get_tree_engine_with_sort_from_retriever,
                 print_retreived_nodes,
+                SortNodePostprocessor,
                 )
 from database_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
+
+
+# class SortNodePostprocessor(BaseNodePostprocessor):
+#     def _postprocess_nodes(
+#             self, 
+#             nodes: List[NodeWithScore], 
+#             query_bundle: Optional[QueryBundle]
+#             ) -> List[NodeWithScore]:
+        
+#         # Custom post-processor: Order nodes based on the order it appears in a document (using "start_char_idx")
+
+#         # Create new node dictionary
+#         _nodes_dic = [{"start_char_idx": node.node.start_char_idx, "node": node} for node in nodes]
+
+#         # Sort based on start_char_idx
+#         sorted_nodes_dic = sorted(_nodes_dic, key=lambda x: x["start_char_idx"])
+
+#         # Get the new nodes from the sorted node dic
+#         sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
+
+#         return sorted_new_nodes
 
 
 def load_document_pdf(doc_link):
@@ -118,21 +145,21 @@ def get_sentence_splitter_index_bm25_and_fusion_retriever(
         ):
     
     _retriever = _index.as_retriever(
-                                    similarity_top_k=_similarity_top_k
-                                    )
+        similarity_top_k=_similarity_top_k
+        )
     _bm25_retriever = BM25Retriever.from_defaults(
-                                    similarity_top_k=_similarity_top_k,
-                                    docstore=docstore,
-                                    )
+        similarity_top_k=_similarity_top_k,
+        docstore=docstore,
+        )
     _fusion_retriever = QueryFusionRetriever(
-                                    retrievers=[_retriever, _bm25_retriever],
-                                    similarity_top_k=_fusion_top_n,
-                                    num_queries=_num_queries,  # set this to 1 to disable query generation
-                                    mode="reciprocal_rerank",
-                                    use_async=True,
-                                    verbose=True,
-                                    # query_gen_prompt="...",  # for overriding the query generation prompt
-                                )
+        retrievers=[_retriever, _bm25_retriever],
+        similarity_top_k=_fusion_top_n,
+        num_queries=_num_queries,  # set this to 1 to disable query generation
+        mode="reciprocal_rerank",
+        use_async=True,
+        verbose=True,
+        # query_gen_prompt="...",  # for overriding the query generation prompt
+        )
     return _retriever, _bm25_retriever, _fusion_retriever
 
 
@@ -146,17 +173,43 @@ def get_default_engine_from_retriever(
     """
 
     _default_vector_engine = RetrieverQueryEngine.from_args(
-                                            retriever=_retriever,
-                                            # response_mode="default"  # Unknown mode "default"
-                                            )
+        retriever=_retriever,
+        # response_mode="default"  # Unknown mode "default"
+        )
     _default_bm25_engine = RetrieverQueryEngine.from_args(
-                                            retriever=_bm25_retriever,
-                                            )
+        retriever=_bm25_retriever,
+        )
     _default_fusion_engine = RetrieverQueryEngine.from_args(
-                                            retriever=_fusion_retriever,
-                                            )
+        retriever=_fusion_retriever,
+        )
     
     return _default_vector_engine, _default_bm25_engine, _default_fusion_engine
+
+
+def get_default_engine_with_sort_from_retriever(
+        _retriever,
+        _bm25_retriever,
+        _fusion_retriever,
+        ):
+    """
+    default mode is response_mode="compact".
+    """
+
+    _sort_vector_engine = RetrieverQueryEngine.from_args(
+        retriever=_retriever,
+        # response_mode="default"  # Unknown mode "default"
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+    _sort_bm25_engine = RetrieverQueryEngine.from_args(
+        retriever=_bm25_retriever,
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+    _sort_fusion_engine = RetrieverQueryEngine.from_args(
+        retriever=_fusion_retriever,
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+
+    return _sort_vector_engine, _sort_bm25_engine, _sort_fusion_engine
 
 
 def get_fusion_refine_tree_and_accumulate_engine_from_retriever(
@@ -165,20 +218,20 @@ def get_fusion_refine_tree_and_accumulate_engine_from_retriever(
         ):
 
     _refine_fusion_engine = RetrieverQueryEngine.from_args(
-                                    retriever=_fusion_retriever, 
-                                    similarity_top_k=_similarity_top_k,
-                                    response_mode="refine",
-                                    )
+        retriever=_fusion_retriever, 
+        similarity_top_k=_similarity_top_k,
+        response_mode="refine",
+        )
     _tree_fusion_engine = RetrieverQueryEngine.from_args(
-                                    retriever=_fusion_retriever, 
-                                    similarity_top_k=_similarity_top_k,
-                                    response_mode="tree_summarize",
-                                    )
+        retriever=_fusion_retriever, 
+        similarity_top_k=_similarity_top_k,
+        response_mode="tree_summarize",
+        )
     _accumulate_fusion_engine = RetrieverQueryEngine.from_args(
-                                    retriever=_fusion_retriever, 
-                                    similarity_top_k=_similarity_top_k,
-                                    response_mode="accumulate",
-                                    )
+        retriever=_fusion_retriever, 
+        similarity_top_k=_similarity_top_k,
+        response_mode="accumulate",
+        )
     
     return _refine_fusion_engine, _tree_fusion_engine, _accumulate_fusion_engine
 
@@ -190,23 +243,23 @@ def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
         ):
     
     _refine_rerank_engine = RetrieverQueryEngine.from_args(
-                                    retriever=_fusion_retriever, 
-                                    similarity_top_k=_rerank_top_n,
-                                    node_postprocessors=[_rerank],
-                                    response_mode="refine",
-                                    )
+        retriever=_fusion_retriever, 
+        similarity_top_k=_rerank_top_n,
+        node_postprocessors=[_rerank],
+        response_mode="refine",
+        )
     _tree_rerank_engine = RetrieverQueryEngine.from_args(
-                                    retriever=_fusion_retriever, 
-                                    similarity_top_k=_rerank_top_n,
-                                    node_postprocessors=[_rerank],
-                                    response_mode="tree_summarize",
-                                    )
+        retriever=_fusion_retriever, 
+        similarity_top_k=_rerank_top_n,
+        node_postprocessors=[_rerank],
+        response_mode="tree_summarize",
+        )
     _accumulate_rerank_engine = RetrieverQueryEngine.from_args(
-                                    retriever=_fusion_retriever, 
-                                    similarity_top_k=_rerank_top_n,
-                                    node_postprocessors=[_rerank],
-                                    response_mode="accumulate",
-                                    )
+        retriever=_fusion_retriever, 
+        similarity_top_k=_rerank_top_n,
+        node_postprocessors=[_rerank],
+        response_mode="accumulate",
+        )
     
     return _refine_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
 
@@ -310,7 +363,7 @@ index = build_sentence_splitter_index_and_bm25_docsrore(
 # Get retrievers
 similarity_top_k = 12
 num_queries = 1  # for QueryFusionRetriever()
-fusion_top_n = 10
+fusion_top_n = 5
 
 (vector_retriever, 
 bm25_retriever,
@@ -328,7 +381,7 @@ fusion_retriever) = get_sentence_splitter_index_bm25_and_fusion_retriever(
 #     )  
 
 # query_str = "What are the keys to building a career in AI?"
-query_str = "What are the thinkgs happened in New York?"
+query_str = "What are the things that happen in New York?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
 # query_str = "Describe everything that is mentioned about Interleaf one by one."
@@ -386,6 +439,15 @@ print_retreived_nodes("rerank", rerank_nodes)
                                                 fusion_retriever
  )
 
+# Create default sorted engines (with sort post-processor)
+(vector_sort_engine,
+ bm25_sort_engine,
+ fusion_sort_engine) = get_default_engine_with_sort_from_retriever(
+                                                vector_retriever,
+                                                bm25_retriever,
+                                                fusion_retriever
+ )
+
 # Create tree engines (query_mode="tree_summary")
 (tree_vector_engine,
  tree_bm25_engine,
@@ -395,16 +457,55 @@ print_retreived_nodes("rerank", rerank_nodes)
                                                 fusion_retriever
  )
 
+# Create tree sorted engines (with sort post-processor)
+(tree_vector_sort_engine,
+ tree_bm25_sort_engine,
+ tree_fusion_sort_engine) = get_tree_engine_with_sort_from_retriever(
+                                                vector_retriever,
+                                                bm25_retriever,
+                                                fusion_retriever
+ )
+
+# # Create sort engine
+# sort_engine = RetrieverQueryEngine.from_args(
+#     retriever=fusion_retriever, 
+#     node_postprocessors=[SortNodePostprocessor()],
+#     )
+
+# sort_engine = change_default_engine_prompt_to_in_detail(sort_engine) 
+# sort_response = sort_engine.query(query_str)
+
+# print("\nSORTED-FUSION-ENGINE:\n\n" + str(sort_response))
+# print(sort_response.get_formatted_sources(length=2000))
+
+
 # Create default rerank engine (query_mode="compact")
 rerank_engine = RetrieverQueryEngine.from_args(
     retriever=fusion_retriever, 
     node_postprocessors=[rerank],
     )
 
+rerank_sort_engine = RetrieverQueryEngine.from_args(
+    retriever=fusion_retriever, 
+    node_postprocessors=[
+        rerank,
+        SortNodePostprocessor()
+        ],
+    )
+
 # Create tree rerank engine (query_mode="compact")
 tree_rerank_engine = RetrieverQueryEngine.from_args(
     retriever=fusion_retriever, 
     node_postprocessors=[rerank],
+    response_mode="tree_summarize"
+    )
+
+tree_rerank_sort_engine = RetrieverQueryEngine.from_args(
+    retriever=fusion_retriever, 
+    node_postprocessors=[
+        rerank,
+        SortNodePostprocessor()
+        ],
     response_mode="tree_summarize"
     )
 
@@ -416,17 +517,27 @@ tree_rerank_engine = RetrieverQueryEngine.from_args(
 #                                                                     fusion_top_n,
 #                                                                     )
 
-# Change engine promps to "in detail"
+# Change default engine promps to "in detail"
 vector_engine = change_default_engine_prompt_to_in_detail(vector_engine) 
 bm25_engine = change_default_engine_prompt_to_in_detail(bm25_engine) 
 fusion_engine = change_default_engine_prompt_to_in_detail(fusion_engine)
 rerank_engine = change_default_engine_prompt_to_in_detail(rerank_engine)
 
+vector_sort_engine = change_default_engine_prompt_to_in_detail(vector_sort_engine) 
+bm25_sort_engine = change_default_engine_prompt_to_in_detail(bm25_sort_engine) 
+fusion_sort_engine = change_default_engine_prompt_to_in_detail(fusion_sort_engine)
+rerank_sort_engine = change_default_engine_prompt_to_in_detail(rerank_sort_engine)
+
+# Change tree engine promps to "in detail"
 tree_vector_engine = change_tree_engine_prompt_to_in_detail(tree_vector_engine) 
 tree_bm25_engine = change_tree_engine_prompt_to_in_detail(tree_bm25_engine) 
 tree_fusion_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_engine) 
 tree_rerank_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_engine) 
 
+tree_vector_sort_engine = change_tree_engine_prompt_to_in_detail(tree_vector_sort_engine) 
+tree_bm25_sort_engine = change_tree_engine_prompt_to_in_detail(tree_bm25_sort_engine) 
+tree_fusion_sort_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_sort_engine) 
+tree_rerank_sort_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_sort_engine) 
 
 # # Create refine, tree, and accumulate rerank engines 
 # (refine_rerank_engine, 
@@ -447,19 +558,37 @@ bm25_response = bm25_engine.query(query_str)
 fusion_response = fusion_engine.query(query_str)
 rerank_response = rerank_engine.query(query_str)
 
+# Get default sorted responses
+vector_sort_response = vector_sort_engine.query(query_str)
+bm25_sort_response = bm25_sort_engine.query(query_str)
+fusion_sort_response = fusion_sort_engine.query(query_str)
+rerank_sort_response = rerank_sort_engine.query(query_str)
+
 # Get tree responses
 tree_vector_response = tree_vector_engine.query(query_str)
 tree_bm25_response = tree_bm25_engine.query(query_str)
 tree_fusion_response = tree_fusion_engine.query(query_str)
 tree_rerank_response = tree_rerank_engine.query(query_str)
 
+# Get tree sorted responses
+tree_vector_sort_response = tree_vector_sort_engine.query(query_str)
+tree_bm25_sort_response = tree_bm25_sort_engine.query(query_str)
+tree_fusion_sort_response = tree_fusion_sort_engine.query(query_str)
+tree_rerank_sort_response = tree_rerank_sort_engine.query(query_str)
+
 # print(rerank_response.get_formatted_sources(length=2000))
 
-# Prints responses
+# Prints default responses
 print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
 print("\nBM25-ENGINE:\n\n" + str(bm25_response))
 print("\nFUSION-ENGINE:\n\n" + str(fusion_response))
 print("\nRERANK-ENGINE:\n\n" + str(rerank_response))
+
+# Prints default sort responses
+print("\nVECTOR-SORT-ENGINE:\n\n" + str(vector_sort_response))
+print("\nBM25-SORT-ENGINE:\n\n" + str(bm25_sort_response))
+print("\nFUSION-SORT-ENGINE:\n\n" + str(fusion_sort_response))
+print("\nRERANK-SORT-ENGINE:\n\n" + str(rerank_sort_response))
 
 # Print tree responses
 print("\nTREE-VECTOR-ENGINE:\n\n" + str(tree_vector_response))
@@ -467,6 +596,11 @@ print("\nTREE-BM25-ENGINE:\n\n" + str(tree_bm25_response))
 print("\nTREE-FUSION-ENGINE:\n\n" + str(tree_fusion_response))
 print("\nTREE-RERANK-ENGINE:\n\n" + str(tree_rerank_response))
 
+# Print tree sort responses
+print("\nTREE-VECTOR-SORT-ENGINE:\n\n" + str(tree_vector_sort_response))
+print("\nTREE-BM25-SORT-ENGINE:\n\n" + str(tree_bm25_sort_response))
+print("\nTREE-FUSION-SORT-ENGINE:\n\n" + str(tree_fusion_sort_response))
+print("\nTREE-RERANK-SORT-ENGINE:\n\n" + str(tree_rerank_sort_response))
 
 vector_store.client.release_collection(collection_name=collection_name)
 vector_store.client.close()  # Need to do this (otherwise Milvus container will hault when closing)
