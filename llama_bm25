@@ -42,6 +42,7 @@ import openai
 from pymongo import MongoClient
 from trulens_eval import Tru
 from utility import (
+                change_accumulate_engine_prompt_to_in_detail,
                 change_default_engine_prompt_to_in_detail,
                 change_tree_engine_prompt_to_in_detail,
                 display_prompt_dict,
@@ -361,9 +362,11 @@ index = build_sentence_splitter_index_and_bm25_docsrore(
                                                 )
 
 # Get retrievers
-similarity_top_k = 12
+similarity_top_k = 6
 num_queries = 1  # for QueryFusionRetriever()
-fusion_top_n = 5
+fusion_top_n = 3
+rerank_top_n = 3
+
 
 (vector_retriever, 
 bm25_retriever,
@@ -381,11 +384,11 @@ fusion_retriever) = get_sentence_splitter_index_bm25_and_fusion_retriever(
 #     )  
 
 # query_str = "What are the keys to building a career in AI?"
-query_str = "What are the things that happen in New York?"
+# query_str = "What are the things that happen in New York?"
+query_str = "What are the things that are mentioned about Sam Altman?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
 # query_str = "Describe everything that is mentioned about Interleaf one by one."
-# query_str = "Describe everything that is mentioned about Interleaf one by one in detail."
 # query_str = "Describe everything that is mentioned about Interleaf."
 # query_str = "Describe everything that is mentioned about Viaweb."
 # query_str = "What happened at Interleaf?"
@@ -410,7 +413,6 @@ fusion_nodes = fusion_retriever.retrieve(query_str)
 
 # Define reranker
 rerank_model = "BAAI/bge-reranker-base"
-rerank_top_n = 8
 rerank = SentenceTransformerRerank(
     top_n=rerank_top_n,
     model=rerank_model,
@@ -466,6 +468,14 @@ print_retreived_nodes("rerank", rerank_nodes)
                                                 fusion_retriever
  )
 
+# Create an accumulate, fusion, and sort engine
+accumulate_fusion_sort_engine = RetrieverQueryEngine.from_args(
+                                        retriever=fusion_retriever, 
+                                        similarity_top_k=fusion_top_n,
+                                        node_postprocessors=[SortNodePostprocessor()],
+                                        response_mode="accumulate",
+                                        )
+
 # # Create sort engine
 # sort_engine = RetrieverQueryEngine.from_args(
 #     retriever=fusion_retriever, 
@@ -509,6 +519,15 @@ tree_rerank_sort_engine = RetrieverQueryEngine.from_args(
     response_mode="tree_summarize"
     )
 
+accumulate_rerank_sort_engine = RetrieverQueryEngine.from_args(
+    retriever=fusion_retriever, 
+    node_postprocessors=[
+        rerank,
+        SortNodePostprocessor()
+        ],
+    response_mode="accumulate",
+    )
+
 # # Create refine, tree, and accumulate fusion engines 
 # (refine_fusion_engine,
 #  tree_fusion_engine,
@@ -538,6 +557,10 @@ tree_vector_sort_engine = change_tree_engine_prompt_to_in_detail(tree_vector_sor
 tree_bm25_sort_engine = change_tree_engine_prompt_to_in_detail(tree_bm25_sort_engine) 
 tree_fusion_sort_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_sort_engine) 
 tree_rerank_sort_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_sort_engine) 
+
+# Change accumulate engine prompt to "in detail"
+accumulate_fusion_sort_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_fusion_sort_engine)
+accumulate_rerank_sort_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_rerank_sort_engine)
 
 # # Create refine, tree, and accumulate rerank engines 
 # (refine_rerank_engine, 
@@ -576,31 +599,37 @@ tree_bm25_sort_response = tree_bm25_sort_engine.query(query_str)
 tree_fusion_sort_response = tree_fusion_sort_engine.query(query_str)
 tree_rerank_sort_response = tree_rerank_sort_engine.query(query_str)
 
+# Get accumulate sorted responses
+accumulate_fusion_sort_response = accumulate_fusion_sort_engine.query(query_str)
+accumulate_rerank_sort_response = accumulate_rerank_sort_engine.query(query_str)
+
 # print(rerank_response.get_formatted_sources(length=2000))
 
-# Prints default responses
-print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
-print("\nBM25-ENGINE:\n\n" + str(bm25_response))
-print("\nFUSION-ENGINE:\n\n" + str(fusion_response))
-print("\nRERANK-ENGINE:\n\n" + str(rerank_response))
-
-# Prints default sort responses
-print("\nVECTOR-SORT-ENGINE:\n\n" + str(vector_sort_response))
-print("\nBM25-SORT-ENGINE:\n\n" + str(bm25_sort_response))
-print("\nFUSION-SORT-ENGINE:\n\n" + str(fusion_sort_response))
-print("\nRERANK-SORT-ENGINE:\n\n" + str(rerank_sort_response))
-
-# Print tree responses
-print("\nTREE-VECTOR-ENGINE:\n\n" + str(tree_vector_response))
-print("\nTREE-BM25-ENGINE:\n\n" + str(tree_bm25_response))
-print("\nTREE-FUSION-ENGINE:\n\n" + str(tree_fusion_response))
-print("\nTREE-RERANK-ENGINE:\n\n" + str(tree_rerank_response))
-
-# Print tree sort responses
+# Prints responses
+# print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
+# print("\nVECTOR-SORT-ENGINE:\n\n" + str(vector_sort_response))
+# print("\nTREE-VECTOR-ENGINE:\n\n" + str(tree_vector_response))
 print("\nTREE-VECTOR-SORT-ENGINE:\n\n" + str(tree_vector_sort_response))
+
+# print("\nBM25-ENGINE:\n\n" + str(bm25_response))
+# print("\nBM25-SORT-ENGINE:\n\n" + str(bm25_sort_response))
+# print("\nTREE-BM25-ENGINE:\n\n" + str(tree_bm25_response))
 print("\nTREE-BM25-SORT-ENGINE:\n\n" + str(tree_bm25_sort_response))
+
+# print("\nFUSION-ENGINE:\n\n" + str(fusion_response))
+# print("\nFUSION-SORT-ENGINE:\n\n" + str(fusion_sort_response))
+# print("\nTREE-FUSION-ENGINE:\n\n" + str(tree_fusion_response))
 print("\nTREE-FUSION-SORT-ENGINE:\n\n" + str(tree_fusion_sort_response))
+
+# print("\nRERANK-ENGINE:\n\n" + str(rerank_response))
+# print("\nRERANK-SORT-ENGINE:\n\n" + str(rerank_sort_response))
+# print("\nTREE-RERANK-ENGINE:\n\n" + str(tree_rerank_response))
 print("\nTREE-RERANK-SORT-ENGINE:\n\n" + str(tree_rerank_sort_response))
+
+print("\nACCUMULATE-FUSION-SORT-ENGINE:\n\n" + str(accumulate_fusion_sort_response))
+print("\nACCUMULATE-RERANK-SORT-ENGINE:\n\n" + str(accumulate_rerank_sort_response))
+
+
 
 vector_store.client.release_collection(collection_name=collection_name)
 vector_store.client.close()  # Need to do this (otherwise Milvus container will hault when closing)
