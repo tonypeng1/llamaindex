@@ -162,6 +162,26 @@ def get_tree_query_engine_from_retriever(
     return query_engine_1, query_engine_2
 
 
+def get_tree_query_engine_with_sort_from_retriever(
+        retriever_1,
+        retriever_2,
+        ):
+
+    query_engine_1 = RetrieverQueryEngine.from_args(
+        retriever=retriever_1, 
+        response_mode="tree_summarize",
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+
+    query_engine_2 = RetrieverQueryEngine.from_args(
+        retriever=retriever_2, 
+        response_mode="tree_summarize",
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+
+    return query_engine_1, query_engine_2
+
+
 def get_tree_engine_from_retriever(
         retriever_1,
         retriever_2,
@@ -226,6 +246,26 @@ def get_accumulate_query_engine_from_retriever(
     retriever_2_engine = RetrieverQueryEngine.from_args(
         retriever=retriever_2, 
         response_mode="accumulate",
+        )
+
+    return query_engine_1, retriever_2_engine
+
+
+def get_accumulate_query_engine_with_sort_from_retriever(
+        retriever_1,
+        retriever_2,
+        ):
+
+    query_engine_1 = RetrieverQueryEngine.from_args(
+        retriever=retriever_1, 
+        response_mode="accumulate",
+        node_postprocessors=[SortNodePostprocessor()],
+        )
+
+    retriever_2_engine = RetrieverQueryEngine.from_args(
+        retriever=retriever_2, 
+        response_mode="accumulate",
+        node_postprocessors=[SortNodePostprocessor()],
         )
 
     return query_engine_1, retriever_2_engine

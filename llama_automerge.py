@@ -42,8 +42,11 @@ from utility import (
                 get_database_and_automerge_collection_name,
                 get_default_query_engine_from_retriever,
                 get_tree_query_engine_from_retriever,
+                get_tree_query_engine_with_sort_from_retriever,
                 get_accumulate_query_engine_from_retriever,
+                get_accumulate_query_engine_with_sort_from_retriever,
                 print_retreived_nodes,
+                SortNodePostprocessor,
                 )
 from database_operation import (
                 check_if_milvus_database_collection_exist,
@@ -234,7 +237,7 @@ base_index = build_automerge_index_and_docstore(
 similarity_top_k = 12
 rerank_model = "BAAI/bge-reranker-base"
 simple_ratio_thresh = 0.4
-rerank_top_n = 8
+rerank_top_n = 5
 
 (base_retriever, 
  retriever) = get_automerge_retriever(
@@ -244,7 +247,7 @@ rerank_top_n = 8
                                     )
 
 # query_str = "What are the keys to building a career in AI?"
-query_str = "What are the thinkgs happened in New York?"
+query_str = "What are the things that happen in New York?"
 # query_str = "What happened in New York?"
 # query_str = "What happened at Interleafe and Viaweb?"
 # query_str = "What is the importance of networking in AI?"
@@ -286,11 +289,6 @@ print_retreived_nodes("rerank-automerge", rerank_nodes)
                                         retriever,
                                         )
 
-rerank_engine = RetrieverQueryEngine.from_args(
-    retriever=retriever, 
-    node_postprocessors=[rerank],
-    )
-
 # Create tree engines (query_mode="tree_summary")
 (tree_base_engine,
  tree_engine) = get_tree_query_engine_from_retriever(
@@ -298,11 +296,32 @@ rerank_engine = RetrieverQueryEngine.from_args(
                                         engine,
                                         )
 
+# # Create tree sorted engines (query_mode="tree_summary")
+# (tree_sort_base_engine,
+#  tree_sort_engine) = get_tree_query_engine_with_sort_from_retriever(
+#                                                     base_engine,
+#                                                     engine,
+#                                                     )
+
+rerank_engine = RetrieverQueryEngine.from_args(
+    retriever=retriever, 
+    node_postprocessors=[rerank],
+    )
+
 tree_rerank_engine = RetrieverQueryEngine.from_args(
     retriever=retriever, 
     node_postprocessors=[rerank],
     response_mode="tree_summarize",
     )
+
+# tree_rerank_sort_engine = RetrieverQueryEngine.from_args(
+#     retriever=retriever, 
+#     node_postprocessors=[
+#         rerank,
+#         SortNodePostprocessor()
+#         ],
+#     response_mode="tree_summarize",
+#     )
 
 # Create accumulate engines (query_mode="accumulate")
 (accumulate_base_engine, 
@@ -311,12 +330,27 @@ tree_rerank_engine = RetrieverQueryEngine.from_args(
                                                 retriever,
                                                 )
 
+# # Create accumulate sort engines (use SortNodePostprocessor())
+# (accumulate_sort_base_engine, 
+#  accumulate_sort_engine) = get_accumulate_query_engine_with_sort_from_retriever(
+#                                                             base_retriever,
+#                                                             retriever,
+#                                                             )
+
 accumulate_rerank_engine = RetrieverQueryEngine.from_args(
     retriever=retriever, 
     node_postprocessors=[rerank],
     response_mode="accumulate",
     )
 
+# accumulate_rerank_sort_engine = RetrieverQueryEngine.from_args(
+#     retriever=retriever, 
+#     node_postprocessors=[
+#         rerank,
+#         SortNodePostprocessor()
+#         ],
+#     response_mode="accumulate",
+#     )
 
 # Change default engine promps to "in detail"
 base_engine = change_default_engine_prompt_to_in_detail(base_engine) 
@@ -328,10 +362,16 @@ tree_base_engine = change_tree_engine_prompt_to_in_detail(tree_base_engine)
 tree_engine = change_tree_engine_prompt_to_in_detail(tree_engine) 
 tree_rerank_engine = change_tree_engine_prompt_to_in_detail(tree_rerank_engine) 
 
+# tree_sort_engine = change_tree_engine_prompt_to_in_detail(tree_sort_engine) 
+# tree_rerank_sort_engine = change_tree_engine_prompt_to_in_detail(tree_rerank_sort_engine) 
+
 # Change accumulate engine prompt to "in detail"
 accumulate_base_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_base_engine) 
 accumulate_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_engine) 
 accumulate_rerank_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_rerank_engine) 
+
+# accumulate_sort_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_sort_engine) 
+# accumulate_rerank_sort_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_rerank_sort_engine) 
 
 # window_prompts_dict = window_engine.get_prompts()
 # type = "tree_fusion_engine:"
@@ -344,11 +384,15 @@ rerank_response = rerank_engine.query(query_str)
 
 tree_base_query_response = tree_base_engine.query(query_str)
 tree_query_response = tree_engine.query(query_str)
+# tree_sort_query_response = tree_sort_engine.query(query_str)
 tree_rerank_response = tree_rerank_engine.query(query_str)
+# tree_rerank_sort_response = tree_rerank_sort_engine.query(query_str)
 
 accumulate_base_query_response = accumulate_base_engine.query(query_str)
 accumulate_query_response = accumulate_engine.query(query_str)
+# accumulate_sort_query_response = accumulate_sort_engine.query(query_str)
 accumulate_rerank_query_response = accumulate_rerank_engine.query(query_str)
+# accumulate_rerank_sort_query_response = accumulate_rerank_sort_engine.query(query_str)
 
 # Print responses 
 print("\nBASE-AUTOMERGE:\n\n" + str(base_response))
@@ -357,11 +401,14 @@ print("\nRERANK-AUTOMERGE:\n\n" + str(rerank_response))
 
 print("\nTREE-BASE-AUTOMERGE:\n\n" + str(tree_base_query_response))
 print("\nTREE-AUTOMERGE:\n\n" + str(tree_query_response))
+# print("\nTREE-SORT-AUTOMERGE:\n\n" + str(tree_sort_query_response))
 print("\nTREE-RERANK-AUTOMERGE:\n\n" + str(tree_rerank_response))
+# print("\nTREE-RERANK-SORT-AUTOMERGE:\n\n" + str(tree_rerank_sort_response))
 
 print("\nACCUMULATE-BASE-AUTOMERGE:\n\n" + str(accumulate_base_query_response))
 print("\nACCUMULATE-AUTOMERGE:\n\n" + str(accumulate_query_response))
-print("\nACCUMULATE-RERANK-AUTOMERGE:\n\n" + str(accumulate_rerank_query_response))
+# print("\nACCUMULATE-SORT-AUTOMERGE:\n\n" + str(accumulate_sort_query_response))
+# print("\nACCUMULATE-RERANK-SORT-AUTOMERGE:\n\n" + str(accumulate_rerank_sort_query_response))
 
 # print(rerank_response.get_formatted_sources(length=2000))
 
