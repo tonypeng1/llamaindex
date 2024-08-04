@@ -361,11 +361,16 @@ index = build_sentence_splitter_index_and_bm25_docsrore(
                                                 chunk_overlap
                                                 )
 
-# Get retrievers
-similarity_top_k = 6
+# Set retriever parameters (based on the search query)
+similarity_top_k = 12
 num_queries = 1  # for QueryFusionRetriever()
-fusion_top_n = 3
-rerank_top_n = 3
+fusion_top_n = 5
+rerank_top_n = 5
+
+# similarity_top_k = 6
+# num_queries = 1  # for QueryFusionRetriever()
+# fusion_top_n = 3
+# rerank_top_n = 3
 
 
 (vector_retriever, 
@@ -385,7 +390,8 @@ fusion_retriever) = get_sentence_splitter_index_bm25_and_fusion_retriever(
 
 # query_str = "What are the keys to building a career in AI?"
 # query_str = "What are the things that happen in New York?"
-query_str = "What are the things that are mentioned about Sam Altman?"
+# query_str = "What are the things that are mentioned about Sam Altman?"
+query_str = "What are the things that are mentioned about startups?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
 # query_str = "Describe everything that is mentioned about Interleaf one by one."
