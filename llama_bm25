@@ -6,10 +6,7 @@ from typing import List, Optional
 
 from llama_index.core import (
                         Document,
-                        PromptTemplate,
                         Settings,
-                        StorageContext,
-                        QueryBundle,
                         VectorStoreIndex,
                         )
 from llama_index.core.indices.postprocessor import (
@@ -17,39 +14,34 @@ from llama_index.core.indices.postprocessor import (
                         MetadataReplacementPostProcessor,
                         )
 from llama_index.core.node_parser import (
-                        SentenceWindowNodeParser,
                         SentenceSplitter,
                         )
-from llama_index.core.postprocessor.types import BaseNodePostprocessor
-from llama_index.core.retrievers import QueryFusionRetriever
+from llama_index.core.query_engine.router_query_engine import RouterQueryEngine
 from llama_index.core.schema import NodeWithScore
+from llama_index.core.selectors import LLMSingleSelector
+from llama_index.core.tools import QueryEngineTool
 from llama_index.core.query_engine import RetrieverQueryEngine
 
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
 from llama_index.readers.file import (
-                        PDFReader,
                         PyMuPDFReader,
                         )
-from llama_index.retrievers.bm25 import BM25Retriever
-from llama_index.storage.docstore.mongodb import MongoDocumentStore
-from llama_index.vector_stores.milvus import MilvusVectorStore
 
-from pymilvus import connections, db, MilvusClient
 import openai
-
-from pymongo import MongoClient
 from trulens_eval import Tru
 from utility import (
                 change_accumulate_engine_prompt_to_in_detail,
-                change_default_engine_prompt_to_in_detail,
-                change_tree_engine_prompt_to_in_detail,
                 display_prompt_dict,
                 get_article_link, 
+                get_bm25_retriever_and_tree_sort_detail_engine,
                 get_database_and_sentence_splitter_collection_name,
-                get_tree_engine_from_retriever,
-                get_tree_engine_with_sort_from_retriever,
+                get_fusion_retriever_and_tree_sort_detail_engine,
+                get_summary_storage_context,
+                get_summary_retriever_and_tree_detail_engine,
+                get_vector_retriever_and_tree_sort_detail_engine,
+                get_vector_store_docstore_and_storage_context,
                 print_retreived_nodes,
                 SortNodePostprocessor,
                 )
@@ -59,31 +51,11 @@ from database_operation import (
                 )
 
 
-# class SortNodePostprocessor(BaseNodePostprocessor):
-#     def _postprocess_nodes(
-#             self, 
-#             nodes: List[NodeWithScore], 
-#             query_bundle: Optional[QueryBundle]
-#             ) -> List[NodeWithScore]:
-        
-#         # Custom post-processor: Order nodes based on the order it appears in a document (using "start_char_idx")
-
-#         # Create new node dictionary
-#         _nodes_dic = [{"start_char_idx": node.node.start_char_idx, "node": node} for node in nodes]
-
-#         # Sort based on start_char_idx
-#         sorted_nodes_dic = sorted(_nodes_dic, key=lambda x: x["start_char_idx"])
-
-#         # Get the new nodes from the sorted node dic
-#         sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
-
-#         return sorted_new_nodes
-
-
 def load_document_pdf(doc_link):
     loader = PyMuPDFReader()
     docs0 = loader.load(file_path=Path(doc_link))
-    docs = Document(text="\n\n".join([doc.text for doc in docs0]))
+    docs = Document(
+        text="\n\n".join([doc.text for doc in docs0]))
     # print(type(documents), "\n")
     # print(len(documents), "\n")
     # print(type(documents[0]))
@@ -106,135 +78,27 @@ def get_nodes_from_document_sentence_splitter(
     return _nodes
 
 
-def build_sentence_splitter_index_and_bm25_docsrore(
+def load_document_nodes_sentence_splitter(
     _article_link,
-    _save_index,
-    _add_document,
     _chunk_size,
     _chunk_overlap
     ):
+    # Only load and parse document if either index or docstore not saved.
+    _document = load_document_pdf(_article_link)
+    _nodes = get_nodes_from_document_sentence_splitter(
+        _document, 
+        _chunk_size,
+        _chunk_overlap
+        )
+    return _nodes
 
-    if _save_index or _add_document:  # Only load and parse document if either index or docstore not saved.
-        _document = load_document_pdf(_article_link)
-        _nodes = get_nodes_from_document_sentence_splitter(
-            _document, 
-            _chunk_size,
-            _chunk_overlap
-            )
-    if _save_index == True:
-        # Create and save index (embedding) to Milvus database
-        _index = VectorStoreIndex(
-            nodes=_nodes,
-            storage_context=storage_context,
-            )
-    else:
-        # Load from Milvus database
-        _index = VectorStoreIndex.from_vector_store(
-            vector_store=vector_store
-            )
-    if _add_document == True:
-        # Save document nodes to Mongodb docstore at the server
-        storage_context.docstore.add_documents(_nodes)
 
+def create_and_save_vector_index_to_milvus_database(_nodes):
+    _index = VectorStoreIndex(
+        nodes=_nodes,
+        storage_context=storage_context_vector,
+        )
     return _index
-
-def get_sentence_splitter_index_bm25_and_fusion_retriever(
-        _index,
-        _similarity_top_k,
-        _num_queries,
-        _fusion_top_n,
-        ):
-    
-    _retriever = _index.as_retriever(
-        similarity_top_k=_similarity_top_k
-        )
-    _bm25_retriever = BM25Retriever.from_defaults(
-        similarity_top_k=_similarity_top_k,
-        docstore=docstore,
-        )
-    _fusion_retriever = QueryFusionRetriever(
-        retrievers=[_retriever, _bm25_retriever],
-        similarity_top_k=_fusion_top_n,
-        num_queries=_num_queries,  # set this to 1 to disable query generation
-        mode="reciprocal_rerank",
-        use_async=True,
-        verbose=True,
-        # query_gen_prompt="...",  # for overriding the query generation prompt
-        )
-    return _retriever, _bm25_retriever, _fusion_retriever
-
-
-def get_default_engine_from_retriever(
-        _retriever,
-        _bm25_retriever,
-        _fusion_retriever,
-        ):
-    """
-    default mode is response_mode="compact".
-    """
-
-    _default_vector_engine = RetrieverQueryEngine.from_args(
-        retriever=_retriever,
-        # response_mode="default"  # Unknown mode "default"
-        )
-    _default_bm25_engine = RetrieverQueryEngine.from_args(
-        retriever=_bm25_retriever,
-        )
-    _default_fusion_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever,
-        )
-    
-    return _default_vector_engine, _default_bm25_engine, _default_fusion_engine
-
-
-def get_default_engine_with_sort_from_retriever(
-        _retriever,
-        _bm25_retriever,
-        _fusion_retriever,
-        ):
-    """
-    default mode is response_mode="compact".
-    """
-
-    _sort_vector_engine = RetrieverQueryEngine.from_args(
-        retriever=_retriever,
-        # response_mode="default"  # Unknown mode "default"
-        node_postprocessors=[SortNodePostprocessor()],
-        )
-    _sort_bm25_engine = RetrieverQueryEngine.from_args(
-        retriever=_bm25_retriever,
-        node_postprocessors=[SortNodePostprocessor()],
-        )
-    _sort_fusion_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever,
-        node_postprocessors=[SortNodePostprocessor()],
-        )
-
-    return _sort_vector_engine, _sort_bm25_engine, _sort_fusion_engine
-
-
-def get_fusion_refine_tree_and_accumulate_engine_from_retriever(
-        _fusion_retriever,
-        _similarity_top_k
-        ):
-
-    _refine_fusion_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever, 
-        similarity_top_k=_similarity_top_k,
-        response_mode="refine",
-        )
-    _tree_fusion_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever, 
-        similarity_top_k=_similarity_top_k,
-        response_mode="tree_summarize",
-        )
-    _accumulate_fusion_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever, 
-        similarity_top_k=_similarity_top_k,
-        response_mode="accumulate",
-        )
-    
-    return _refine_fusion_engine, _tree_fusion_engine, _accumulate_fusion_engine
 
 
 def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
@@ -271,7 +135,6 @@ def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
 
 # Set OpenAI API key, LLM, and embedding model
 openai.api_key = os.environ['OPENAI_API_KEY']
-
 llm = OpenAI(model="gpt-3.5-turbo", temperature=0.1)
 Settings.llm = llm
 
@@ -286,11 +149,13 @@ embed_model_dim = 1536  # for text-embedding-3-small
 embed_model_name = "openai_embedding_3_small"
 
 # Create article link
-article_dictory = "paul_graham"
-article_name = "paul_graham_essay.pdf"
+article_dictory = "metagpt"
+article_name = "metagpt.pdf"
 
-article_link = get_article_link(
-                                article_dictory,
+# article_dictory = "paul_graham"
+# article_name = "paul_graham_essay.pdf"
+
+article_link = get_article_link(article_dictory,
                                 article_name
                                 )
 
@@ -299,11 +164,17 @@ article_link = get_article_link(
 
 # Create database and collection names
 chunk_method = "sentence_splitter"
-chunk_size = 256
-chunk_overlap = 50
+chunk_size = 512
+chunk_overlap = 128
 
+# chunk_method = "sentence_splitter"
+# chunk_size = 256
+# chunk_overlap = 50
+
+# Create database name and colleciton names
 (database_name, 
-collection_name) = get_database_and_sentence_splitter_collection_name(
+collection_name_vector,
+collection_name_summary) = get_database_and_sentence_splitter_collection_name(
                                                             article_dictory, 
                                                             chunk_method, 
                                                             embed_model_name, 
@@ -311,76 +182,124 @@ collection_name) = get_database_and_sentence_splitter_collection_name(
                                                             chunk_overlap
                                                             )
 
-# Check if index has already been saved to Milvus database.
-# In Milvus database, if the specific collection exists , do not save the index.
-# Otherwise, create one.
+# Initiate Milvus and MongoDB database
 uri_milvus = "http://localhost:19530"
-save_index = check_if_milvus_database_collection_exist(uri_milvus, 
-                                                       database_name, 
-                                                       collection_name)
-
-# Check if MongoDB already has the namespace
-# In MongoDB, if the specific namespace exists, do not add document nodes to MongoDB.
 uri_mongo = "mongodb://localhost:27017/"
-add_document = check_if_mongo_database_namespace_exist(uri_mongo, 
+
+# Check if the vector index has already been saved to Milvus database.
+save_index_vector = check_if_milvus_database_collection_exist(uri_milvus, 
                                                        database_name, 
-                                                       collection_name)
+                                                       collection_name_vector
+                                                       )
 
-# Initiate vector store (a new empty collection will be created in Milvus server)
-vector_store = MilvusVectorStore(
-    uri=uri_milvus,
-    db_name=database_name,
-    collection_name=collection_name,
-    dim=embed_model_dim,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
-    )
+# Check if the vector document has already been saved to MongoDB database.
+add_document_vector = check_if_mongo_database_namespace_exist(uri_mongo, 
+                                                       database_name, 
+                                                       collection_name_vector
+                                                       )
 
-# Initiate MongoDB docstore (Not yet save to MongoDB server)
-docstore = MongoDocumentStore.from_uri(
-    uri=uri_mongo,
-    db_name=database_name,
-    namespace=collection_name
-    )
+# Check if the summary document has already been saved to MongoDB database.
+add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo, 
+                                                       database_name, 
+                                                       collection_name_summary
+                                                       )
 
-# Initiate storage context: use Milvus as vector store and Mongo as docstore 
-storage_context = StorageContext.from_defaults(
-    vector_store=vector_store,
-    docstore=docstore
-    )
+# Create vector store, vector docstore, and vector storage context
+(vector_store,
+ vector_docstore,
+ storage_context_vector) = get_vector_store_docstore_and_storage_context(uri_milvus,
+                                                                    uri_mongo,
+                                                                    database_name,
+                                                                    collection_name_vector,
+                                                                    embed_model_dim
+                                                                    )
+
+# Create summary summary storage context
+storage_context_summary = get_summary_storage_context(uri_mongo,
+                                                    database_name,
+                                                    collection_name_summary
+                                                    )
 
 # for i in list(storage_context.docstore.get_all_ref_doc_info().keys()):
 #     print(i)
 # print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
 
+# Load documnet nodes if either vector index or docstore not saved.
+if save_index_vector or add_document_vector or add_document_summary: 
+    extracted_nodes = load_document_nodes_sentence_splitter(
+                                                    article_link,
+                                                    chunk_size,
+                                                    chunk_overlap
+                                                    )
 
-# Get index (load and parse documents if necessary) and build docstore
-index = build_sentence_splitter_index_and_bm25_docsrore(
-                                                article_link,
-                                                save_index,
-                                                add_document,
-                                                chunk_size,
-                                                chunk_overlap
-                                                )
+if save_index_vector == True:
+    vector_index = create_and_save_vector_index_to_milvus_database(extracted_nodes)
+
+else:
+    # Load from Milvus database
+    vector_index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store
+        )
+
+if add_document_vector == True:
+    # Save document nodes to Mongodb docstore at the server
+    storage_context_vector.docstore.add_documents(extracted_nodes)
+
+if add_document_summary == True:
+    # Save document nodes to Mongodb docstore at the server
+    storage_context_summary.docstore.add_documents(extracted_nodes)
+
+# info = storage_context_summary.docstore.get_all_ref_doc_info()
 
 # Set retriever parameters (based on the search query)
-similarity_top_k = 12
-num_queries = 1  # for QueryFusionRetriever()
-fusion_top_n = 5
-rerank_top_n = 5
+similarity_top_k = 8
+num_queries = 1  # for QueryFusionRetriever() in utility.py
+fusion_top_n = 4
+rerank_top_n = 4
 
-# similarity_top_k = 6
-# num_queries = 1  # for QueryFusionRetriever()
-# fusion_top_n = 3
-# rerank_top_n = 3
+# similarity_top_k = 15
+# num_queries = 1  # for QueryFusionRetriever() in utility.py
+# fusion_top_n = 8
+# rerank_top_n = 8
 
 
-(vector_retriever, 
-bm25_retriever,
-fusion_retriever) = get_sentence_splitter_index_bm25_and_fusion_retriever(
-                                                            index,
-                                                            similarity_top_k,
-                                                            num_queries,
-                                                            fusion_top_n,
-                                                            )
+(vector_retriever,
+vector_tree_sort_detail_engine) = get_vector_retriever_and_tree_sort_detail_engine(
+                                                                        vector_index,
+                                                                        similarity_top_k,
+                                                                        )
+
+(bm25_retriever,
+bm25_tree_sort_detail_engine) = get_bm25_retriever_and_tree_sort_detail_engine(
+                                                                        vector_docstore,
+                                                                        similarity_top_k,
+                                                                        )
+
+(fusion_retriever,
+fusion_tree_sort_detail_engine) = get_fusion_retriever_and_tree_sort_detail_engine(
+                                                                        vector_index,
+                                                                        vector_docstore,
+                                                                        similarity_top_k,
+                                                                        num_queries,
+                                                                        fusion_top_n,
+                                                                        )
+
+# Create an accumulate, fusion, and sort engine
+accumulate_fusion_sort_engine = RetrieverQueryEngine.from_args(
+                                        retriever=fusion_retriever, 
+                                        node_postprocessors=[SortNodePostprocessor()],
+                                        response_mode="accumulate",
+                                        )
+
+accumulate_fusion_sort_engine = change_accumulate_engine_prompt_to_in_detail(
+                                                        accumulate_fusion_sort_engine
+                                                        )
+
+# Create suammry retriever and engine
+(summary_retriever,
+summary_tree_detail_engine) = get_summary_retriever_and_tree_detail_engine(
+                                                                    storage_context_summary
+                                                                    )
 
 # The code below does not work (cannot put node_postprocessors here)
 # window_retriever = index.as_retriever(
@@ -391,7 +310,13 @@ fusion_retriever) = get_sentence_splitter_index_bm25_and_fusion_retriever(
 # query_str = "What are the keys to building a career in AI?"
 # query_str = "What are the things that happen in New York?"
 # query_str = "What are the things that are mentioned about Sam Altman?"
-query_str = "What are the things that are mentioned about startups?"
+# query_str = "What are the things that are mentioned about startups?"
+# query_str = "What are told about YC (Y Combinator)?"
+# query_str = "What is the summary of the paul graham essay?"
+# query_str = "What is the summary of the MetaGPT paper?"
+query_str = "How do agents share information with other agents?"
+# query_str = "Tell me about the ablation study results."
+# query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
 # query_str = "Describe everything that is mentioned about Interleaf one by one."
@@ -404,169 +329,84 @@ query_str = "What are the things that are mentioned about startups?"
 #     "What could be the potential outcomes of adjusting the amount of safety"
 #     " data used in the RLHF stage?"
 # )
+# summarize_query_str = "What is the summary of the paul graham essay?"
+
 
 # Define window post processor
 # postproc = MetadataReplacementPostProcessor(
 #     target_metadata_key="window"
 #     )
 
-vector_store.client.load_collection(collection_name=collection_name)
+vector_store.client.load_collection(collection_name=collection_name_vector)
 
-# Retrieve nodes, bm25 nodes, and fusion nodes
-nodes = vector_retriever.retrieve(query_str)
-bm25_nodes = bm25_retriever.retrieve(query_str)
-fusion_nodes = fusion_retriever.retrieve(query_str)
+# # Retrieve nodes, bm25 nodes, and fusion nodes
+# nodes = vector_retriever.retrieve(query_str)
+# bm25_nodes = bm25_retriever.retrieve(query_str)
+# fusion_nodes = fusion_retriever.retrieve(query_str)
 
-# Define reranker
-rerank_model = "BAAI/bge-reranker-base"
-rerank = SentenceTransformerRerank(
-    top_n=rerank_top_n,
-    model=rerank_model,
-    )
+# summary_nodes = summary_retriever.retrieve(summarize_query_str)
 
-# Get re-ranked fusion nodes
-rerank_nodes = rerank.postprocess_nodes(
-    nodes=fusion_nodes,
-    query_str=query_str,
-    )
-
-# Print retrieved nodes
-print_retreived_nodes("vector", nodes)
-print_retreived_nodes("bm25", bm25_nodes)
-print_retreived_nodes("fusion", fusion_nodes)
-print_retreived_nodes("rerank", rerank_nodes)
-
-
-
-# Create default engines (query_mode="compact")
-(vector_engine,
- bm25_engine,
- fusion_engine) = get_default_engine_from_retriever(
-                                                vector_retriever,
-                                                bm25_retriever,
-                                                fusion_retriever
- )
-
-# Create default sorted engines (with sort post-processor)
-(vector_sort_engine,
- bm25_sort_engine,
- fusion_sort_engine) = get_default_engine_with_sort_from_retriever(
-                                                vector_retriever,
-                                                bm25_retriever,
-                                                fusion_retriever
- )
-
-# Create tree engines (query_mode="tree_summary")
-(tree_vector_engine,
- tree_bm25_engine,
- tree_fusion_engine) = get_tree_engine_from_retriever(
-                                                vector_retriever,
-                                                bm25_retriever,
-                                                fusion_retriever
- )
-
-# Create tree sorted engines (with sort post-processor)
-(tree_vector_sort_engine,
- tree_bm25_sort_engine,
- tree_fusion_sort_engine) = get_tree_engine_with_sort_from_retriever(
-                                                vector_retriever,
-                                                bm25_retriever,
-                                                fusion_retriever
- )
-
-# Create an accumulate, fusion, and sort engine
-accumulate_fusion_sort_engine = RetrieverQueryEngine.from_args(
-                                        retriever=fusion_retriever, 
-                                        similarity_top_k=fusion_top_n,
-                                        node_postprocessors=[SortNodePostprocessor()],
-                                        response_mode="accumulate",
-                                        )
-
-# # Create sort engine
-# sort_engine = RetrieverQueryEngine.from_args(
-#     retriever=fusion_retriever, 
-#     node_postprocessors=[SortNodePostprocessor()],
+# # Define reranker
+# rerank_model = "BAAI/bge-reranker-base"
+# rerank = SentenceTransformerRerank(
+#     top_n=rerank_top_n,
+#     model=rerank_model,
 #     )
 
-# sort_engine = change_default_engine_prompt_to_in_detail(sort_engine) 
-# sort_response = sort_engine.query(query_str)
+# # Get re-ranked fusion nodes
+# rerank_nodes = rerank.postprocess_nodes(
+#     nodes=fusion_nodes,
+#     query_str=query_str,
+#     )
 
-# print("\nSORTED-FUSION-ENGINE:\n\n" + str(sort_response))
+# Print retrieved nodes
+# print_retreived_nodes("vector", nodes)
+# print_retreived_nodes("bm25", bm25_nodes)
+# print_retreived_nodes("fusion", fusion_nodes)
+# print_retreived_nodes("rerank", rerank_nodes)
+# print_retreived_nodes("summary", summary_nodes)
+
+
 # print(sort_response.get_formatted_sources(length=2000))
 
+# # Create default rerank engine (query_mode="compact")
+# rerank_engine = RetrieverQueryEngine.from_args(
+#     retriever=fusion_retriever, 
+#     node_postprocessors=[rerank],
+#     )
 
-# Create default rerank engine (query_mode="compact")
-rerank_engine = RetrieverQueryEngine.from_args(
-    retriever=fusion_retriever, 
-    node_postprocessors=[rerank],
-    )
+# rerank_sort_engine = RetrieverQueryEngine.from_args(
+#     retriever=fusion_retriever, 
+#     node_postprocessors=[
+#         rerank,
+#         SortNodePostprocessor()
+#         ],
+#     )
 
-rerank_sort_engine = RetrieverQueryEngine.from_args(
-    retriever=fusion_retriever, 
-    node_postprocessors=[
-        rerank,
-        SortNodePostprocessor()
-        ],
-    )
+# # Create tree rerank engine (query_mode="compact")
+# tree_rerank_engine = RetrieverQueryEngine.from_args(
+#     retriever=fusion_retriever, 
+#     node_postprocessors=[rerank],
+#     response_mode="tree_summarize"
+#     )
 
-# Create tree rerank engine (query_mode="compact")
-tree_rerank_engine = RetrieverQueryEngine.from_args(
-    retriever=fusion_retriever, 
-    node_postprocessors=[rerank],
-    response_mode="tree_summarize"
-    )
+# tree_rerank_sort_engine = RetrieverQueryEngine.from_args(
+#     retriever=fusion_retriever, 
+#     node_postprocessors=[
+#         rerank,
+#         SortNodePostprocessor()
+#         ],
+#     response_mode="tree_summarize"
+#     )
 
-tree_rerank_sort_engine = RetrieverQueryEngine.from_args(
-    retriever=fusion_retriever, 
-    node_postprocessors=[
-        rerank,
-        SortNodePostprocessor()
-        ],
-    response_mode="tree_summarize"
-    )
-
-accumulate_rerank_sort_engine = RetrieverQueryEngine.from_args(
-    retriever=fusion_retriever, 
-    node_postprocessors=[
-        rerank,
-        SortNodePostprocessor()
-        ],
-    response_mode="accumulate",
-    )
-
-# # Create refine, tree, and accumulate fusion engines 
-# (refine_fusion_engine,
-#  tree_fusion_engine,
-#  accumulate_fusion_engine) = get_fusion_refine_tree_and_accumulate_engine_from_retriever(
-#                                                                     fusion_retriever,
-#                                                                     fusion_top_n,
-#                                                                     )
-
-# Change default engine promps to "in detail"
-vector_engine = change_default_engine_prompt_to_in_detail(vector_engine) 
-bm25_engine = change_default_engine_prompt_to_in_detail(bm25_engine) 
-fusion_engine = change_default_engine_prompt_to_in_detail(fusion_engine)
-rerank_engine = change_default_engine_prompt_to_in_detail(rerank_engine)
-
-vector_sort_engine = change_default_engine_prompt_to_in_detail(vector_sort_engine) 
-bm25_sort_engine = change_default_engine_prompt_to_in_detail(bm25_sort_engine) 
-fusion_sort_engine = change_default_engine_prompt_to_in_detail(fusion_sort_engine)
-rerank_sort_engine = change_default_engine_prompt_to_in_detail(rerank_sort_engine)
-
-# Change tree engine promps to "in detail"
-tree_vector_engine = change_tree_engine_prompt_to_in_detail(tree_vector_engine) 
-tree_bm25_engine = change_tree_engine_prompt_to_in_detail(tree_bm25_engine) 
-tree_fusion_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_engine) 
-tree_rerank_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_engine) 
-
-tree_vector_sort_engine = change_tree_engine_prompt_to_in_detail(tree_vector_sort_engine) 
-tree_bm25_sort_engine = change_tree_engine_prompt_to_in_detail(tree_bm25_sort_engine) 
-tree_fusion_sort_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_sort_engine) 
-tree_rerank_sort_engine = change_tree_engine_prompt_to_in_detail(tree_fusion_sort_engine) 
-
-# Change accumulate engine prompt to "in detail"
-accumulate_fusion_sort_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_fusion_sort_engine)
-accumulate_rerank_sort_engine = change_accumulate_engine_prompt_to_in_detail(accumulate_rerank_sort_engine)
+# accumulate_rerank_sort_engine = RetrieverQueryEngine.from_args(
+#     retriever=fusion_retriever, 
+#     node_postprocessors=[
+#         rerank,
+#         SortNodePostprocessor()
+#         ],
+#     response_mode="accumulate",
+#     )
 
 # # Create refine, tree, and accumulate rerank engines 
 # (refine_rerank_engine, 
@@ -577,68 +417,110 @@ accumulate_rerank_sort_engine = change_accumulate_engine_prompt_to_in_detail(acc
 #                                                                         rerank
 #                                                                         )
 
-# window_prompts_dict = window_engine.get_prompts()
-# type = "tree_fusion_engine:"
-# display_prompt_dict(type.upper(), window_prompts_dict)
+# summary_prompts_dict = tree_summary_engin.get_prompts()
+# type = "tree_summary_engine:"
+# display_prompt_dict(type.upper(), summary_prompts_dict)
 
-# Get default responses
-vector_response = vector_engine.query(query_str)
-bm25_response = bm25_engine.query(query_str)
-fusion_response = fusion_engine.query(query_str)
-rerank_response = rerank_engine.query(query_str)
+# # Get default responses
+# vector_response = vector_engine.query(query_str)
+# bm25_response = bm25_engine.query(query_str)
+# fusion_response = fusion_engine.query(query_str)
+# rerank_response = rerank_engine.query(query_str)
 
-# Get default sorted responses
-vector_sort_response = vector_sort_engine.query(query_str)
-bm25_sort_response = bm25_sort_engine.query(query_str)
-fusion_sort_response = fusion_sort_engine.query(query_str)
-rerank_sort_response = rerank_sort_engine.query(query_str)
+# # Get default sorted responses
+# vector_sort_response = vector_sort_engine.query(query_str)
+# bm25_sort_response = bm25_sort_engine.query(query_str)
+# fusion_sort_response = fusion_sort_engine.query(query_str)
+# rerank_sort_response = rerank_sort_engine.query(query_str)
 
 # Get tree responses
-tree_vector_response = tree_vector_engine.query(query_str)
-tree_bm25_response = tree_bm25_engine.query(query_str)
-tree_fusion_response = tree_fusion_engine.query(query_str)
-tree_rerank_response = tree_rerank_engine.query(query_str)
+# tree_vector_response = tree_vector_engine.query(query_str)
+# tree_bm25_response = tree_bm25_engine.query(query_str)
+# tree_fusion_response = tree_fusion_engine.query(query_str)
+# tree_rerank_response = tree_rerank_engine.query(query_str)
 
 # Get tree sorted responses
-tree_vector_sort_response = tree_vector_sort_engine.query(query_str)
-tree_bm25_sort_response = tree_bm25_sort_engine.query(query_str)
-tree_fusion_sort_response = tree_fusion_sort_engine.query(query_str)
-tree_rerank_sort_response = tree_rerank_sort_engine.query(query_str)
+# tree_vector_sort_response = tree_vector_sort_engine.query(query_str)
+# tree_bm25_sort_response = tree_bm25_sort_engine.query(query_str)
+# tree_fusion_sort_response = tree_fusion_sort_engine.query(query_str)
+# tree_rerank_sort_response = tree_rerank_sort_engine.query(query_str)
 
 # Get accumulate sorted responses
-accumulate_fusion_sort_response = accumulate_fusion_sort_engine.query(query_str)
-accumulate_rerank_sort_response = accumulate_rerank_sort_engine.query(query_str)
+# accumulate_fusion_sort_response = accumulate_fusion_sort_engine.query(query_str)
+# accumulate_rerank_sort_response = accumulate_rerank_sort_engine.query(query_str)
+
+# tree_summary_engin_response = summary_tree_detail_engine.query(summarize_query_str)
 
 # print(rerank_response.get_formatted_sources(length=2000))
+
+
+
+# Define query engine tools
+
+# paul_summary = "Useful for summarization questions related to the paul graham essay."
+# metagpt_summary = "Useful for summarization questions related to the MetaGPT paper."
+
+summary_tool = QueryEngineTool.from_defaults(
+    query_engine=summary_tree_detail_engine,
+    description=(
+        "Useful for summarization questions related to the documnet."
+    ),
+)
+
+# paul_specific = "Useful for retrieving specific context from the paul graham essay."
+# metagpt_specific = "Useful for retrieving specific context from the MetaGPT paper."
+
+vector_tool = QueryEngineTool.from_defaults(
+    query_engine=accumulate_fusion_sort_engine,
+    description=(
+        "Useful for retrieving specific context from the document."
+    ),
+)
+
+# Define tool query engine
+query_engine = RouterQueryEngine(
+    selector=LLMSingleSelector.from_defaults(),
+    query_engine_tools=[
+        summary_tool,
+        vector_tool,
+    ],
+    verbose=True
+)
+
+response = query_engine.query(query_str)
+
 
 # Prints responses
 # print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
 # print("\nVECTOR-SORT-ENGINE:\n\n" + str(vector_sort_response))
 # print("\nTREE-VECTOR-ENGINE:\n\n" + str(tree_vector_response))
-print("\nTREE-VECTOR-SORT-ENGINE:\n\n" + str(tree_vector_sort_response))
+# print("\nTREE-VECTOR-SORT-ENGINE:\n\n" + str(tree_vector_sort_response))
 
 # print("\nBM25-ENGINE:\n\n" + str(bm25_response))
 # print("\nBM25-SORT-ENGINE:\n\n" + str(bm25_sort_response))
 # print("\nTREE-BM25-ENGINE:\n\n" + str(tree_bm25_response))
-print("\nTREE-BM25-SORT-ENGINE:\n\n" + str(tree_bm25_sort_response))
+# print("\nTREE-BM25-SORT-ENGINE:\n\n" + str(tree_bm25_sort_response))
 
 # print("\nFUSION-ENGINE:\n\n" + str(fusion_response))
 # print("\nFUSION-SORT-ENGINE:\n\n" + str(fusion_sort_response))
 # print("\nTREE-FUSION-ENGINE:\n\n" + str(tree_fusion_response))
-print("\nTREE-FUSION-SORT-ENGINE:\n\n" + str(tree_fusion_sort_response))
+# print("\nTREE-FUSION-SORT-ENGINE:\n\n" + str(tree_fusion_sort_response))
 
 # print("\nRERANK-ENGINE:\n\n" + str(rerank_response))
 # print("\nRERANK-SORT-ENGINE:\n\n" + str(rerank_sort_response))
 # print("\nTREE-RERANK-ENGINE:\n\n" + str(tree_rerank_response))
-print("\nTREE-RERANK-SORT-ENGINE:\n\n" + str(tree_rerank_sort_response))
+# print("\nTREE-RERANK-SORT-ENGINE:\n\n" + str(tree_rerank_sort_response))
 
-print("\nACCUMULATE-FUSION-SORT-ENGINE:\n\n" + str(accumulate_fusion_sort_response))
-print("\nACCUMULATE-RERANK-SORT-ENGINE:\n\n" + str(accumulate_rerank_sort_response))
+# print("\nACCUMULATE-FUSION-SORT-ENGINE:\n\n" + str(accumulate_fusion_sort_response))
+# print("\nACCUMULATE-RERANK-SORT-ENGINE:\n\n" + str(accumulate_rerank_sort_response))
 
+# print("\nTREE-SUMMARY-ENGINE:\n\n" + str(tree_summary_engin_response))
 
+print("\nTOOL-ENGINE:\n\n" + str(response))
 
-vector_store.client.release_collection(collection_name=collection_name)
-vector_store.client.close()  # Need to do this (otherwise Milvus container will hault when closing)
+vector_store.client.release_collection(collection_name=collection_name_vector)
+vector_store.client.close()  
+# Need to do this (otherwise Milvus container will hault when closing)
 # del docstore  # MongoDB may frnot need to be manually closed.
 
 
