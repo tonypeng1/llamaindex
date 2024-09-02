@@ -37,6 +37,31 @@ class SortNodePostprocessor(BaseNodePostprocessor):
         return sorted_new_nodes
 
 
+class PageSortNodePostprocessor(BaseNodePostprocessor):
+    def _postprocess_nodes(
+            self,
+            nodes: List[NodeWithScore],
+            query_bundle: Optional[QueryBundle]
+            ) -> List[NodeWithScore]:
+        
+        # Custom post-processor: Order nodes first based on page number and then based on
+        # the order it appears in a document (using "start_char_idx")
+
+        # Create new node dictionary
+        _nodes_dic = [{"source": node.node.metadata["source"], \
+                       "start_char_idx": node.node.start_char_idx, \
+                        "node": node} for node in nodes]
+
+        # Sort based on page_label and then start_char_idx
+        sorted_nodes_dic = sorted(_nodes_dic, \
+                                    key=lambda x: (int(x["source"]), x["start_char_idx"]))
+
+        # Get the new nodes from the sorted node dic
+        sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
+
+        return sorted_new_nodes
+
+
 def get_article_link(
         _article_dictory, 
         _article_name
@@ -170,24 +195,24 @@ def get_tree_query_engine_from_retriever(
     return query_engine_1, query_engine_2
 
 
-def get_tree_query_engine_with_sort_from_retriever(
-        retriever_1,
-        retriever_2,
-        ):
+# def get_tree_query_engine_with_sort_from_retriever(
+#         retriever_1,
+#         retriever_2,
+#         ):
 
-    query_engine_1 = RetrieverQueryEngine.from_args(
-        retriever=retriever_1, 
-        response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
-        )
+#     query_engine_1 = RetrieverQueryEngine.from_args(
+#         retriever=retriever_1, 
+#         response_mode="tree_summarize",
+#         node_postprocessors=[SortNodePostprocessor()],
+#         )
 
-    query_engine_2 = RetrieverQueryEngine.from_args(
-        retriever=retriever_2, 
-        response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
-        )
+#     query_engine_2 = RetrieverQueryEngine.from_args(
+#         retriever=retriever_2, 
+#         response_mode="tree_summarize",
+#         node_postprocessors=[SortNodePostprocessor()],
+#         )
 
-    return query_engine_1, query_engine_2
+#     return query_engine_1, query_engine_2
 
 
 def get_tree_engine_from_retriever(
@@ -221,31 +246,31 @@ def get_tree_engine_from_retriever(
     return query_engine_1, query_engine_2, query_engine_3, query_engine_4
 
 
-def get_tree_engine_with_sort_from_retriever(
-        retriever_1,
-        retriever_2,
-        retriever_3,
-        ):
+# def get_tree_engine_with_sort_from_retriever(
+#         retriever_1,
+#         retriever_2,
+#         retriever_3,
+#         ):
 
-    query_engine_1 = RetrieverQueryEngine.from_args(
-        retriever=retriever_1, 
-        response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
-        )
+#     query_engine_1 = RetrieverQueryEngine.from_args(
+#         retriever=retriever_1, 
+#         response_mode="tree_summarize",
+#         node_postprocessors=[SortNodePostprocessor()],
+#         )
 
-    query_engine_2 = RetrieverQueryEngine.from_args(
-        retriever=retriever_2, 
-        response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
-        )
+#     query_engine_2 = RetrieverQueryEngine.from_args(
+#         retriever=retriever_2, 
+#         response_mode="tree_summarize",
+#         node_postprocessors=[SortNodePostprocessor()],
+#         )
 
-    query_engine_3 = RetrieverQueryEngine.from_args(
-        retriever=retriever_3, 
-        response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
-        )
+#     query_engine_3 = RetrieverQueryEngine.from_args(
+#         retriever=retriever_3, 
+#         response_mode="tree_summarize",
+#         node_postprocessors=[SortNodePostprocessor()],
+#         )
 
-    return query_engine_1, query_engine_2, query_engine_3
+#     return query_engine_1, query_engine_2, query_engine_3
 
 
 def get_accumulate_query_engine_from_retriever(
@@ -266,24 +291,24 @@ def get_accumulate_query_engine_from_retriever(
     return query_engine_1, retriever_2_engine
 
 
-def get_accumulate_query_engine_with_sort_from_retriever(
-        retriever_1,
-        retriever_2,
-        ):
+# def get_accumulate_query_engine_with_sort_from_retriever(
+#         retriever_1,
+#         retriever_2,
+#         ):
 
-    query_engine_1 = RetrieverQueryEngine.from_args(
-        retriever=retriever_1, 
-        response_mode="accumulate",
-        node_postprocessors=[SortNodePostprocessor()],
-        )
+#     query_engine_1 = RetrieverQueryEngine.from_args(
+#         retriever=retriever_1, 
+#         response_mode="accumulate",
+#         node_postprocessors=[SortNodePostprocessor()],
+#         )
 
-    retriever_2_engine = RetrieverQueryEngine.from_args(
-        retriever=retriever_2, 
-        response_mode="accumulate",
-        node_postprocessors=[SortNodePostprocessor()],
-        )
+#     retriever_2_engine = RetrieverQueryEngine.from_args(
+#         retriever=retriever_2, 
+#         response_mode="accumulate",
+#         node_postprocessors=[SortNodePostprocessor()],
+#         )
 
-    return query_engine_1, retriever_2_engine
+#     return query_engine_1, retriever_2_engine
 
 
 def get_vector_store_docstore_and_storage_context(_uri_milvus,
@@ -366,7 +391,7 @@ def get_vector_retriever_and_tree_sort_detail_engine(
     _tree_sort_engine = RetrieverQueryEngine.from_args(
         retriever=_retriever, 
         response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
+        node_postprocessors=[PageSortNodePostprocessor()],
         )
     _tree_sort_detail_engine = change_tree_engine_prompt_to_in_detail(_tree_sort_engine)
 
@@ -385,7 +410,7 @@ def get_bm25_retriever_and_tree_sort_detail_engine(
     _tree_sort_engine = RetrieverQueryEngine.from_args(
         retriever=_retriever, 
         response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
+        node_postprocessors=[PageSortNodePostprocessor()],
         )
     _tree_sort_detail_engine = change_tree_engine_prompt_to_in_detail(_tree_sort_engine)
 
@@ -419,7 +444,7 @@ def get_fusion_retriever_and_tree_sort_detail_engine(
     _tree_sort_engine = RetrieverQueryEngine.from_args(
         retriever=_retriever, 
         response_mode="tree_summarize",
-        node_postprocessors=[SortNodePostprocessor()],
+        node_postprocessors=[PageSortNodePostprocessor()],
         )
     
     _tree_sort_detail_engine = change_tree_engine_prompt_to_in_detail(_tree_sort_engine)

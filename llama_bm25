@@ -21,6 +21,7 @@ from llama_index.core.schema import NodeWithScore
 from llama_index.core.selectors import LLMSingleSelector
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.vector_stores import MetadataFilters
 
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -33,6 +34,7 @@ import openai
 from trulens_eval import Tru
 from utility import (
                 change_accumulate_engine_prompt_to_in_detail,
+                change_tree_engine_prompt_to_in_detail,
                 display_prompt_dict,
                 get_article_link, 
                 get_bm25_retriever_and_tree_sort_detail_engine,
@@ -42,6 +44,7 @@ from utility import (
                 get_summary_retriever_and_tree_detail_engine,
                 get_vector_retriever_and_tree_sort_detail_engine,
                 get_vector_store_docstore_and_storage_context,
+                PageSortNodePostprocessor,
                 print_retreived_nodes,
                 SortNodePostprocessor,
                 )
@@ -54,13 +57,13 @@ from database_operation import (
 def load_document_pdf(doc_link):
     loader = PyMuPDFReader()
     docs0 = loader.load(file_path=Path(doc_link))
-    docs = Document(
-        text="\n\n".join([doc.text for doc in docs0]))
+    # docs = Document(
+    #     text="\n\n".join([doc.text for doc in docs0]))
     # print(type(documents), "\n")
     # print(len(documents), "\n")
     # print(type(documents[0]))
     # print(documents[0])
-    return docs
+    return docs0
 
 def get_nodes_from_document_sentence_splitter(
         _documnet, 
@@ -73,7 +76,8 @@ def get_nodes_from_document_sentence_splitter(
                                 chunk_size=_chunk_size,
                                 chunk_overlap=_chunk_overlap
                                 )
-    _nodes = node_parser.get_nodes_from_documents([_documnet])
+    # _nodes = node_parser.get_nodes_from_documents([_documnet])
+    _nodes = node_parser.get_nodes_from_documents(_documnet)
 
     return _nodes
 
@@ -149,11 +153,11 @@ embed_model_dim = 1536  # for text-embedding-3-small
 embed_model_name = "openai_embedding_3_small"
 
 # Create article link
-article_dictory = "metagpt"
-article_name = "metagpt.pdf"
+# article_dictory = "metagpt"
+# article_name = "metagpt.pdf"
 
-# article_dictory = "paul_graham"
-# article_name = "paul_graham_essay.pdf"
+article_dictory = "paul_graham"
+article_name = "paul_graham_essay.pdf"
 
 article_link = get_article_link(article_dictory,
                                 article_name
@@ -269,6 +273,45 @@ vector_tree_sort_detail_engine) = get_vector_retriever_and_tree_sort_detail_engi
                                                                         similarity_top_k,
                                                                         )
 
+vector_filter_retriever = vector_index.as_retriever(
+    similarity_top_k=similarity_top_k,
+    filters=MetadataFilters.from_dicts(
+        [
+            {
+                "key": "source", 
+                # "value": ["1", "2"],
+                "value": ["1", "2", "3"],
+                "operator": "in"
+            }
+        ]
+    )
+)
+
+vector_tree_filter_sort_engine = RetrieverQueryEngine.from_args(
+    retriever=vector_filter_retriever, 
+    response_mode="tree_summarize",
+    node_postprocessors=[PageSortNodePostprocessor()],
+    )
+
+vector_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
+                                                            vector_tree_filter_sort_engine
+                                                            )
+
+# vector_filter_engine = vector_index.as_query_engine(
+#     similarity_top_k=2,
+#     filters=MetadataFilters.from_dicts(
+#         [
+#             {"key": "source", "value": "2"}
+#         ]
+#     )
+# )
+
+# response = vector_filter_engine.query(
+#     "What are some high-level results of MetaGPT?", 
+# )
+
+
+
 (bm25_retriever,
 bm25_tree_sort_detail_engine) = get_bm25_retriever_and_tree_sort_detail_engine(
                                                                         vector_docstore,
@@ -287,11 +330,11 @@ fusion_tree_sort_detail_engine) = get_fusion_retriever_and_tree_sort_detail_engi
 # Create an accumulate, fusion, and sort engine
 accumulate_fusion_sort_engine = RetrieverQueryEngine.from_args(
                                         retriever=fusion_retriever, 
-                                        node_postprocessors=[SortNodePostprocessor()],
+                                        node_postprocessors=[PageSortNodePostprocessor()],
                                         response_mode="accumulate",
                                         )
 
-accumulate_fusion_sort_engine = change_accumulate_engine_prompt_to_in_detail(
+accumulate_fusion_sort_detail_engine = change_accumulate_engine_prompt_to_in_detail(
                                                         accumulate_fusion_sort_engine
                                                         )
 
@@ -314,8 +357,9 @@ summary_tree_detail_engine) = get_summary_retriever_and_tree_detail_engine(
 # query_str = "What are told about YC (Y Combinator)?"
 # query_str = "What is the summary of the paul graham essay?"
 # query_str = "What is the summary of the MetaGPT paper?"
-query_str = "How do agents share information with other agents?"
+# query_str = "How do agents share information with other agents?"
 # query_str = "Tell me about the ablation study results."
+query_str = "Tell me about the early days of the author of this essay."
 # query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
@@ -379,7 +423,7 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 #     retriever=fusion_retriever, 
 #     node_postprocessors=[
 #         rerank,
-#         SortNodePostprocessor()
+#         PageSortNodePostprocessor()
 #         ],
 #     )
 
@@ -394,7 +438,7 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 #     retriever=fusion_retriever, 
 #     node_postprocessors=[
 #         rerank,
-#         SortNodePostprocessor()
+#         PageSortNodePostprocessor()
 #         ],
 #     response_mode="tree_summarize"
 #     )
@@ -403,7 +447,7 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 #     retriever=fusion_retriever, 
 #     node_postprocessors=[
 #         rerank,
-#         SortNodePostprocessor()
+#         PageSortNodePostprocessor()
 #         ],
 #     response_mode="accumulate",
 #     )
@@ -455,6 +499,17 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 
 
 
+response_filter = vector_tree_filter_sort_detail_engine.query(
+                                                        query_str
+                                                    )
+
+print(str(response_filter))
+
+for n in response_filter.source_nodes:
+    print(n.metadata)
+
+
+
 # Define query engine tools
 
 # paul_summary = "Useful for summarization questions related to the paul graham essay."
@@ -471,7 +526,7 @@ summary_tool = QueryEngineTool.from_defaults(
 # metagpt_specific = "Useful for retrieving specific context from the MetaGPT paper."
 
 vector_tool = QueryEngineTool.from_defaults(
-    query_engine=accumulate_fusion_sort_engine,
+    query_engine=accumulate_fusion_sort_detail_engine,
     description=(
         "Useful for retrieving specific context from the document."
     ),
@@ -517,6 +572,9 @@ response = query_engine.query(query_str)
 # print("\nTREE-SUMMARY-ENGINE:\n\n" + str(tree_summary_engin_response))
 
 print("\nTOOL-ENGINE:\n\n" + str(response))
+
+for n in response.source_nodes:
+    print(n.metadata)
 
 vector_store.client.release_collection(collection_name=collection_name_vector)
 vector_store.client.close()  
