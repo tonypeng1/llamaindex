@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from keybert import KeyBERT
 from llama_index.core import (
                         QueryBundle,
                         PromptTemplate,
@@ -450,6 +451,91 @@ def get_fusion_retriever_and_tree_sort_detail_engine(
     _tree_sort_detail_engine = change_tree_engine_prompt_to_in_detail(_tree_sort_engine)
 
     return _retriever, _tree_sort_detail_engine
+
+
+def get_keyword_from_query_str(query_str) -> list:
+
+    # Initialize KeyBERT model
+    kw_model = KeyBERT()
+
+    # keywords = kw_model.extract_keywords(query_str, keyphrase_ngram_range=(1, 1), top_n=3)
+    keywords = kw_model.extract_keywords(query_str, keyphrase_ngram_range=(1, 2), top_n=1)
+
+    return keywords[0][0]
+
+
+def retrieve_page_numbers_using_bm25_and_keyword(_bm25_retriever, _keyword) -> list:
+
+    bm25_nodes_from_keyword = _bm25_retriever.retrieve(_keyword)
+    bm25_nodes_from_keyword = [node.node for node in bm25_nodes_from_keyword ]  # get TextNode from ScoredNode
+
+    page_numbers = sorted([int(n.metadata["source"]) for n in bm25_nodes_from_keyword])  # sort using int values
+    page_numbers = [str(p) for p in page_numbers]  # convert back to str
+
+    return page_numbers
+
+
+def get_vector_tree_filter_sort_detail_engine(_vector_filter_retriever):
+
+    _vector_tree_filter_sort_engine = RetrieverQueryEngine.from_args(
+                                                retriever=_vector_filter_retriever, 
+                                                response_mode="tree_summarize",
+                                                node_postprocessors=[PageSortNodePostprocessor()],
+                                                )
+
+    _vector_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
+                                                            _vector_tree_filter_sort_engine
+                                                            )
+    
+    return _vector_tree_filter_sort_detail_engine
+
+
+def get_bm25_filter_retriever(_vector_filter_retriever, _query_str, _similarity_top_k):
+
+    # Get nodes for bm25 filter retriever
+    filtered_nodes = _vector_filter_retriever.retrieve(_query_str)
+    filtered_nodes = [node.node for node in filtered_nodes ]  # get TextNode from ScoredNode
+
+    # Create bm25 filter engine using filtered nodes
+    _bm25_filter_retriever = BM25Retriever.from_defaults(
+                                similarity_top_k=_similarity_top_k,
+                                nodes=filtered_nodes,
+                                )
+    
+    return _bm25_filter_retriever
+
+
+def get_fusion_accumulate_filter_sort_detail_engine(_vector_filter_retriever,
+                                                    _bm25_filter_retriever,
+                                                    _fusion_top_n,
+                                                    _num_queries
+                                                    ):
+    
+    # Create fusion filter retreiver and engine
+    _fusion_filter_retriever = QueryFusionRetriever(
+                                retrievers=[
+                                        _vector_filter_retriever, 
+                                        _bm25_filter_retriever
+                                        ],
+                                similarity_top_k=_fusion_top_n,
+                                num_queries=_num_queries,  # set this to 1 to disable query generation
+                                mode="reciprocal_rerank",
+                                use_async=True,
+                                verbose=True,
+                                # query_gen_prompt="...",  # for overriding the query generation prompt
+                                )
+
+    _fusion_accumulate_filter_sort_engine = RetrieverQueryEngine.from_args(
+                                            retriever=_fusion_filter_retriever, 
+                                            node_postprocessors=[PageSortNodePostprocessor()],
+                                            response_mode="accumulate",
+                                            )
+
+    _fusion_accumulate_filter_sort_detail_engine = change_accumulate_engine_prompt_to_in_detail(
+                                                            _fusion_accumulate_filter_sort_engine
+                                                            )
+    
+    return _fusion_accumulate_filter_sort_detail_engine
 
 
 def change_default_engine_prompt_to_in_detail(engine):

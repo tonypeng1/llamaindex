@@ -36,21 +36,26 @@ from llama_index.readers.file import (
 from llama_index.retrievers.bm25 import BM25Retriever
 
 import openai
-from trulens_eval import Tru
+# from trulens_eval import Tru
 from utility import (
                 change_accumulate_engine_prompt_to_in_detail,
                 change_tree_engine_prompt_to_in_detail,
                 display_prompt_dict,
                 get_article_link, 
+                get_bm25_filter_retriever,
                 get_bm25_retriever_and_tree_sort_detail_engine,
                 get_database_and_sentence_splitter_collection_name,
+                get_fusion_accumulate_filter_sort_detail_engine,
                 get_fusion_retriever_and_tree_sort_detail_engine,
+                get_keyword_from_query_str,
                 get_summary_storage_context,
                 get_summary_retriever_and_tree_detail_engine,
                 get_vector_retriever_and_tree_sort_detail_engine,
                 get_vector_store_docstore_and_storage_context,
+                get_vector_tree_filter_sort_detail_engine,
                 PageSortNodePostprocessor,
                 print_retreived_nodes,
+                retrieve_page_numbers_using_bm25_and_keyword,
                 SortNodePostprocessor,
                 )
 from database_operation import (
@@ -154,7 +159,7 @@ def mystery(x: int, y: int) -> int:
 
 # Set OpenAI API key, LLM, and embedding model
 openai.api_key = os.environ['OPENAI_API_KEY']
-llm = OpenAI(model="gpt-3.5-turbo", temperature=0.1)
+llm = OpenAI(model="gpt-3.5-turbo", temperature=0.0)
 Settings.llm = llm
 
 # embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
@@ -271,10 +276,10 @@ if add_document_summary == True:
 # info = storage_context_summary.docstore.get_all_ref_doc_info()
 
 # Set retriever parameters (based on the search query)
-similarity_top_k = 12
+similarity_top_k = 14
 num_queries = 1  # for QueryFusionRetriever() in utility.py
-fusion_top_n = 8
-rerank_top_n = 8
+fusion_top_n = 10
+# rerank_top_n = 6
 
 # similarity_top_k = 15
 # num_queries = 1  # for QueryFusionRetriever() in utility.py
@@ -335,32 +340,6 @@ summary_tree_detail_engine) = get_summary_retriever_and_tree_detail_engine(
                                                                     storage_context_summary
                                                                     )
 
-
-# Create vector filter retreiver and engine
-vector_filter_retriever = vector_index.as_retriever(
-                                similarity_top_k=similarity_top_k,
-                                filters=MetadataFilters.from_dicts(
-                                    [{
-                                        "key": "source", 
-                                        # "value": "11",
-                                        "value": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"],
-                                        "operator": "in"
-                                        # "operator": "<="
-                                    }]
-                                )
-                            )
-
-vector_tree_filter_sort_engine = RetrieverQueryEngine.from_args(
-    retriever=vector_filter_retriever, 
-    response_mode="tree_summarize",
-    node_postprocessors=[PageSortNodePostprocessor()],
-    )
-
-vector_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
-                                                            vector_tree_filter_sort_engine
-                                                            )
-
-
 # Add function tools
 add_tool = FunctionTool.from_defaults(fn=add)
 mystery_tool = FunctionTool.from_defaults(fn=mystery)
@@ -373,6 +352,7 @@ mystery_tool = FunctionTool.from_defaults(fn=mystery)
 #     )  
 
 # query_str = "What are the keys to building a career in AI?"
+
 # query_str = "What are the things that happen in New York?"
 # query_str = "What are the things that are mentioned about Sam Altman?"
 # query_str = "What are the things that are mentioned about startups?"
@@ -381,7 +361,7 @@ mystery_tool = FunctionTool.from_defaults(fn=mystery)
 # query_str = "What is the summary of the MetaGPT paper?"
 # query_str = "How do agents share information with other agents?"
 # query_str = "Tell me about the ablation study results."
-query_str = "Tell me about the school days of the author of this essay."
+# query_str = "Tell me about his school days."
 # query_str = "Tell me about the early days of the author of this essay."
 # query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
@@ -390,12 +370,14 @@ query_str = "Tell me about the school days of the author of this essay."
 # query_str = "Describe everything that is mentioned about Interleaf."
 # query_str = "Describe everything that is mentioned about Viaweb."
 # query_str = "What happened at Interleaf?"
-# query_str = "What happened at Interleaf and Viaweb?"
+query_str = "What happened at Interleaf and Viaweb?"
 # query_str = "What is the importance of networking in AI?"
+
 # query_str = (
 #     "What could be the potential outcomes of adjusting the amount of safety"
 #     " data used in the RLHF stage?"
 # )
+
 # summarize_query_str = "What is the summary of the paul graham essay?"
 
 
@@ -521,62 +503,72 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 # print(rerank_response.get_formatted_sources(length=2000))
 
 
+query_keyword = get_keyword_from_query_str(query_str)
 
-filtered_nodes = vector_filter_retriever.retrieve(query_str)
-filtered_nodes = [node.node for node in filtered_nodes ]  # get TextNode from ScoredNode
+print(f"\n\nThe keyword is: {query_keyword}\n")
 
-# Create bm25 filter engine
-bm25_filter_retriever = BM25Retriever.from_defaults(
-                            similarity_top_k=similarity_top_k,
-                            nodes=filtered_nodes,
+page_numbers = retrieve_page_numbers_using_bm25_and_keyword(bm25_retriever,
+                                                            query_keyword
+                                                            )
+
+for p in page_numbers:
+    print(f"bm25_nodes_from_keywords page number: {p}")
+
+
+# Create vector retreiver and engine with metadata filter using page numbers
+vector_filter_retriever = vector_index.as_retriever(
+                                similarity_top_k=similarity_top_k,
+                                filters=MetadataFilters.from_dicts(
+                                    [{
+                                        "key": "source", 
+                                        # "value": "11",
+                                        # "value": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"],
+                                        "value": page_numbers,
+                                        "operator": "in"
+                                        # "operator": "<="
+                                    }]
+                                )
                             )
 
-# Create fusion filter retreiver and engine
-fusion_filter_retriever = QueryFusionRetriever(
-                            retrievers=[
-                                    vector_filter_retriever, 
-                                    bm25_filter_retriever
-                                    ],
-                            similarity_top_k=fusion_top_n,
-                            num_queries=num_queries,  # set this to 1 to disable query generation
-                            mode="reciprocal_rerank",
-                            use_async=True,
-                            verbose=True,
-                            # query_gen_prompt="...",  # for overriding the query generation prompt
-                            )
-
-fusion_accumulate_filter_sort_engine = RetrieverQueryEngine.from_args(
-                                        retriever=fusion_filter_retriever, 
-                                        node_postprocessors=[PageSortNodePostprocessor()],
-                                        response_mode="accumulate",
-                                        )
-
-fusion_accumulate_filter_sort_detail_engine = change_accumulate_engine_prompt_to_in_detail(
-                                                        fusion_accumulate_filter_sort_engine
-                                                        )
+vector_tree_filter_sort_detail_engine = get_vector_tree_filter_sort_detail_engine(
+                                                                        vector_filter_retriever
+                                                                        )
 
 
-# filter vector response
+# Get bm25 filter retriever to build a fusion engine with metadata filter (query_str is for getting the nodes first)
+bm25_filter_retriever = get_bm25_filter_retriever(vector_filter_retriever, 
+                                            query_str, 
+                                            similarity_top_k
+                                            )
+
+# Get fusion accumulate filter sort detail engine
+fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(vector_filter_retriever,
+                                                                                    bm25_filter_retriever,
+                                                                                    fusion_top_n,
+                                                                                    num_queries
+                                                                                    )
+
+
+# Vector response with metadata filter (from limited pages)
 response_vector_filter = vector_tree_filter_sort_detail_engine.query(
                                                         query_str
-                                                    )
-print(str(response_vector_filter))
-
+                                                        )
+print("\nVECTOR-FILTER-ENGINE:\n\n" + str(response_vector_filter))
 for n in response_vector_filter.source_nodes:
-    print(n.metadata)
+    print(f"vector filter page number: {n.metadata['source']}")
 
 
-# filter fusion response
+# Fusion response with metadata filter (from limited pages)
 response_fusion_filter = fusion_accumulate_filter_sort_detail_engine.query(
                                                         query_str
                                                         )
-print(str(response_fusion_filter))
-
+print("\nFUSION-FILTER-ENGINE:\n\n" + str(response_fusion_filter))
 for n in response_fusion_filter.source_nodes:
-    print(n.metadata)
+    print(f"fusion filter page number: {n.metadata['source']}")
 
 
 
+# Demonstrate function tool
 response_tool = llm.predict_and_call(
                             [add_tool, mystery_tool], 
                             "Tell me the output of the mystery function on 2 and 9", 
@@ -585,11 +577,7 @@ response_tool = llm.predict_and_call(
 print(str(response_tool))
 
 
-# Define query engine tools
-
-# paul_summary = "Useful for summarization questions related to the paul graham essay."
-# metagpt_summary = "Useful for summarization questions related to the MetaGPT paper."
-
+# Define query engine tools to be used in the router query engine
 summary_tool = QueryEngineTool.from_defaults(
     query_engine=summary_tree_detail_engine,
     description=(
@@ -597,18 +585,14 @@ summary_tool = QueryEngineTool.from_defaults(
     ),
 )
 
-# paul_specific = "Useful for retrieving specific context from the paul graham essay."
-# metagpt_specific = "Useful for retrieving specific context from the MetaGPT paper."
-
 vector_tool = QueryEngineTool.from_defaults(
-    query_engine=accumulate_fusion_sort_detail_engine,
+    query_engine=accumulate_fusion_sort_detail_engine,  # from all pages
     description=(
         "Useful for retrieving specific context from the document."
     ),
 )
 
-# Define tool query engine
-query_engine = RouterQueryEngine(
+router_query_engine = RouterQueryEngine(
     selector=LLMSingleSelector.from_defaults(),
     query_engine_tools=[
         summary_tool,
@@ -617,8 +601,13 @@ query_engine = RouterQueryEngine(
     verbose=True
 )
 
-response = query_engine.query(query_str)
 
+response = router_query_engine.query(query_str)
+
+print("\nROUTER-TOOL-ENGINE (ALL PAGES):\n\n" + str(response))
+
+for n in response.source_nodes:
+    print(f"response all pages: {n.metadata['source']}")
 
 # Prints responses
 # print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
@@ -646,10 +635,7 @@ response = query_engine.query(query_str)
 
 # print("\nTREE-SUMMARY-ENGINE:\n\n" + str(tree_summary_engin_response))
 
-print("\nTOOL-ENGINE:\n\n" + str(response))
 
-for n in response.source_nodes:
-    print(n.metadata)
 
 vector_store.client.release_collection(collection_name=collection_name_vector)
 vector_store.client.close()  
