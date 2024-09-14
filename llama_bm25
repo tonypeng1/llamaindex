@@ -396,7 +396,10 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What is the summary of the MetaGPT paper?"
 # query_str = "How do agents share information with other agents?"
 # query_str = "What are the high-level results of MetaGPT as described on page 2?"
-query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
+# query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
+# query_str = "What are the MetaGPT comparisons with ChatDev described on page 8?"
+# query_str = "What are the MetaGPT comparisons with ChatDev?"
+query_str = "What are agent roles in MetaGPT, and then how they communicate with each other?"
 # query_str = "What are the high-level results of MetaGPT?"
 # query_str = "How does metagpt deal with halluciation?"
 # query_str = "What is SOPs and how do agents use it?"
@@ -730,7 +733,7 @@ response = llm.predict_and_call(
 # print("\nLLM PREDICT AND CALL:\n\n" + str(response))
 
 for i, n in enumerate(response.source_nodes):
-    print(f"Page {i} of LLM predict and call response: {n.metadata['source']}\n")
+    print(f"Page {i+1} of LLM predict and call response: {n.metadata['source']}\n")
 
 # Prints responses
 # print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
