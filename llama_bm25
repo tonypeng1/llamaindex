@@ -205,8 +205,12 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
 # llm = OpenAI(model="gpt-3.5-turbo", temperature=0.0)
 # Settings.llm = llm
 
-openai.api_key = os.environ['MISTRAL_API_KEY']
-llm = MistralAI(model="mistral-large-latest", temperature=0.0)
+mistral_api_key = os.environ['MISTRAL_API_KEY']
+llm = MistralAI(
+    model="mistral-large-latest", 
+    temperature=0.0,
+    api_key=mistral_api_key
+    )
 Settings.llm = llm
 
 
