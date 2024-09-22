@@ -94,8 +94,30 @@ def get_database_and_sentence_splitter_collection_name(
         ):
     
     _database_name = _article_dictory + "_" + _chunk_method
-    _collection_name = _embed_model_name + "_chunk_size_" + str(_chunk_size) + "_chunk_overlap_" + str(_chunk_overlap)
-    _collection_name_summary = _embed_model_name + "_chunk_size_" + str(_chunk_size) + "_chunk_overlap_" + str(_chunk_overlap) + "_summary"
+    _collection_name = _embed_model_name \
+                            + "_chunk_size_" + str(_chunk_size) \
+                            + "_chunk_overlap_" + str(_chunk_overlap)
+    _collection_name_summary = _embed_model_name \
+                            + "_chunk_size_" + str(_chunk_size) \
+                            + "_chunk_overlap_" + str(_chunk_overlap) \
+                            + "_summary"
+
+    return _database_name, _collection_name, _collection_name_summary
+
+
+def get_database_and_llamaparse_collection_name(
+        _article_dictory, 
+        _chunk_method, 
+        _embed_model_name,
+        _parse_method,
+        ):
+    
+    _database_name = _article_dictory + "_" + _chunk_method
+    _collection_name = _embed_model_name \
+                            + "_parse_method_" + _parse_method
+    _collection_name_summary = _embed_model_name \
+                            + "_parse_method_" + _parse_method \
+                            + "_summary"
 
     return _database_name, _collection_name, _collection_name_summary
 
@@ -326,6 +348,38 @@ def get_vector_store_docstore_and_storage_context(_uri_milvus,
         db_name=_database_name,
         collection_name=_collection_name_vector,
         dim=_embed_model_dim,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
+        enable_dynamic_field=False,
+        )
+
+    # Initiate MongoDB vector docstore (Not yet save to MongoDB server)
+    _vector_docstore = MongoDocumentStore.from_uri(
+        uri=_uri_mongo,
+        db_name=_database_name,
+        namespace=_collection_name_vector
+        )
+
+    # Initiate vector storage context: use Milvus as vector store and Mongo as docstore 
+    _storage_context_vector = StorageContext.from_defaults(
+        vector_store=_vector_store,
+        docstore=_vector_docstore
+        )
+    
+    return _vector_store, _vector_docstore, _storage_context_vector
+
+
+def get_llamaparse_vector_store_docstore_and_storage_context(_uri_milvus,
+                                                _uri_mongo,
+                                                _database_name,
+                                                _collection_name_vector,
+                                                _embed_model_dim):
+    
+    # Initiate vector store (a new empty collection will be created in Milvus server)
+    _vector_store = MilvusVectorStore(
+        uri=_uri_milvus,
+        db_name=_database_name,
+        collection_name=_collection_name_vector,
+        dim=_embed_model_dim,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
+        enable_dynamic_field=False,
         )
 
     # Initiate MongoDB vector docstore (Not yet save to MongoDB server)

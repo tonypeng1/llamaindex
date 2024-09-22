@@ -225,8 +225,11 @@ embed_model_dim = 1536  # for text-embedding-3-small
 embed_model_name = "openai_embedding_3_small"
 
 # Create article link
-article_dictory = "metagpt"
-article_name = "metagpt.pdf"
+# article_dictory = "metagpt"
+# article_name = "metagpt.pdf"
+
+article_dictory = "uber"
+article_name = "uber_10q_march_2022.pdf"
 
 # article_dictory = "paul_graham"
 # article_name = "paul_graham_essay.pdf"
