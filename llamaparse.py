@@ -227,7 +227,6 @@ query = "What is the gross bookings in 2022?"
 # query = "What is the status of the classification of drivers?"
 # query = "What is the comprehensive income (loss) attributable to Uber reported in 2021?"
 # query = "What is the comprehensive income (loss) attributable to Uber Technologies reported in 2022?"
-# query = "What is the comprehensive income (loss) attributable to Uber Technologies in the comprehensive income (loss) table reported in 2022?"
 
 response = recursive_query_engine.query(query)
 
