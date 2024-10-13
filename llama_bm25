@@ -146,15 +146,14 @@ def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
     return _refine_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
 
 
-def add(x: int, y: int) -> int:
-    """Adds two integers together."""
-    return x + y
+# def add(x: int, y: int) -> int:
+#     """Adds two integers together."""
+#     return x + y
 
 
-def mystery(x: int, y: int) -> int: 
-    """Mystery function that operates on top of two numbers."""
-    return (x + y) * (x + y)
-
+# def mystery(x: int, y: int) -> int: 
+#     """Mystery function that operates on top of two numbers."""
+#     return (x + y) * (x + y)
 
 
 def get_fusion_accumulate_page_filter_sort_detail_response(
@@ -162,7 +161,7 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
         page_numbers_: List[str]
         ) -> str:
     """
-    Perform a query search over the provided page number(s) and return the response.
+    Perform a query search over the index of pages and return the response.
     """
     # Create vector retreiver
     _vector_filter_retriever = vector_index.as_retriever(
@@ -209,6 +208,7 @@ mistral_api_key = os.environ['MISTRAL_API_KEY']
 llm = MistralAI(
     model="mistral-large-latest", 
     temperature=0.0,
+    max_tokens=2000,
     api_key=mistral_api_key
     )
 Settings.llm = llm
@@ -406,10 +406,11 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
 # query_str = "What are the MetaGPT comparisons with ChatDev described on page 8?"
 # query_str = "What are the MetaGPT comparisons with ChatDev?"
-query_str = "What are agent roles in MetaGPT, and then how they communicate with each other?"
+# query_str = "What are agent roles in MetaGPT, and then how they communicate with each other?"
 # query_str = "What are the high-level results of MetaGPT?"
 # query_str = "How does metagpt deal with halluciation?"
 # query_str = "What is SOPs and how do agents use it?"
+# query_str = "Tell me about the ablation study results."
 
 # query_str = "Tell me the output of the mystery function on 2 and 9."
 # query_str = "What is the sum of 2 and 9?"
@@ -417,11 +418,11 @@ query_str = "What are agent roles in MetaGPT, and then how they communicate with
 # query_str = "What are the things that happen in New York?"
 # query_str = "What are the things that are mentioned about Sam Altman?"
 # query_str = "What are the things that are mentioned about startups?"
-# query_str = "What are told about YC (Y Combinator)?"
+query_str = "What are mentioned about YC (Y Combinator)?"
 # query_str = "What is the summary of the paul graham essay?"
-# query_str = "Tell me about the ablation study results."
 # query_str = "Tell me about his school days."
 # query_str = "Tell me about the early days of the author of this essay."
+# query_str = "Describe the content on pages 19 and 20."
 # query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
@@ -582,8 +583,8 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 page_numbers = get_page_numbers_from_query_keyphrase(vector_docstore, 
                                                 similarity_top_k, 
                                                 query_str) 
-# for p in page_numbers:
-#     print(f"bm25_nodes_from_keywords page number: {p}")
+for p in page_numbers:
+    print(f"bm25_nodes_from_keywords page number: {p}")
 
 # fusion_keyphrase_tool: "Useful for retrieving specific context from the document."
 fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
@@ -675,9 +676,9 @@ fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
 #     print(f"vector filter page number: {n.metadata['source']}")
 
 
-# Add function tools
-add_tool = FunctionTool.from_defaults(fn=add)
-mystery_tool = FunctionTool.from_defaults(fn=mystery)
+# # Add function tools
+# add_tool = FunctionTool.from_defaults(fn=add)
+# mystery_tool = FunctionTool.from_defaults(fn=mystery)
 
 fusion_page_filter_tool = FunctionTool.from_defaults(
     name="page_filter_tool",
@@ -729,18 +730,28 @@ response = llm.predict_and_call(
                         tools=[
                             fusion_keyphrase_tool,
                             summary_tool,
-                            fusion_page_filter_tool,
-                            add_tool,
-                            mystery_tool
+                            fusion_page_filter_tool
                             ], 
                         user_msg=query_str, 
                         verbose=True
                         )
 
+# response = llm.predict_and_call(
+#                         tools=[
+#                             fusion_keyphrase_tool,
+#                             summary_tool,
+#                             fusion_page_filter_tool,
+#                             add_tool,
+#                             mystery_tool
+#                             ], 
+#                         user_msg=query_str, 
+#                         verbose=True
+#                         )
+
 # print("\nLLM PREDICT AND CALL:\n\n" + str(response))
 
 for i, n in enumerate(response.source_nodes):
-    print(f"Page {i+1} of LLM predict and call response: {n.metadata['source']}\n")
+    print(f"Item {i+1} of the source page of response: {n.metadata['source']}\n")
 
 # Prints responses
 # print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
