@@ -162,7 +162,7 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
         page_numbers_: List[str]
         ) -> str:
     """
-    Perform a query search over the index of page and return the response.
+    Perform a query search over the provided page number(s) and return the response.
     """
     # Create vector retreiver
     _vector_filter_retriever = vector_index.as_retriever(
@@ -228,11 +228,11 @@ embed_model_name = "openai_embedding_3_small"
 # article_dictory = "metagpt"
 # article_name = "metagpt.pdf"
 
-article_dictory = "uber"
-article_name = "uber_10q_march_2022.pdf"
+# article_dictory = "uber"
+# article_name = "uber_10q_march_2022.pdf"
 
-# article_dictory = "paul_graham"
-# article_name = "paul_graham_essay.pdf"
+article_dictory = "paul_graham"
+article_name = "paul_graham_essay.pdf"
 
 article_link = get_article_link(article_dictory,
                                 article_name

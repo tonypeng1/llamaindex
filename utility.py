@@ -760,7 +760,7 @@ def get_summary_tree_detail_tool(
         name="summary_tool",
         query_engine=_summary_tree_detail_engine,
         description=(
-            "Useful for summarization questions related to the documnet."
+            "Useful for summarization or full context questions related to the documnet."
         ),
     )
 
