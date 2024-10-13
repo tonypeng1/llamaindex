@@ -1,27 +1,18 @@
-import logging
 import os
 from pathlib import Path
-import sys
-from typing import List, Optional
+from typing import List
 
 from llama_index.core import (
-                        Document,
                         Settings,
                         VectorStoreIndex,
                         )
 from llama_index.core.indices.postprocessor import (
                         SentenceTransformerRerank,
-                        MetadataReplacementPostProcessor,
                         )
 from llama_index.core.node_parser import (
                         SentenceSplitter,
                         )
-from llama_index.core.query_engine.router_query_engine import RouterQueryEngine
-from llama_index.core.retrievers import QueryFusionRetriever
-from llama_index.core.schema import NodeWithScore
-from llama_index.core.selectors import LLMSingleSelector
 from llama_index.core.tools import (
-                        QueryEngineTool, 
                         FunctionTool
                         )
 from llama_index.core.query_engine import RetrieverQueryEngine
@@ -33,33 +24,18 @@ from llama_index.llms.openai import OpenAI
 from llama_index.readers.file import (
                         PyMuPDFReader,
                         )
-from llama_index.retrievers.bm25 import BM25Retriever
 
 import openai
 # from trulens_eval import Tru
 from utility import (
-                change_accumulate_engine_prompt_to_in_detail,
-                change_tree_engine_prompt_to_in_detail,
-                display_prompt_dict,
                 get_article_link, 
-                get_bm25_retriever,
-                get_bm25_filter_retriever,
                 get_database_and_sentence_splitter_collection_name,
-                get_fusion_accumulate_filter_sort_detail_engine,
                 get_fusion_accumulate_keyphrase_sort_detail_tool,
                 get_fusion_accumulate_page_filter_sort_detail_engine,
-                get_fusion_accumulate_sort_detail_engine,
-                get_fusion_accumulate_sort_detail_tool,
-                get_fusion_retriever,
                 get_page_numbers_from_query_keyphrase,
                 get_summary_storage_context,
                 get_summary_tree_detail_tool,
-                get_vector_retriever_and_tree_sort_detail_engine,
                 get_vector_store_docstore_and_storage_context,
-                get_vector_tree_filter_sort_detail_engine,
-                PageSortNodePostprocessor,
-                print_retreived_nodes,
-                SortNodePostprocessor,
                 )
 from database_operation import (
                 check_if_milvus_database_collection_exist,
@@ -67,23 +43,39 @@ from database_operation import (
                 )
 
 
-def load_document_pdf(doc_link):
+def load_document_pdf(doc_link) -> List:
+    """
+    This function loads a PDF document from a given link and returns it as a 
+    list of documents.
+
+    Parameters:
+    doc_link (str): The link to the PDF document.
+
+    Returns:
+    list: A list of documents extracted from the PDF.
+    """
     loader = PyMuPDFReader()
     docs0 = loader.load(file_path=Path(doc_link))
-    # docs = Document(
-    #     text="\n\n".join([doc.text for doc in docs0]))
-    # print(type(documents), "\n")
-    # print(len(documents), "\n")
-    # print(type(documents[0]))
-    # print(documents[0])
+
     return docs0
+
 
 def get_nodes_from_document_sentence_splitter(
         _documnet, 
         _chunk_size,
         _chunk_overlap
-        ):
-    
+        ) -> List:
+    """
+    This function splits a document into nodes based on sentence boundaries.
+
+    Parameters:
+    _document (List): A list of documents to be split into nodes.
+    _chunk_size (int): The size of each chunk.
+    _chunk_overlap (int): The amount of overlap between chunks.
+
+    Returns:
+    list: A list of nodes, where each node is a chunk of the document.
+    """
     # create the sentence spitter node parser
     node_parser = SentenceSplitter(
                                 chunk_size=_chunk_size,
@@ -99,105 +91,97 @@ def load_document_nodes_sentence_splitter(
     _article_link,
     _chunk_size,
     _chunk_overlap
-    ):
+    ) -> List:  
+    """
+    This function loads a document from a given link, splits it into nodes 
+    based on sentence boundaries, and returns these nodes.
+
+    Parameters:
+    _article_link (str): The URL or local file path of the document to be loaded.
+    _chunk_size (int): The maximum size of each node.
+    _chunk_overlap (int): The number of words that should overlap between consecutive nodes.
+
+    Returns:
+    _nodes (list): A list of nodes, where each node is a chunk of the document.
+    """
     # Only load and parse document if either index or docstore not saved.
     _document = load_document_pdf(_article_link)
     _nodes = get_nodes_from_document_sentence_splitter(
-        _document, 
+        _document,
         _chunk_size,
         _chunk_overlap
         )
     return _nodes
 
 
-def create_and_save_vector_index_to_milvus_database(_nodes):
-    _index = VectorStoreIndex(
+def create_and_save_vector_index_to_milvus_database(
+        _nodes,
+        _storage_context_vector
+        ) -> VectorStoreIndex:
+    """
+    This function creates and saves a vector index to a Milvus database.
+
+    Parameters:
+    _nodes (list): A list of nodes to be indexed. Each node should be an object 
+    that can be represented as a vector.
+    _storage_context_vector (StorageContext): The storage context for the vector 
+    store. This should be an instance of the StorageContext class from the Milvus 
+    library.
+
+    Returns:
+    VectorStoreIndex: An instance of the VectorStoreIndex class, which represents 
+    the created vector index.
+
+    The function takes a list of nodes and a storage context as input, creates 
+    a VectorStoreIndex object with these inputs, and then returns this object. 
+    The VectorStoreIndex object can be used to perform vector search operations 
+    on the indexed nodes.
+    """
+    _vector_index = VectorStoreIndex(
         nodes=_nodes,
-        storage_context=storage_context_vector,
+        storage_context=_storage_context_vector,
         )
-    return _index
-
-
-def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
-        _fusion_retriever,
-        _rerank_top_n,
-        _rerank
-        ):
-    
-    _refine_rerank_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever, 
-        similarity_top_k=_rerank_top_n,
-        node_postprocessors=[_rerank],
-        response_mode="refine",
-        )
-    _tree_rerank_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever, 
-        similarity_top_k=_rerank_top_n,
-        node_postprocessors=[_rerank],
-        response_mode="tree_summarize",
-        )
-    _accumulate_rerank_engine = RetrieverQueryEngine.from_args(
-        retriever=_fusion_retriever, 
-        similarity_top_k=_rerank_top_n,
-        node_postprocessors=[_rerank],
-        response_mode="accumulate",
-        )
-    
-    return _refine_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
-
-
-# def add(x: int, y: int) -> int:
-#     """Adds two integers together."""
-#     return x + y
-
-
-# def mystery(x: int, y: int) -> int: 
-#     """Mystery function that operates on top of two numbers."""
-#     return (x + y) * (x + y)
+    return _vector_index
 
 
 def get_fusion_accumulate_page_filter_sort_detail_response(
-        query_str_: str, 
-        page_numbers_: List[str]
+        _vector_index: VectorStoreIndex,
+        _similarity_top_k: int,
+        _query_str: str, 
+        _page_numbers: List[str]
         ) -> str:
-    """
-    Perform a query search over the index of pages and return the response.
-    """
-    # Create vector retreiver
-    _vector_filter_retriever = vector_index.as_retriever(
-                                    similarity_top_k=similarity_top_k,
+
+    # Create a vector retreiver with a filter on page numbers
+    _vector_filter_retriever = _vector_index.as_retriever(
+                                    similarity_top_k=_similarity_top_k,
                                     filters=MetadataFilters.from_dicts(
                                         [{
                                             "key": "source", 
-                                            "value": page_numbers_,
+                                            "value": _page_numbers,
                                             "operator": "in"
                                         }]
                                     )
                                 )
     
-    # Calculate the number of nodes retrieved
-    _nodes = _vector_filter_retriever.retrieve(query_str_)
+    # Calculate the number of nodes retrieved from the vector index on these pages
+    _nodes = _vector_filter_retriever.retrieve(_query_str)
 
-    similarity_top_k_filter_ = len(_nodes)
-    fusion_top_n_filter_ = len(_nodes)
-    num_queries_filter_ = 1
+    _similarity_top_k_filter = len(_nodes)
+    _fusion_top_n_filter = len(_nodes)
+    _num_queries_filter = 1
 
     _fusion_accumulate_page_filter_sort_detail_engine = get_fusion_accumulate_page_filter_sort_detail_engine(
-                                                                            vector_index,
-                                                                            similarity_top_k_filter_,
-                                                                            page_numbers_,
-                                                                            fusion_top_n_filter_,
-                                                                            query_str_,
-                                                                            num_queries_filter_,
+                                                                            _vector_filter_retriever,
+                                                                            _similarity_top_k_filter,
+                                                                            _fusion_top_n_filter,
+                                                                            _query_str,
+                                                                            _num_queries_filter,
                                                                             )
     
-    _response = _fusion_accumulate_page_filter_sort_detail_engine.query(query_str_)
+    _response = _fusion_accumulate_page_filter_sort_detail_engine.query(_query_str)
     
     return _response
 
-# # Set up logging
-# logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-# logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 # Set OpenAI API key, LLM, and embedding model
 # openai.api_key = os.environ['OPENAI_API_KEY']
@@ -231,6 +215,9 @@ embed_model_name = "openai_embedding_3_small"
 # article_dictory = "uber"
 # article_name = "uber_10q_march_2022.pdf"
 
+# article_dictory = "andrew"
+# article_name = "eBook-How-to-Build-a-Career-in-AI.pdf"
+
 article_dictory = "paul_graham"
 article_name = "paul_graham_essay.pdf"
 
@@ -238,8 +225,7 @@ article_link = get_article_link(article_dictory,
                                 article_name
                                 )
 
-# article_dictory = "andrew"
-# article_name = "eBook-How-to-Build-a-Career-in-AI.pdf"
+
 
 # Create database and collection names
 chunk_method = "sentence_splitter"
@@ -751,7 +737,7 @@ response = llm.predict_and_call(
 # print("\nLLM PREDICT AND CALL:\n\n" + str(response))
 
 for i, n in enumerate(response.source_nodes):
-    print(f"Item {i+1} of the source page of response: {n.metadata['source']}\n")
+    print(f"Item {i+1} of the source page of response is page: {n.metadata['source']}\n")
 
 # Prints responses
 # print("\nVECTOR-ENGINE:\n\n" + str(vector_response))

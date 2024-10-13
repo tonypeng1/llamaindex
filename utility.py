@@ -613,16 +613,20 @@ def get_vector_tree_filter_sort_detail_engine(_vector_filter_retriever):
     return _vector_tree_filter_sort_detail_engine
 
 
-def get_bm25_filter_retriever(_vector_filter_retriever, _query_str, _similarity_top_k):
+def get_bm25_filter_retriever(
+        _vector_filter_retriever, 
+        _query_str, 
+        _similarity_top_k_filter
+        ):
 
     # Get nodes for bm25 filter retriever
-    filtered_nodes = _vector_filter_retriever.retrieve(_query_str)
-    filtered_nodes = [node.node for node in filtered_nodes ]  # get TextNode from ScoredNode
+    score_nodes = _vector_filter_retriever.retrieve(_query_str)
+    text_nodes = [node.node for node in score_nodes ]  # get TextNode from ScoredNode
 
     # Create bm25 filter engine using filtered nodes
     _bm25_filter_retriever = BM25Retriever.from_defaults(
-                                similarity_top_k=_similarity_top_k,
-                                nodes=filtered_nodes,
+                                similarity_top_k=_similarity_top_k_filter,
+                                nodes=text_nodes,
                                 )
     
     return _bm25_filter_retriever
@@ -814,38 +818,38 @@ def get_fusion_accumulate_keyphrase_sort_detail_tool(
 
 
 def get_fusion_accumulate_page_filter_sort_detail_engine(
-                                            _vector_index,
-                                            _similarity_top_k,
-                                            _page_numbers,
-                                            _fusion_top_n,
+                                            _vector_filter_retriever,
+                                            _similarity_top_k_filter,
+                                            _fusion_top_n_filter,
                                             _query_str,
-                                            _num_queries,
+                                            _num_queries_filter,
                                             ):
 
-    # Create vector retreiver and engine with metadata filter using page numbers
-    _vector_filter_retriever = _vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k,
-                                    filters=MetadataFilters.from_dicts(
-                                        [{
-                                            "key": "source", 
-                                            "value": _page_numbers,
-                                            "operator": "in"
-                                        }]
-                                    )
-                                )
+    # # Create vector retreiver and engine with metadata filter using page numbers
+    # _vector_filter_retriever = _vector_index.as_retriever(
+    #                                 similarity_top_k=_similarity_top_k_filter,
+    #                                 filters=MetadataFilters.from_dicts(
+    #                                     [{
+    #                                         "key": "source", 
+    #                                         "value": _page_numbers,
+    #                                         "operator": "in"
+    #                                     }]
+    #                                 )
+    #                             )
 
     # Get bm25 filter retriever to build a fusion engine with metadata filter (query_str is for getting the nodes first)
-    _bm25_filter_retriever = get_bm25_filter_retriever(_vector_filter_retriever, 
+    _bm25_filter_retriever = get_bm25_filter_retriever(
+                                                _vector_filter_retriever, 
                                                 _query_str, 
-                                                _similarity_top_k
+                                                _similarity_top_k_filter
                                                 )
 
     # Get fusion accumulate filter sort detail engine
     _fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(
                                                                         _vector_filter_retriever,
                                                                         _bm25_filter_retriever,
-                                                                        _fusion_top_n,
-                                                                        _num_queries
+                                                                        _fusion_top_n_filter,
+                                                                        _num_queries_filter
                                                                         )
 
     return _fusion_accumulate_filter_sort_detail_engine
