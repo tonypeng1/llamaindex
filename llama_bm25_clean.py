@@ -366,7 +366,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Who is Jessica Livingston?"  # NOT A GOOD PROMPT
 # query_str = "Who is Jessica?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about Sam Altman?"
-query_str = "What are the things that are mentioned about Jessica Livingston?"  # BETTER PROMPT
+# query_str = "What are the things that are mentioned about Jessica Livingston?"  # BETTER PROMPT
 # query_str = "Who is Sam Altman?"  # NOT A GOOD PROMPT
 # query_str = "Who is Sam?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about startups?"
@@ -384,6 +384,13 @@ query_str = "What are the things that are mentioned about Jessica Livingston?"  
 # query_str = "Describe everything that is mentioned about Viaweb."
 # query_str = "What happened at Interleaf?"
 # query_str = "What happened at Interleaf and Viaweb?"
+# query_str = "What are the lessions learned by the author from his experience at Interleaf and Viaweb?"
+# query_str = (
+#     "What are the lessons learned by the author from his experience at the companies Interleaf"
+#      " and Viaweb?")
+query_str = (
+    "What are the specific lessons learned by the author from his experience at the companies Interleaf"
+     " and Viaweb?")
 
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
@@ -402,7 +409,7 @@ similarity_top_k = 12
 num_queries = 1  # for QueryFusionRetriever() in utility.py
 fusion_top_n = 10
 
-rerank_top_n = 8
+rerank_top_n = 10
 
 # Define reranker
 rerank_model = "BAAI/bge-reranker-base"

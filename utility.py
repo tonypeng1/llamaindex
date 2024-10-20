@@ -595,10 +595,22 @@ def get_keyphrase_from_query_str(query_str) -> str:
     kw_model = KeyBERT()
 
     # Extract keywords (keyphrases) from the query string
-    keywords = kw_model.extract_keywords(query_str, keyphrase_ngram_range=(1, 3), top_n=1)
+    keywords = kw_model.extract_keywords(
+                                docs=query_str, 
+                                keyphrase_ngram_range=(3, 3), 
+                                # use_maxsum=True,
+                                # nr_candidates=5,
+                                top_n=3,
+                                )
+    keywords_set = set()
+    for k in keywords:
+        keywords_set.update(k[0].split())
 
-    # Return the first (and only) keyphrase
-    return keywords[0][0]
+    final_keywords = str()
+    for i in keywords_set:
+        final_keywords = final_keywords + " " + i
+
+    return final_keywords.lstrip()  # Remove leading whitespace and return the final keyphrase
 
 
 
@@ -866,10 +878,11 @@ def get_fusion_accumulate_keyphrase_sort_detail_tool(
     """
     This function creates a QueryEngineTool that uses a fusion accumulate filter sort detail 
     engine. The engine is built using a vector retriever and a BM25 filter retriever. The 
-    vector retriever is created with a metadata filter using the provided page numbers. The 
-    BM25 filter retriever is built using the vector retriever and a query string. The fusion 
-    accumulate filter sort detail engine is then created using the vector retriever, the BM25 
-    filter retriever, the fusion top n, the number of queries, and a rerank object.
+    vector retriever is created with a metadata filter using the provided page numbers (obtained 
+    from the keyphrase of query). The BM25 filter retriever is built using the vector retriever 
+    and a query string. The fusion accumulate filter sort detail engine is then created using the 
+    vector retriever, the BM25 filter retriever, the fusion top n, the number of queries, and a 
+    rerank object.
 
     Args:
         _vector_index (VectorStoreIndex): The vector store index.
@@ -897,6 +910,11 @@ def get_fusion_accumulate_keyphrase_sort_detail_tool(
                                     )
                                 )
 
+    # Create vector retreiver (against a query) with metadata filter using page numbers
+    _vector_retriever = _vector_index.as_retriever(
+                                    similarity_top_k=_similarity_top_k,
+                                )
+
     # Get bm25 filter retriever to build a fusion engine with metadata filter 
     # (query_str is for getting the nodes first)
     _bm25_filter_retriever = get_bm25_filter_retriever(
@@ -907,7 +925,8 @@ def get_fusion_accumulate_keyphrase_sort_detail_tool(
 
     # Get fusion accumulate filter sort detail engine
     _fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(
-                                                                        _vector_filter_retriever,
+                                                                        # _vector_filter_retriever,
+                                                                        _vector_retriever,
                                                                         _bm25_filter_retriever,
                                                                         _fusion_top_n,
                                                                         _num_queries,
