@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+from pydantic import Field
 import sys
 from typing import List, Optional
 
@@ -147,7 +148,7 @@ def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
 
 
 # def add(x: int, y: int) -> int:
-#     """Adds two integers together."""
+#     """Add two integers together."""
 #     return x + y
 
 
@@ -157,11 +158,15 @@ def get_rerank_refine_tree_and_accumulate_engine_from_retriever(
 
 
 def get_fusion_accumulate_page_filter_sort_detail_response(
-        query_str_: str, 
-        page_numbers_: List[str]
+        query_str_: str = Field(
+            description="A query string that contains instruction on information on specific pages"
+        ), 
+        page_numbers_: List[str] = Field(
+            description="The specific page numbers mentioned iin the query string"
+        )
         ) -> str:
     """
-    Perform a query search over the index of pages and return the response.
+    Perform a query search over the index of pages mentioned in the query and return the response.
     """
     # Create vector retreiver
     _vector_filter_retriever = vector_index.as_retriever(
@@ -178,17 +183,16 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
     # Calculate the number of nodes retrieved
     _nodes = _vector_filter_retriever.retrieve(query_str_)
 
-    similarity_top_k_filter_ = len(_nodes)
-    fusion_top_n_filter_ = len(_nodes)
-    num_queries_filter_ = 1
+    _similarity_top_k_filter = len(_nodes)
+    _fusion_top_n_filter = len(_nodes)
+    _num_queries_filter = 1
 
     _fusion_accumulate_page_filter_sort_detail_engine = get_fusion_accumulate_page_filter_sort_detail_engine(
-                                                                            vector_index,
-                                                                            similarity_top_k_filter_,
-                                                                            page_numbers_,
-                                                                            fusion_top_n_filter_,
+                                                                            _vector_filter_retriever,
+                                                                            _similarity_top_k_filter,
+                                                                            _fusion_top_n_filter,
                                                                             query_str_,
-                                                                            num_queries_filter_,
+                                                                            _num_queries_filter,
                                                                             )
     
     _response = _fusion_accumulate_page_filter_sort_detail_engine.query(query_str_)
@@ -418,7 +422,8 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What are the things that happen in New York?"
 # query_str = "What are the things that are mentioned about Sam Altman?"
 # query_str = "What are the things that are mentioned about startups?"
-query_str = "What are mentioned about YC (Y Combinator)?"
+# query_str = "What are mentioned about YC (Y Combinator)?"
+query_str = "What are mentioned about YC (Y Combinator) on page 19?"
 # query_str = "What is the summary of the paul graham essay?"
 # query_str = "Tell me about his school days."
 # query_str = "Tell me about the early days of the author of this essay."
@@ -682,7 +687,8 @@ fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
 
 fusion_page_filter_tool = FunctionTool.from_defaults(
     name="page_filter_tool",
-    fn=get_fusion_accumulate_page_filter_sort_detail_response
+    fn=get_fusion_accumulate_page_filter_sort_detail_response,
+    description="Perform a query search over the index of pages mentioned in the query."
 )
 
 
