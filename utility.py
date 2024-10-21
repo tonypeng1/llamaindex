@@ -877,12 +877,10 @@ def get_fusion_accumulate_keyphrase_sort_detail_tool(
                                             ) -> QueryEngineTool:
     """
     This function creates a QueryEngineTool that uses a fusion accumulate filter sort detail 
-    engine. The engine is built using a vector retriever and a BM25 filter retriever. The 
-    vector retriever is created with a metadata filter using the provided page numbers (obtained 
-    from the keyphrase of query). The BM25 filter retriever is built using the vector retriever 
-    and a query string. The fusion accumulate filter sort detail engine is then created using the 
-    vector retriever, the BM25 filter retriever, the fusion top n, the number of queries, and a 
-    rerank object.
+    engine. The engine is built using a vector retriever and a BM25 filter retriever. The BM25 
+    filter retriever is built using the vector filter retriever and a query string. The fusion 
+    accumulate filter sort detail engine is then created using the vector retriever, the BM25 
+    filter retriever, the fusion top n, the number of queries, and a rerank object.
 
     Args:
         _vector_index (VectorStoreIndex): The vector store index.
@@ -923,7 +921,8 @@ def get_fusion_accumulate_keyphrase_sort_detail_tool(
                                                     _similarity_top_k
                                                     )
 
-    # Get fusion accumulate filter sort detail engine
+    # Get fusion accumulate filter sort detail engine using _bm25_filter_retriever 
+    # and _vector_retriever (Note: _vector_filter_retriever is not used in this engine)
     _fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(
                                                                         # _vector_filter_retriever,
                                                                         _vector_retriever,

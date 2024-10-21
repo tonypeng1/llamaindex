@@ -5,6 +5,7 @@ from typing import List
 
 from llama_index.core import (
                         Settings,
+                        StorageContext,
                         VectorStoreIndex,
                         )
 from llama_index.core.indices.postprocessor import (
@@ -16,7 +17,6 @@ from llama_index.core.node_parser import (
 from llama_index.core.tools import (
                         FunctionTool
                         )
-from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.vector_stores import MetadataFilters
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -89,10 +89,10 @@ def get_nodes_from_document_sentence_splitter(
 
 
 def load_document_nodes_sentence_splitter(
-    _article_link,
-    _chunk_size,
-    _chunk_overlap
-    ) -> List:  
+                                _article_link: str,
+                                _chunk_size: int,
+                                _chunk_overlap: int
+                                ) -> List:  
     """
     This function loads a document from a given link, splits it into nodes 
     based on sentence boundaries, and returns these nodes.
@@ -117,8 +117,8 @@ def load_document_nodes_sentence_splitter(
 
 
 def create_and_save_vector_index_to_milvus_database(
-        _nodes,
-        _storage_context_vector
+        _nodes: List,
+        _storage_context_vector: StorageContext
         ) -> VectorStoreIndex:
     """
     This function creates and saves a vector index to a Milvus database.
@@ -373,8 +373,11 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What are mentioned about YC (Y Combinator)?"
 # query_str = "What are mentioned about YC (Y Combinator) on page 19?"
 # query_str = "What is the summary of the paul graham essay?"
-# query_str = "Tell me about his school days."
-# query_str = "Tell me about the early days of the author of this essay."
+# query_str = "Author's school days."
+# query_str = "What are the schools that the author attended?"
+# query_str = "What are the specific things that happened at Rhode Island School of Design (RISD)"
+# query_str = "What happen in the author's early days?"
+# query_str = "What are the specific things that happened in the author's early days?"
 # query_str = "Describe the content on pages 19 and 20."
 # query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
@@ -388,10 +391,10 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = (
 #     "What are the lessons learned by the author from his experience at the companies Interleaf"
 #      " and Viaweb?")
-query_str = (
-    "What are the specific lessons learned by the author from his experience at the companies Interleaf"
-     " and Viaweb?")
-
+# query_str = (
+#     "What are the specific lessons learned by the author from his experience at the companies Interleaf"
+#      " and Viaweb?")
+query_str = "At what school did the author enter a BFA program in painting?"
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
@@ -418,7 +421,7 @@ rerank = SentenceTransformerRerank(
     model=rerank_model,
     )
 
-# fusion_keyphrase_tool: "Useful for retrieving specific context from the document."
+# fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
 fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
                                                                     vector_index,
                                                                     similarity_top_k,
