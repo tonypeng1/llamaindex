@@ -33,6 +33,8 @@ from utility import (
                 get_database_and_sentence_splitter_collection_name,
                 get_fusion_accumulate_keyphrase_sort_detail_tool,
                 get_fusion_accumulate_page_filter_sort_detail_engine,
+                get_fusion_tree_keyphrase_sort_detail_tool,
+                get_fusion_tree_page_filter_sort_detail_engine,
                 get_page_numbers_from_query_keyphrase,
                 get_summary_storage_context,
                 get_summary_tree_detail_tool,
@@ -146,7 +148,60 @@ def create_and_save_vector_index_to_milvus_database(
     return _vector_index
 
 
-def get_fusion_accumulate_page_filter_sort_detail_response(
+# def get_fusion_accumulate_page_filter_sort_detail_response(
+#         query_str_: str = Field(
+#             description="A query string that contains instruction on information on specific pages"
+#         ), 
+#         page_numbers_: List[str] = Field(
+#             description="The specific page numbers mentioned iin the query string"
+#         )
+#         ) -> str:
+#     """
+#     This function generates a response based on a query string and a list of specific page numbers in
+#     this query. It creates a vector retriever with a filter on the specified page numbers, retrieves 
+#     relevant nodes, and uses them to generate a response using a fusion accumulate page filter sort 
+#     detail engine.
+
+#     Parameters:
+#     query_str_ (str): A query string that contains instructions about the information on specific pages.
+#     page_numbers_ (List[str]): A list of specific page numbers mentioned in the query string.
+
+#     Returns:
+#     str: A response generated based on the query string and the specified page numbers.
+#     """
+#     # Create a vector retreiver with a filter on page numbers
+#     _vector_filter_retriever = vector_index.as_retriever(
+#                                     similarity_top_k=similarity_top_k,
+#                                     filters=MetadataFilters.from_dicts(
+#                                         [{
+#                                             "key": "source", 
+#                                             "value": page_numbers_,
+#                                             "operator": "in"
+#                                         }]
+#                                     )
+#                                 )
+    
+#     # Calculate the number of nodes retrieved from the vector index on these pages
+#     _nodes = _vector_filter_retriever.retrieve(query_str_)
+
+#     _similarity_top_k_filter = len(_nodes)
+#     _fusion_top_n_filter = len(_nodes)
+#     _num_queries_filter = 1
+
+#     _fusion_accumulate_page_filter_sort_detail_engine = get_fusion_accumulate_page_filter_sort_detail_engine(
+#                                                                             _vector_filter_retriever,
+#                                                                             _similarity_top_k_filter,
+#                                                                             _fusion_top_n_filter,
+#                                                                             query_str_,
+#                                                                             _num_queries_filter,
+#                                                                             )
+    
+#     _response = _fusion_accumulate_page_filter_sort_detail_engine.query(query_str_)
+    
+#     return _response
+
+
+def get_fusion_tree_page_filter_sort_detail_response(
         query_str_: str = Field(
             description="A query string that contains instruction on information on specific pages"
         ), 
@@ -157,8 +212,8 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
     """
     This function generates a response based on a query string and a list of specific page numbers in
     this query. It creates a vector retriever with a filter on the specified page numbers, retrieves 
-    relevant nodes, and uses them to generate a response using a fusion accumulate page filter sort 
-    detail engine.
+    relevant nodes, and uses them to generate a response using a fusion tree page filter sort detail 
+    engine.
 
     Parameters:
     query_str_ (str): A query string that contains instructions about the information on specific pages.
@@ -186,7 +241,7 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
     _fusion_top_n_filter = len(_nodes)
     _num_queries_filter = 1
 
-    _fusion_accumulate_page_filter_sort_detail_engine = get_fusion_accumulate_page_filter_sort_detail_engine(
+    _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
                                                                             _vector_filter_retriever,
                                                                             _similarity_top_k_filter,
                                                                             _fusion_top_n_filter,
@@ -194,7 +249,7 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
                                                                             _num_queries_filter,
                                                                             )
     
-    _response = _fusion_accumulate_page_filter_sort_detail_engine.query(query_str_)
+    _response = _fusion_tree_page_filter_sort_detail_engine.query(query_str_)
     
     return _response
 
@@ -379,7 +434,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What happen in the author's early days?"
 # query_str = "What are the specific things that happened in the author's early days?"
 # query_str = "Describe the content on pages 19 and 20."
-# query_str = "Who have been the president of YC (Y Combinator)?"
+query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
 # query_str = "Describe everything that is mentioned about Interleaf one by one."
@@ -394,7 +449,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = (
 #     "What are the specific lessons learned by the author from his experience at the companies Interleaf"
 #      " and Viaweb?")
-query_str = "At what school did the author enter a BFA program in painting?"
+# query_str = "At what school did the author attend a BFA program in painting?"
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
@@ -421,20 +476,31 @@ rerank = SentenceTransformerRerank(
     model=rerank_model,
     )
 
+# # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
+# fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
+#                                                                     vector_index,
+#                                                                     similarity_top_k,
+#                                                                     page_numbers,
+#                                                                     fusion_top_n,
+#                                                                     query_str,
+#                                                                     num_queries,
+#                                                                     rerank
+#                                                                     )
+
 # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
-fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
-                                                                    vector_index,
-                                                                    similarity_top_k,
-                                                                    page_numbers,
-                                                                    fusion_top_n,
-                                                                    query_str,
-                                                                    num_queries,
-                                                                    rerank
-                                                                    )
+fusion_keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
+                                                            vector_index,
+                                                            similarity_top_k,
+                                                            page_numbers,
+                                                            fusion_top_n,
+                                                            query_str,
+                                                            num_queries,
+                                                            rerank
+                                                            )
 
 fusion_page_filter_tool = FunctionTool.from_defaults(
     name="page_filter_tool",
-    fn=get_fusion_accumulate_page_filter_sort_detail_response,
+    fn=get_fusion_tree_page_filter_sort_detail_response,
     description="Perform a query search over the index of pages mentioned in the query."
 )
 
