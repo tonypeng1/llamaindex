@@ -1,13 +1,21 @@
+# import logging
 import os
 from pathlib import Path
+import pprint
 from pydantic import Field
 from typing import List
 
+# from readable_log_formatter import ReadableFormatter
 from llama_index.core import (
                         Settings,
                         StorageContext,
                         VectorStoreIndex,
                         )
+from llama_index.core.callbacks import (
+    CallbackManager,
+    LlamaDebugHandler,
+    CBEventType,
+)
 from llama_index.core.indices.postprocessor import (
                         SentenceTransformerRerank,
                         )
@@ -22,6 +30,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.mistralai import MistralAI
 from llama_index.llms.openai import OpenAI
+from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.readers.file import (
                         PyMuPDFReader,
                         )
@@ -44,6 +53,30 @@ from database_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
+
+# # Create a logger
+# logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
+
+# # Create a console handler and set the level to DEBUG
+# hndl = logging.StreamHandler()
+# hndl.setLevel(logging.DEBUG)
+
+# # Use the ReadableFormatter
+# hndl.setFormatter(ReadableFormatter())
+
+# # Add the handler to the logger
+# logger.addHandler(hndl)
+
+
+# class CustomLlamaDebugHandler(LlamaDebugHandler):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.logger = logger
+
+#     def _log_event(self, event):
+#         # Log the event using the configured logger
+#         self.logger.debug(f"Event: {event}")
 
 
 def load_document_pdf(doc_link) -> List:
@@ -141,9 +174,12 @@ def create_and_save_vector_index_to_milvus_database(
     The VectorStoreIndex object can be used to perform vector search operations 
     on the indexed nodes.
     """
+    llama_debug = LlamaDebugHandler(print_trace_on_end=True)
+    callback_manager = CallbackManager([llama_debug])
     _vector_index = VectorStoreIndex(
         nodes=_nodes,
         storage_context=_storage_context_vector,
+        callback_manager=callback_manager,
         )
     return _vector_index
 
@@ -203,10 +239,10 @@ def create_and_save_vector_index_to_milvus_database(
 
 def get_fusion_tree_page_filter_sort_detail_response(
         query_str_: str = Field(
-            description="A query string that contains instruction on information on specific pages"
+            description="A query string that is intersted only about information on specific pages."
         ), 
         page_numbers_: List[str] = Field(
-            description="The specific page numbers mentioned iin the query string"
+            description="The specific page numbers mentioned in the query string"
         )
         ) -> str:
     """
@@ -278,6 +314,11 @@ embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
 Settings.embed_model = embed_model
 embed_model_dim = 1536  # for text-embedding-3-small
 embed_model_name = "openai_embedding_3_small"
+
+# Create debug handler
+llama_debug = LlamaDebugHandler(print_trace_on_end=True)
+callback_manager = CallbackManager([llama_debug])
+Settings.callback_manager = callback_manager
 
 # Create article link
 # article_dictory = "metagpt"
@@ -367,7 +408,12 @@ if save_index_vector or add_document_vector or add_document_summary:
                                                     )
 
 if save_index_vector == True:
-    vector_index = create_and_save_vector_index_to_milvus_database(extracted_nodes)
+    # vector_index = create_and_save_vector_index_to_milvus_database(extracted_nodes)
+    vector_index = VectorStoreIndex(
+        nodes=extracted_nodes,
+        storage_context=storage_context_vector,
+        callback_manager=callback_manager,
+        )
 
 else:
     # Load from Milvus database
@@ -391,7 +437,16 @@ if add_document_summary == True:
 # fusion_top_n_filter = 6
 
 # summary_tool: "Useful for summarization or for full context questions related to the documnet"
+
+summary_tool_description = (
+            "Useful for summarization or for full context questions related to the document. "
+            "Call this function when user ask to: 'Summarize the document' or 'Give me an overview' "
+            "or 'What is the main idea of the document?' or 'What is the document about?' "
+            "or 'Create document outlines' or 'Create table of contents'."
+            )
+
 summary_tool = get_summary_tree_detail_tool(
+                                        summary_tool_description,
                                         storage_context_summary
                                         )
 
@@ -426,7 +481,8 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Who is Sam?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about startups?"
 # query_str = "What are mentioned about YC (Y Combinator)?"
-# query_str = "What are mentioned about YC (Y Combinator) on page 19?"
+# query_str = "What are mentioned about YC (Y Combinator) on pages 19 and 20?"
+# query_str = "What are the contents from page 2 to page 4"
 # query_str = "What is the summary of the paul graham essay?"
 # query_str = "Author's school days."
 # query_str = "What are the schools that the author attended?"
@@ -434,7 +490,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What happen in the author's early days?"
 # query_str = "What are the specific things that happened in the author's early days?"
 # query_str = "Describe the content on pages 19 and 20."
-query_str = "Who have been the president of YC (Y Combinator)?"
+# query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
 # query_str = "Describe everything that is mentioned about Interleaf one by one."
@@ -444,8 +500,27 @@ query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What happened at Interleaf and Viaweb?"
 # query_str = "What are the lessions learned by the author from his experience at Interleaf and Viaweb?"
 # query_str = (
-#     "What are the lessons learned by the author from his experience at the companies Interleaf"
+#     "What are the lessons learned by the author from his experiences at the companies Interleaf"
 #      " and Viaweb?")
+# query_str = (
+#     "What are the lessons learned by the author from his experiences at the companies Interleaf"
+#      " and Viaweb? Provide as many details as possible.")
+# query_str = (
+#     "Give me the main events from page 1 to 4. Provide as many details as possible.")
+# query_str = "Give me the main events from page 1 to 4."
+# query_str = "What did Paul Graham do in the summer of 1995?"
+# query_str = (
+#     "What did Paul Graham do in the summer of 1995 and in the couple of "
+#     "months afterward?")  # GOOD RESULTS!
+# query_str = (
+#     "What did Paul Graham do in the summer of 1995 and in the couple of "
+#     "months before?")  # THIS PROMPT GOT POOR SCORE (ONLY CHANGE AFTERWARD TO BEFORE)?
+# query_str = (
+#     "What did Paul Graham do in the summer of 1995 and in the couple of "
+#     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
+# query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
+query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+# query_str = "What did Paul Graham do in the summer of 1995? Provide as many details as possible."
 # query_str = (
 #     "What are the specific lessons learned by the author from his experience at the companies Interleaf"
 #      " and Viaweb?")
@@ -467,14 +542,22 @@ similarity_top_k = 12
 num_queries = 1  # for QueryFusionRetriever() in utility.py
 fusion_top_n = 10
 
-rerank_top_n = 10
+rerank_top_n = 8
+# rerank_top_n = 1  # for PrevNextNodePostprocessor() with 1 final node
 
-# Define reranker
-rerank_model = "BAAI/bge-reranker-base"
-rerank = SentenceTransformerRerank(
+# # Define reranker
+# rerank_model = "BAAI/bge-reranker-base"
+# rerank = SentenceTransformerRerank(
+#     top_n=rerank_top_n,
+#     model=rerank_model,
+#     )
+
+colbert_reranker = ColbertRerank(
     top_n=rerank_top_n,
-    model=rerank_model,
-    )
+    model="colbert-ir/colbertv2.0",
+    tokenizer="colbert-ir/colbertv2.0",
+    keep_retrieval_score=True,
+)
 
 # # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
 # fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
@@ -487,22 +570,41 @@ rerank = SentenceTransformerRerank(
 #                                                                     rerank
 #                                                                     )
 
+specific_tool_description = (
+            "Useful for retrieving specific, precise, or targeted content from the document. "
+            "Use this fuction to pinpoint the relevant information from the document "
+            "when user seeks factual answer or a specific detail from the document, "
+            "for example, when user uses interrogative words like 'what', 'who', 'where', "
+            "'when', 'why', 'how', which may not require understanding the entire document "
+            "to provide an answer."
+            )
+
 # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
 fusion_keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
                                                             vector_index,
+                                                            vector_docstore,
                                                             similarity_top_k,
                                                             page_numbers,
                                                             fusion_top_n,
                                                             query_str,
                                                             num_queries,
-                                                            rerank
+                                                            # rerank,
+                                                            colbert_reranker,
+                                                            specific_tool_description
                                                             )
 
+page_tool_description = (
+                "Perform a query search over the page numbers mentioned in the query. "
+                "Use this function when you only need to retrieve information from specific pages, "
+                "for example when user asks 'What happened on page 19?' "
+                "or 'What are the things mentioned on pages 19 and 20?' "
+                " or 'Describe the contents from page 1 to page 4'."
+                )
 fusion_page_filter_tool = FunctionTool.from_defaults(
     name="page_filter_tool",
     fn=get_fusion_tree_page_filter_sort_detail_response,
-    description="Perform a query search over the index of pages mentioned in the query."
-)
+    description=page_tool_description,
+    )
 
 print("\nLLM PREDICT AND CALL:\n\n") 
 
@@ -518,6 +620,18 @@ response = llm.predict_and_call(
 
 for i, n in enumerate(response.source_nodes):
     print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']}\n")
+    print(f"Item {i+1} score: {round(n.score, 4) if n.score is not None else None}\n")
+
+    # print(n)
+
+# # Debug info from callback manager
+# # get event time
+# print(llama_debug.get_event_time_info(CBEventType.LLM))
+# # Get input to LLM and output from LLM information 
+# event_pairs = llama_debug.get_llm_inputs_outputs()
+# pprint.pprint(event_pairs[1][0])  # human readable format of log
+# print(f"\n{event_pairs[1][0].payload['messages'][0].content}") # Input to LLM
+# print(f"\n{event_pairs[1][1].payload['response']}")  # Output from LLM
 
 
 vector_store.client.release_collection(collection_name=collection_name_vector)

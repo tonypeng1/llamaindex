@@ -2,14 +2,17 @@ from typing import List, Optional
 
 from keybert import KeyBERT
 from llama_index.core import (
-                        QueryBundle,
                         PromptTemplate,
+                        QueryBundle,
                         StorageContext,
                         SummaryIndex,
                         VectorStoreIndex
                         )
 from llama_index.core.indices.postprocessor import (
+                        AutoPrevNextNodePostprocessor,
+                        PrevNextNodePostprocessor,
                         SentenceTransformerRerank,
+                        SimilarityPostprocessor,
                         )
 from llama_index.core.retrievers import QueryFusionRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
@@ -18,6 +21,7 @@ from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.schema import NodeWithScore
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core.vector_stores import MetadataFilters
+from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.vector_stores.milvus import MilvusVectorStore
@@ -740,16 +744,18 @@ def get_fusion_accumulate_filter_sort_detail_engine(_vector_retriever,
 
 
 def get_fusion_tree_filter_sort_detail_engine(_vector_retriever,
+                                            _vector_docstore: MongoDocumentStore,
                                             _bm25_filter_retriever: BM25Retriever,
                                             _fusion_top_n: int,
                                             _num_queries: int,
-                                            _rerank: SentenceTransformerRerank = None,
+                                            # _rerank: SentenceTransformerRerank = None,
+                                            _rerank: ColbertRerank = None,
                                             ):
     """
     This function creates a fusion filter retriever and engine that combines the results of two 
     retrievers: a vector filter retriever and a BM25 filter retriever. The results are then sorted 
     and reranked using a SentenceTransformerRerank object. The engine is configured to tree 
-    results and provide a detailed response.
+    results with a similarity cutoff of 0.7 and provide a detailed response.
 
     Args:
     _vector_filter_retriever: The first retriever to be used in the fusion.
@@ -769,6 +775,7 @@ def get_fusion_tree_filter_sort_detail_engine(_vector_retriever,
                                         _bm25_filter_retriever
                                         ],
                                 similarity_top_k=_fusion_top_n,
+                                # similarity_top_k=1,
                                 num_queries=_num_queries,  # set this to 1 to disable query generation
                                 mode="reciprocal_rerank",
                                 retriever_weights=[0.5, 0.5],
@@ -777,7 +784,26 @@ def get_fusion_tree_filter_sort_detail_engine(_vector_retriever,
                                 # query_gen_prompt="...",  # for overriding the query generation prompt
                                 )
 
-    node_postprocessors = [PageSortNodePostprocessor()]
+    AutoPrevNext = AutoPrevNextNodePostprocessor(
+                                        docstore=_vector_docstore,
+                                        num_nodes=5,
+                                        verbose=True,
+                                        )
+
+    PrevNext = PrevNextNodePostprocessor(
+                                    docstore=_vector_docstore,
+                                    num_nodes=5,
+                                    mode="both",
+                                    verbose=True,
+                                    )
+
+    node_postprocessors = [
+                        # SimilarityPostprocessor(similarity_cutoff=0.7),
+                        # PrevNext,
+                        # AutoPrevNext,
+                        PageSortNodePostprocessor(),
+                        ]
+    
     if _rerank is not None:
         node_postprocessors.insert(0, _rerank)
 
@@ -787,7 +813,7 @@ def get_fusion_tree_filter_sort_detail_engine(_vector_retriever,
                                             response_mode="tree_summarize",
                                             )
 
-    _fusion_tree_filter_sort_detail_engine = change_accumulate_engine_prompt_to_in_detail(
+    _fusion_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
                                                             _fusion_tree_filter_sort_engine
                                                             )
     
@@ -900,7 +926,8 @@ def get_fusion_accumulate_sort_detail_tool(
 
 
 def get_summary_tree_detail_tool(
-                            _storage_context_summary
+                            _summary_description: str,
+                            _storage_context_summary: StorageContext,
                             ):
     
     # Create suammry engine
@@ -912,9 +939,7 @@ def get_summary_tree_detail_tool(
     _summary_tree_detail_tool = QueryEngineTool.from_defaults(
         name="summary_tool",
         query_engine=_summary_tree_detail_engine,
-        description=(
-            "Useful for summarization or for full context questions related to the documnet"
-        ),
+        description=_summary_description,
     )
 
     return _summary_tree_detail_tool
@@ -999,12 +1024,14 @@ def get_fusion_accumulate_keyphrase_sort_detail_tool(
 
 def get_fusion_tree_keyphrase_sort_detail_tool(
                                         _vector_index: VectorStoreIndex,
+                                        _vector_docstore: MongoDocumentStore,
                                         _similarity_top_k: int,
                                         _page_numbers: list,
                                         _fusion_top_n: int,
                                         _query_str: str,
                                         _num_queries: int,
-                                        _rerank: SentenceTransformerRerank
+                                        _rerank: SentenceTransformerRerank,
+                                        _specific_tool_description: str,
                                         ) -> QueryEngineTool:
     """
     This function creates a QueryEngineTool that uses a fusion tree filter sort detail engine.
@@ -1057,6 +1084,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
     _fusion_tree_filter_sort_detail_engine = get_fusion_tree_filter_sort_detail_engine(
                                                                         # _vector_filter_retriever,
                                                                         _vector_retriever,
+                                                                        _vector_docstore,
                                                                         _bm25_filter_retriever,
                                                                         _fusion_top_n,
                                                                         _num_queries,
@@ -1066,9 +1094,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
     _fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
         name="fusion_keyphrase_tool",
         query_engine=_fusion_tree_filter_sort_detail_engine,
-        description=(
-            "Useful for retrieving specific context from the document."
-        ),
+        description=_specific_tool_description,
     )
 
     return _fusion_tree_keyphrase_sort_detail_tool

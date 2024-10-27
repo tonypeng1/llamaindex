@@ -759,6 +759,7 @@ response = llm.predict_and_call(
 for i, n in enumerate(response.source_nodes):
     print(f"Item {i+1} of the source page of response: {n.metadata['source']}\n")
 
+
 # Prints responses
 # print("\nVECTOR-ENGINE:\n\n" + str(vector_response))
 # print("\nVECTOR-SORT-ENGINE:\n\n" + str(vector_sort_response))

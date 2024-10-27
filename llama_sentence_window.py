@@ -25,7 +25,7 @@ from pathlib import Path
 from llama_index.readers.file import PDFReader
 from llama_index.readers.file import PyMuPDFReader
 
-from trulens_eval import Tru
+# from trulens_eval import Tru
 
 from utility import (
                 get_article_link, 

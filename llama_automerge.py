@@ -27,7 +27,7 @@ from pymilvus import connections, db, MilvusClient
 from pymongo import MongoClient
 import openai
 
-from trulens_eval import Tru
+# from trulens_eval import Tru
 
 from pathlib import Path
 from llama_index.readers.file import PDFReader
