@@ -477,6 +477,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Who is Jessica?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about Sam Altman?"
 # query_str = "What are the things that are mentioned about Jessica Livingston?"  # BETTER PROMPT
+query_str = "What are the things that are mentioned about Jessica?"  # BETTER PROMPT
 # query_str = "Who is Sam Altman?"  # NOT A GOOD PROMPT
 # query_str = "Who is Sam?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about startups?"
@@ -519,7 +520,7 @@ summary_tool = get_summary_tree_detail_tool(
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
 # query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
-query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "What did Paul Graham do in the summer of 1995? Provide as many details as possible."
 # query_str = (
 #     "What are the specific lessons learned by the author from his experience at the companies Interleaf"
@@ -542,8 +543,8 @@ similarity_top_k = 12
 num_queries = 1  # for QueryFusionRetriever() in utility.py
 fusion_top_n = 10
 
-rerank_top_n = 8
-# rerank_top_n = 1  # for PrevNextNodePostprocessor() with 1 final node
+# rerank_top_n = 8
+rerank_top_n = 8  # for PrevNextNodePostprocessor() with 1 final node
 
 # # Define reranker
 # rerank_model = "BAAI/bge-reranker-base"
@@ -619,9 +620,9 @@ response = llm.predict_and_call(
                         )
 
 for i, n in enumerate(response.source_nodes):
-    print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']}\n")
-    print(f"Item {i+1} score: {round(n.score, 4) if n.score is not None else None}\n")
-
+    print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
+    (with score: {round(n.score, 3) if n.score is not None else None})")
+    # print(f"Item {i+1} score: {round(n.score, 4) if n.score is not None else None}\n")
     # print(n)
 
 # # Debug info from callback manager

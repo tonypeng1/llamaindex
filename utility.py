@@ -775,7 +775,7 @@ def get_fusion_tree_filter_sort_detail_engine(_vector_retriever,
                                         _bm25_filter_retriever
                                         ],
                                 similarity_top_k=_fusion_top_n,
-                                # similarity_top_k=1,
+                                # similarity_top_k=2,
                                 num_queries=_num_queries,  # set this to 1 to disable query generation
                                 mode="reciprocal_rerank",
                                 retriever_weights=[0.5, 0.5],
@@ -792,14 +792,14 @@ def get_fusion_tree_filter_sort_detail_engine(_vector_retriever,
 
     PrevNext = PrevNextNodePostprocessor(
                                     docstore=_vector_docstore,
-                                    num_nodes=5,
+                                    num_nodes=2,  # each page now has two nodes, one with next, the other previous
                                     mode="both",
                                     verbose=True,
-                                    )
+                                    )  # can only retrieve the two nodes on one page 
 
     node_postprocessors = [
                         # SimilarityPostprocessor(similarity_cutoff=0.7),
-                        # PrevNext,
+                        PrevNext,
                         # AutoPrevNext,
                         PageSortNodePostprocessor(),
                         ]
