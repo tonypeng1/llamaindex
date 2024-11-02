@@ -34,6 +34,7 @@ from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.readers.file import (
                         PyMuPDFReader,
                         )
+from llama_index.question_gen.guidance import GuidanceQuestionGenerator
 
 import openai
 # from trulens_eval import Tru
