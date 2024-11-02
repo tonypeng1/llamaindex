@@ -521,6 +521,7 @@ query_str = "What are the things that are mentioned about Jessica?"  # BETTER PR
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
 # query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+query_str = "What did the author's life look like during Y Combinator (YC)?"
 # query_str = "What did Paul Graham do in the summer of 1995? Provide as many details as possible."
 # query_str = (
 #     "What are the specific lessons learned by the author from his experience at the companies Interleaf"
