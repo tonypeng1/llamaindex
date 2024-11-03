@@ -7,6 +7,7 @@ from typing import List
 
 # from readable_log_formatter import ReadableFormatter
 from llama_index.core import (
+                        QueryBundle,
                         Settings,
                         StorageContext,
                         VectorStoreIndex,
@@ -22,8 +23,11 @@ from llama_index.core.indices.postprocessor import (
 from llama_index.core.node_parser import (
                         SentenceSplitter,
                         )
+from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core.tools import (
-                        FunctionTool
+                        FunctionTool,
+                        QueryEngineTool,
+                        ToolMetadata,
                         )
 from llama_index.core.vector_stores import MetadataFilters
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -35,14 +39,13 @@ from llama_index.readers.file import (
                         PyMuPDFReader,
                         )
 from llama_index.question_gen.guidance import GuidanceQuestionGenerator
+from guidance.models import OpenAI as GuidanceOpenAI
 
 import openai
 # from trulens_eval import Tru
 from utility import (
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
-                get_fusion_accumulate_keyphrase_sort_detail_tool,
-                get_fusion_accumulate_page_filter_sort_detail_engine,
                 get_fusion_tree_keyphrase_sort_detail_tool,
                 get_fusion_tree_page_filter_sort_detail_engine,
                 get_page_numbers_from_query_keyphrase,
@@ -291,8 +294,54 @@ def get_fusion_tree_page_filter_sort_detail_response(
     return _response
 
 
+def get_fusion_tree_page_filter_sort_detail_tool(
+        _vector_index: VectorStoreIndex,
+        _similarity_top_k: int,
+        _page_numbers: int,
+        _query_str: str,
+        _page_tool_description: str
+        ) -> QueryEngineTool:
+    """
+    """
+    # Create a vector retreiver with a filter on page numbers
+    _vector_filter_retriever = _vector_index.as_retriever(
+                                    similarity_top_k=_similarity_top_k,
+                                    filters=MetadataFilters.from_dicts(
+                                        [{
+                                            "key": "source", 
+                                            "value": _page_numbers,
+                                            "operator": "in"
+                                        }]
+                                    )
+                                )
+    
+    # Calculate the number of nodes retrieved from the vector index on these pages
+    _nodes = _vector_filter_retriever.retrieve(_query_str)
+
+    _similarity_top_k_filter = len(_nodes)
+    _fusion_top_n_filter = len(_nodes)
+    _num_queries_filter = 1
+
+    _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
+                                                                _vector_filter_retriever,
+                                                                _similarity_top_k_filter,
+                                                                _fusion_top_n_filter,
+                                                                _query_str,
+                                                                _num_queries_filter,
+                                                                )
+    
+    _fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
+                                                        name="page_filter_tool",
+                                                        query_engine=_fusion_tree_page_filter_sort_detail_engine,
+                                                        description=_page_tool_description,
+                                                        )
+
+    return _fusion_tree_keyphrase_sort_detail_tool
+
+
 # Set OpenAI API key, LLM, and embedding model
 # openai.api_key = os.environ['OPENAI_API_KEY']
+# openai_api_key = os.environ['OPENAI_API_KEY']
 # llm = OpenAI(model="gpt-3.5-turbo", temperature=0.0)
 # Settings.llm = llm
 
@@ -439,11 +488,19 @@ if add_document_summary == True:
 
 # summary_tool: "Useful for summarization or for full context questions related to the documnet"
 
+# summary_tool_description = (
+#             "Useful for summarization or for full context questions related to the document. "
+#             "Call this function when user ask to: 'Summarize the document' or 'Give me an overview' "
+#             "or 'What is the main idea of the document?' or 'What is the document about?' "
+#             "or 'Create document outlines' or 'Create table of contents'."
+#             )
+
 summary_tool_description = (
-            "Useful for summarization or for full context questions related to the document. "
-            "Call this function when user ask to: 'Summarize the document' or 'Give me an overview' "
-            "or 'What is the main idea of the document?' or 'What is the document about?' "
-            "or 'Create document outlines' or 'Create table of contents'."
+            "Useful for a question that requires the full context of the entire document. "
+            "DO NOT use this tool if user asks to summarize a specific section, topic, "
+            "or event in a document. Use this tool when user asks to: 'Summarize the entire document' or "
+            "'Give me an overview' or 'What is the main idea of the document?' or 'What is the document about?' "
+            "or 'Create document outlines' or 'Create table of contents'. "
             )
 
 summary_tool = get_summary_tree_detail_tool(
@@ -478,7 +535,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Who is Jessica?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about Sam Altman?"
 # query_str = "What are the things that are mentioned about Jessica Livingston?"  # BETTER PROMPT
-query_str = "What are the things that are mentioned about Jessica?"  # BETTER PROMPT
+# query_str = "What are the things that are mentioned about Jessica?"  # BETTER PROMPT
 # query_str = "Who is Sam Altman?"  # NOT A GOOD PROMPT
 # query_str = "Who is Sam?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about startups?"
@@ -513,7 +570,11 @@ query_str = "What are the things that are mentioned about Jessica?"  # BETTER PR
 # query_str = "What did Paul Graham do in the summer of 1995?"
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
-#     "months afterward?")  # GOOD RESULTS!
+#     "months after the summer of 1995?")  # BAD RESULTS!
+# query_str = (
+#     "What did Paul Graham do in the summer of 1995 and in the couple of "
+#     "months afterward?")  # BAD RESULTS!
+query_str = "What did Paul Graham do in 1995 and in 1996?"
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (ONLY CHANGE AFTERWARD TO BEFORE)?
@@ -522,7 +583,8 @@ query_str = "What are the things that are mentioned about Jessica?"  # BETTER PR
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
 # query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
-query_str = "What did the author's life look like during Y Combinator (YC)?"
+# query_str = "How was the author's life during Y Combinator (YC)?"
+# query_str = "When was Y Combinator (YC) founded?"
 # query_str = "What did Paul Graham do in the summer of 1995? Provide as many details as possible."
 # query_str = (
 #     "What are the specific lessons learned by the author from his experience at the companies Interleaf"
@@ -584,17 +646,16 @@ specific_tool_description = (
 
 # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
 fusion_keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
-                                                            vector_index,
-                                                            vector_docstore,
-                                                            similarity_top_k,
-                                                            page_numbers,
-                                                            fusion_top_n,
-                                                            query_str,
-                                                            num_queries,
-                                                            # rerank,
-                                                            colbert_reranker,
-                                                            specific_tool_description
-                                                            )
+                                                    vector_index,
+                                                    vector_docstore,
+                                                    similarity_top_k,
+                                                    page_numbers,
+                                                    fusion_top_n,
+                                                    query_str,
+                                                    num_queries,
+                                                    colbert_reranker,
+                                                    specific_tool_description
+                                                    )
 
 page_tool_description = (
                 "Perform a query search over the page numbers mentioned in the query. "
@@ -603,29 +664,79 @@ page_tool_description = (
                 "or 'What are the things mentioned on pages 19 and 20?' "
                 " or 'Describe the contents from page 1 to page 4'."
                 )
-fusion_page_filter_tool = FunctionTool.from_defaults(
-    name="page_filter_tool",
-    fn=get_fusion_tree_page_filter_sort_detail_response,
-    description=page_tool_description,
-    )
 
-print("\nLLM PREDICT AND CALL:\n\n") 
+fusion_page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool(
+                                                    vector_index,
+                                                    similarity_top_k,
+                                                    page_numbers,
+                                                    query_str,
+                                                    page_tool_description,
+                                                    )
 
-response = llm.predict_and_call(
-                        tools=[
-                            fusion_keyphrase_tool,
-                            summary_tool,
-                            fusion_page_filter_tool
-                            ], 
-                        user_msg=query_str, 
-                        verbose=True
-                        )
+# fusion_page_filter_tool = FunctionTool.from_defaults(
+#     name="page_filter_tool",
+#     fn=get_fusion_tree_page_filter_sort_detail_response,
+#     description=page_tool_description,
+#     )
+
+# print("\nLLM PREDICT AND CALL:\n\n") 
+
+# sub_questions = question_gen.generate(
+#                     tools=[
+#                         fusion_keyphrase_tool,
+#                         summary_tool,
+#                         fusion_page_filter_tool
+#                         ], 
+#                     query=QueryBundle(
+#                                 query_str=query_str
+#                                 ),
+#                 )
+
+# question_gen = GuidanceQuestionGenerator.from_defaults(
+#                                 guidance_llm=OpenAI(
+#                                             model="gpt-4o",   
+#                                             api_key=openai_api_key,
+#                                             temperature=0.0,
+#                                             ))
+question_gen = GuidanceQuestionGenerator.from_defaults(guidance_llm=llm)
+# question_gen = GuidanceQuestionGenerator.from_defaults(
+#                                     guidance_llm=GuidanceOpenAI("gpt-4o"))
+
+tools=[
+    fusion_keyphrase_tool,
+    summary_tool,
+    fusion_page_filter_tool
+    ]
+
+sub_question_engine = SubQuestionQueryEngine.from_defaults(
+                                        question_gen=question_gen, 
+                                        query_engine_tools=tools,
+                                        verbose=True,
+                                        )
+
+# response = llm.predict_and_call(
+#                         tools=[
+#                             fusion_keyphrase_tool,
+#                             summary_tool,
+#                             fusion_page_filter_tool
+#                             ], 
+#                         user_msg=query_str, 
+#                         verbose=True
+#                         )
+
+try:
+    response = sub_question_engine.query(query_str)
+except Exception as e:
+    print(f"Error getting json answer from LLM: {e}")
 
 for i, n in enumerate(response.source_nodes):
-    print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
-    (with score: {round(n.score, 3) if n.score is not None else None})")
-    # print(f"Item {i+1} score: {round(n.score, 4) if n.score is not None else None}\n")
-    # print(n)
+    if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
+        print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
+        (with score: {round(n.score, 3) if n.score is not None else None})")
+        # print(f"Item {i+1} score: {round(n.score, 4) if n.score is not None else None}\n")
+        # print(n)
+    else:
+        print(f"Item {i+1} question and response:\n{n.text}\n ")
 
 # # Debug info from callback manager
 # # get event time

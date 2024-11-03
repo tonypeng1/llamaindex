@@ -689,36 +689,76 @@ def get_bm25_filter_retriever(_vector_filter_retriever,
     return _bm25_filter_retriever
 
 
-def get_fusion_accumulate_filter_sort_detail_engine(_vector_retriever,
-                                                    _bm25_filter_retriever: BM25Retriever,
-                                                    _fusion_top_n: int,
-                                                    _num_queries: int,
-                                                    _rerank: SentenceTransformerRerank,
-                                                    ):
+# def get_fusion_accumulate_filter_sort_detail_engine(_vector_retriever,
+#                                                     _bm25_filter_retriever: BM25Retriever,
+#                                                     _fusion_top_n: int,
+#                                                     _num_queries: int,
+#                                                     _rerank: SentenceTransformerRerank,
+#                                                     ):
+#     """
+#     This function creates a fusion filter retriever and engine that combines the results of two 
+#     retrievers: a vector filter retriever and a BM25 filter retriever. The results are then sorted 
+#     and reranked using a SentenceTransformerRerank object. The engine is configured to accumulate 
+#     results and provide a detailed response.
+
+#     Args:
+#     _vector_filter_retriever: The first retriever to be used in the fusion.
+#     _bm25_filter_retriever (BM25Retriever): The second retriever to be used in the fusion.
+#     _fusion_top_n (int): The number of top results to consider from each retriever.
+#     _num_queries (int): The number of queries to generate. Set this to 1 to disable query generation.
+#     _rerank (SentenceTransformerRerank): The reranking model to be used.
+
+#     Returns:
+#     RetrieverQueryEngine: A query engine that uses the fusion filter retriever and the specified reranking model.
+#     The engine is configured to accumulate results and provide a detailed response.
+#     """    
+#     # Create fusion filter retreiver and engine
+#     _fusion_filter_retriever = QueryFusionRetriever(
+#                                 retrievers=[
+#                                         _vector_retriever, 
+#                                         _bm25_filter_retriever
+#                                         ],
+#                                 similarity_top_k=_fusion_top_n,
+#                                 num_queries=_num_queries,  # set this to 1 to disable query generation
+#                                 mode="reciprocal_rerank",
+#                                 retriever_weights=[0.5, 0.5],
+#                                 use_async=True,
+#                                 verbose=True,
+#                                 # query_gen_prompt="...",  # for overriding the query generation prompt
+#                                 )
+
+#     _fusion_accumulate_filter_sort_engine = RetrieverQueryEngine.from_args(
+#                                             retriever=_fusion_filter_retriever, 
+#                                             node_postprocessors=[
+#                                                 _rerank,
+#                                                 PageSortNodePostprocessor(),
+#                                                 ],
+#                                             response_mode="accumulate",
+#                                             )
+
+#     _fusion_accumulate_filter_sort_detail_engine = change_accumulate_engine_prompt_to_in_detail(
+#                                                             _fusion_accumulate_filter_sort_engine
+#                                                             )
+    
+#     return _fusion_accumulate_filter_sort_detail_engine
+
+
+def get_fusion_tree_filter_sort_detail_engine(
+                                        _vector_filter_retriever,
+                                        _bm25_filter_retriever: BM25Retriever,
+                                        _fusion_top_n: int,
+                                        _num_queries: int,
+                                        ):
     """
-    This function creates a fusion filter retriever and engine that combines the results of two 
-    retrievers: a vector filter retriever and a BM25 filter retriever. The results are then sorted 
-    and reranked using a SentenceTransformerRerank object. The engine is configured to accumulate 
-    results and provide a detailed response.
-
-    Args:
-    _vector_filter_retriever: The first retriever to be used in the fusion.
-    _bm25_filter_retriever (BM25Retriever): The second retriever to be used in the fusion.
-    _fusion_top_n (int): The number of top results to consider from each retriever.
-    _num_queries (int): The number of queries to generate. Set this to 1 to disable query generation.
-    _rerank (SentenceTransformerRerank): The reranking model to be used.
-
-    Returns:
-    RetrieverQueryEngine: A query engine that uses the fusion filter retriever and the specified reranking model.
-    The engine is configured to accumulate results and provide a detailed response.
     """    
     # Create fusion filter retreiver and engine
     _fusion_filter_retriever = QueryFusionRetriever(
                                 retrievers=[
-                                        _vector_retriever, 
+                                        _vector_filter_retriever, 
                                         _bm25_filter_retriever
                                         ],
                                 similarity_top_k=_fusion_top_n,
+                                # similarity_top_k=2,
                                 num_queries=_num_queries,  # set this to 1 to disable query generation
                                 mode="reciprocal_rerank",
                                 retriever_weights=[0.5, 0.5],
@@ -727,30 +767,32 @@ def get_fusion_accumulate_filter_sort_detail_engine(_vector_retriever,
                                 # query_gen_prompt="...",  # for overriding the query generation prompt
                                 )
 
-    _fusion_accumulate_filter_sort_engine = RetrieverQueryEngine.from_args(
+    node_postprocessors = [
+                        PageSortNodePostprocessor(),
+                        ]
+
+
+    _fusion_tree_filter_sort_engine = RetrieverQueryEngine.from_args(
                                             retriever=_fusion_filter_retriever, 
-                                            node_postprocessors=[
-                                                _rerank,
-                                                PageSortNodePostprocessor(),
-                                                ],
-                                            response_mode="accumulate",
+                                            node_postprocessors=node_postprocessors,
+                                            response_mode="tree_summarize",
                                             )
 
-    _fusion_accumulate_filter_sort_detail_engine = change_accumulate_engine_prompt_to_in_detail(
-                                                            _fusion_accumulate_filter_sort_engine
+    _fusion_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
+                                                            _fusion_tree_filter_sort_engine
                                                             )
     
-    return _fusion_accumulate_filter_sort_detail_engine
+    return _fusion_tree_filter_sort_detail_engine
 
 
-def get_fusion_tree_filter_sort_detail_engine(_vector_retriever,
-                                            _vector_docstore: MongoDocumentStore,
-                                            _bm25_filter_retriever: BM25Retriever,
-                                            _fusion_top_n: int,
-                                            _num_queries: int,
-                                            # _rerank: SentenceTransformerRerank = None,
-                                            _rerank: ColbertRerank = None,
-                                            ):
+def get_fusion_tree_keyphrase_filter_sort_detail_engine(
+                                                _vector_retriever,
+                                                _vector_docstore: MongoDocumentStore,
+                                                _bm25_filter_retriever: BM25Retriever,
+                                                _fusion_top_n: int,
+                                                _num_queries: int,
+                                                _rerank: ColbertRerank = None,
+                                                ):
     """
     This function creates a fusion filter retriever and engine that combines the results of two 
     retrievers: a vector filter retriever and a BM25 filter retriever. The results are then sorted 
@@ -945,81 +987,81 @@ def get_summary_tree_detail_tool(
     return _summary_tree_detail_tool
 
 
-def get_fusion_accumulate_keyphrase_sort_detail_tool(
-                                            _vector_index: VectorStoreIndex,
-                                            _similarity_top_k: int,
-                                            _page_numbers: list,
-                                            _fusion_top_n: int,
-                                            _query_str: str,
-                                            _num_queries: int,
-                                            _rerank: SentenceTransformerRerank
-                                            ) -> QueryEngineTool:
-    """
-    This function creates a QueryEngineTool that uses a fusion accumulate filter sort detail 
-    engine. The engine is built using a vector retriever and a BM25 filter retriever. The BM25 
-    filter retriever is built using the vector filter retriever and a query string. The fusion 
-    accumulate filter sort detail engine is then created using the vector retriever, the BM25 
-    filter retriever, the fusion top n, the number of queries, and a rerank object.
+# def get_fusion_accumulate_keyphrase_sort_detail_tool(
+#                                             _vector_index: VectorStoreIndex,
+#                                             _similarity_top_k: int,
+#                                             _page_numbers: list,
+#                                             _fusion_top_n: int,
+#                                             _query_str: str,
+#                                             _num_queries: int,
+#                                             _rerank: SentenceTransformerRerank
+#                                             ) -> QueryEngineTool:
+#     """
+#     This function creates a QueryEngineTool that uses a fusion accumulate filter sort detail 
+#     engine. The engine is built using a vector retriever and a BM25 filter retriever. The BM25 
+#     filter retriever is built using the vector filter retriever and a query string. The fusion 
+#     accumulate filter sort detail engine is then created using the vector retriever, the BM25 
+#     filter retriever, the fusion top n, the number of queries, and a rerank object.
 
-    Args:
-        _vector_index (VectorStoreIndex): The vector store index.
-        _similarity_top_k (int): The number of similar nodes to retrieve.
-        _page_numbers (list): The page numbers to filter the nodes by.
-        _fusion_top_n (int): The number of nodes to return from the fusion engine.
-        _query_str (str): The query string to use for the BM25 filter retriever.
-        _num_queries (int): The number of queries to use for the fusion engine.
-        _rerank (SentenceTransformerRerank): The rerank object to use for the fusion engine.
+#     Args:
+#         _vector_index (VectorStoreIndex): The vector store index.
+#         _similarity_top_k (int): The number of similar nodes to retrieve.
+#         _page_numbers (list): The page numbers to filter the nodes by.
+#         _fusion_top_n (int): The number of nodes to return from the fusion engine.
+#         _query_str (str): The query string to use for the BM25 filter retriever.
+#         _num_queries (int): The number of queries to use for the fusion engine.
+#         _rerank (SentenceTransformerRerank): The rerank object to use for the fusion engine.
 
-    Returns:
-        QueryEngineTool: A QueryEngineTool that uses the fusion accumulate filter sort detail 
-        engine.
-    """
+#     Returns:
+#         QueryEngineTool: A QueryEngineTool that uses the fusion accumulate filter sort detail 
+#         engine.
+#     """
 
-    # Create vector retreiver (against a query) with metadata filter using page numbers
-    _vector_filter_retriever = _vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k,
-                                    filters=MetadataFilters.from_dicts(
-                                        [{
-                                            "key": "source", 
-                                            "value": _page_numbers,
-                                            "operator": "in"
-                                        }]
-                                    )
-                                )
+#     # Create vector retreiver (against a query) with metadata filter using page numbers
+#     _vector_filter_retriever = _vector_index.as_retriever(
+#                                     similarity_top_k=_similarity_top_k,
+#                                     filters=MetadataFilters.from_dicts(
+#                                         [{
+#                                             "key": "source", 
+#                                             "value": _page_numbers,
+#                                             "operator": "in"
+#                                         }]
+#                                     )
+#                                 )
 
-    # Create vector retreiver (against a query) with metadata filter using page numbers
-    _vector_retriever = _vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k,
-                                )
+#     # Create vector retreiver (against a query) with metadata filter using page numbers
+#     _vector_retriever = _vector_index.as_retriever(
+#                                     similarity_top_k=_similarity_top_k,
+#                                 )
 
-    # Get bm25 filter retriever to build a fusion engine with metadata filter 
-    # (query_str is for getting the nodes first)
-    _bm25_filter_retriever = get_bm25_filter_retriever(
-                                                    _vector_filter_retriever, 
-                                                    _query_str, 
-                                                    _similarity_top_k
-                                                    )
+#     # Get bm25 filter retriever to build a fusion engine with metadata filter 
+#     # (query_str is for getting the nodes first)
+#     _bm25_filter_retriever = get_bm25_filter_retriever(
+#                                                     _vector_filter_retriever, 
+#                                                     _query_str, 
+#                                                     _similarity_top_k
+#                                                     )
 
-    # Get fusion accumulate filter sort detail engine using _bm25_filter_retriever 
-    # and _vector_retriever (Note: _vector_filter_retriever is not used in this engine)
-    _fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(
-                                                                        # _vector_filter_retriever,
-                                                                        _vector_retriever,
-                                                                        _bm25_filter_retriever,
-                                                                        _fusion_top_n,
-                                                                        _num_queries,
-                                                                        _rerank
-                                                                        )
+#     # Get fusion accumulate filter sort detail engine using _bm25_filter_retriever 
+#     # and _vector_retriever (Note: _vector_filter_retriever is not used in this engine)
+#     _fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(
+#                                                                         # _vector_filter_retriever,
+#                                                                         _vector_retriever,
+#                                                                         _bm25_filter_retriever,
+#                                                                         _fusion_top_n,
+#                                                                         _num_queries,
+#                                                                         _rerank
+#                                                                         )
 
-    _fusion_accumulate_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
-        name="fusion_keyphrase_tool",
-        query_engine=_fusion_accumulate_filter_sort_detail_engine,
-        description=(
-            "Useful for retrieving specific context from the document."
-        ),
-    )
+#     _fusion_accumulate_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
+#         name="fusion_keyphrase_tool",
+#         query_engine=_fusion_accumulate_filter_sort_detail_engine,
+#         description=(
+#             "Useful for retrieving specific context from the document."
+#         ),
+#     )
 
-    return _fusion_accumulate_keyphrase_sort_detail_tool
+#     return _fusion_accumulate_keyphrase_sort_detail_tool
 
 
 def get_fusion_tree_keyphrase_sort_detail_tool(
@@ -1030,7 +1072,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
                                         _fusion_top_n: int,
                                         _query_str: str,
                                         _num_queries: int,
-                                        _rerank: SentenceTransformerRerank,
+                                        _rerank: BaseNodePostprocessor,
                                         _specific_tool_description: str,
                                         ) -> QueryEngineTool:
     """
@@ -1081,15 +1123,14 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
 
     # Get fusion tree filter sort detail engine using _bm25_filter_retriever 
     # and _vector_retriever (Note: _vector_filter_retriever is not used in this engine)
-    _fusion_tree_filter_sort_detail_engine = get_fusion_tree_filter_sort_detail_engine(
-                                                                        # _vector_filter_retriever,
-                                                                        _vector_retriever,
-                                                                        _vector_docstore,
-                                                                        _bm25_filter_retriever,
-                                                                        _fusion_top_n,
-                                                                        _num_queries,
-                                                                        _rerank
-                                                                        )   
+    _fusion_tree_filter_sort_detail_engine = get_fusion_tree_keyphrase_filter_sort_detail_engine(
+                                                    _vector_retriever,
+                                                    _vector_docstore,
+                                                    _bm25_filter_retriever,
+                                                    _fusion_top_n,
+                                                    _num_queries,
+                                                    _rerank
+                                                    )   
 
     _fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
         name="fusion_keyphrase_tool",
@@ -1100,30 +1141,30 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
     return _fusion_tree_keyphrase_sort_detail_tool
 
 
-def get_fusion_accumulate_page_filter_sort_detail_engine(
-                                            _vector_filter_retriever,
-                                            _similarity_top_k_filter: int,
-                                            _fusion_top_n_filter: int,
-                                            _query_str: str,
-                                            _num_queries_filter: int,
-                                            ):
+# def get_fusion_accumulate_page_filter_sort_detail_engine(
+#                                             _vector_filter_retriever,
+#                                             _similarity_top_k_filter: int,
+#                                             _fusion_top_n_filter: int,
+#                                             _query_str: str,
+#                                             _num_queries_filter: int,
+#                                             ):
 
-    # Get bm25 filter retriever to build a fusion engine with metadata filter (query_str is for getting the nodes first)
-    _bm25_filter_retriever = get_bm25_filter_retriever(
-                                                _vector_filter_retriever, 
-                                                _query_str, 
-                                                _similarity_top_k_filter
-                                                )
+#     # Get bm25 filter retriever to build a fusion engine with metadata filter (query_str is for getting the nodes first)
+#     _bm25_filter_retriever = get_bm25_filter_retriever(
+#                                                 _vector_filter_retriever, 
+#                                                 _query_str, 
+#                                                 _similarity_top_k_filter
+#                                                 )
 
-    # Get fusion accumulate filter sort detail engine
-    _fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(
-                                                                        _vector_filter_retriever,
-                                                                        _bm25_filter_retriever,
-                                                                        _fusion_top_n_filter,
-                                                                        _num_queries_filter
-                                                                        )
+#     # Get fusion accumulate filter sort detail engine
+#     _fusion_accumulate_filter_sort_detail_engine = get_fusion_accumulate_filter_sort_detail_engine(
+#                                                                         _vector_filter_retriever,
+#                                                                         _bm25_filter_retriever,
+#                                                                         _fusion_top_n_filter,
+#                                                                         _num_queries_filter
+#                                                                         )
 
-    return _fusion_accumulate_filter_sort_detail_engine
+#     return _fusion_accumulate_filter_sort_detail_engine
 
 
 def get_fusion_tree_page_filter_sort_detail_engine(

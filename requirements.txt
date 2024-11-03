@@ -14,3 +14,4 @@ llama-index-multi-modal-llms-anthropic==0.2.2
 llama-index-postprocessor-flag-embedding-reranker==0.2.0
 FlagEmbedding==1.2.11
 llama-index-postprocessor-colbert-rerank==0.2.1
+llama-index-question-gen-guidance==0.2.0
