@@ -1,4 +1,5 @@
 # import logging
+import json
 import os
 from pathlib import Path
 import pprint
@@ -23,6 +24,7 @@ from llama_index.core.indices.postprocessor import (
 from llama_index.core.node_parser import (
                         SentenceSplitter,
                         )
+from llama_index.core.prompts import PromptTemplate
 from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core.tools import (
                         FunctionTool,
@@ -32,6 +34,7 @@ from llama_index.core.tools import (
 from llama_index.core.vector_stores import MetadataFilters
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.extractors.entity import EntityExtractor
 from llama_index.llms.mistralai import MistralAI
 from llama_index.llms.openai import OpenAI
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
@@ -264,7 +267,7 @@ def get_fusion_tree_page_filter_sort_detail_response(
     """
     # Create a vector retreiver with a filter on page numbers
     _vector_filter_retriever = vector_index.as_retriever(
-                                    similarity_top_k=similarity_top_k,
+                                    similarity_top_k=similarity_top_k_fusion,
                                     filters=MetadataFilters.from_dicts(
                                         [{
                                             "key": "source", 
@@ -294,18 +297,105 @@ def get_fusion_tree_page_filter_sort_detail_response(
     return _response
 
 
+# def get_fusion_tree_page_filter_sort_detail_tool(
+#         _vector_index: VectorStoreIndex,
+#         _similarity_top_k: int,
+#         _page_numbers: int,
+#         _query_str: str,
+#         _page_tool_description: str
+#         ) -> QueryEngineTool:
+#     """
+#     """
+#     # Create a vector retreiver with a filter on page numbers
+#     _vector_filter_retriever = _vector_index.as_retriever(
+#                                     similarity_top_k=_similarity_top_k,
+#                                     filters=MetadataFilters.from_dicts(
+#                                         [{
+#                                             "key": "source", 
+#                                             "value": _page_numbers,
+#                                             "operator": "in"
+#                                         }]
+#                                     )
+#                                 )
+    
+#     # Calculate the number of nodes retrieved from the vector index on these pages
+#     _nodes = _vector_filter_retriever.retrieve(_query_str)
+
+#     _similarity_top_k_filter = len(_nodes)
+#     _fusion_top_n_filter = len(_nodes)
+#     _num_queries_filter = 1
+
+#     _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
+#                                                                 _vector_filter_retriever,
+#                                                                 _similarity_top_k_filter,
+#                                                                 _fusion_top_n_filter,
+#                                                                 _query_str,
+#                                                                 _num_queries_filter,
+#                                                                 )
+    
+#     _fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
+#                                                         name="page_filter_tool",
+#                                                         query_engine=_fusion_tree_page_filter_sort_detail_engine,
+#                                                         description=_page_tool_description,
+#                                                         )
+
+#     return _fusion_tree_keyphrase_sort_detail_tool
+
+
 def get_fusion_tree_page_filter_sort_detail_tool(
-        _vector_index: VectorStoreIndex,
-        _similarity_top_k: int,
-        _page_numbers: int,
-        _query_str: str,
-        _page_tool_description: str
-        ) -> QueryEngineTool:
+    _query_str: str = Field(
+            description="A query string that is intersted only about information on specific pages."
+        ),
+    ) -> QueryEngineTool:
+    
     """
+    This function generates a response based on a query string and a list of specific page 
+    numbers in this query. It creates a vector retriever with a filter on the specified 
+    page numbers, retrieves relevant nodes, and uses them to generate a query engine tool.
+
+    Parameters:
+    query_str_ (str): A query string that contains instructions about the information on specific pages.
+    page_numbers_ (List[str]): A list of specific page numbers mentioned in the query string.
+
+    Returns:
+    str: A response generated based on the query string and the specified page numbers.
     """
+
+    query_text = (
+    '## Instruction:\n'
+    'Extract all page numbers from the user query. \n'
+    'The page numbers are usually indicated by the phrases "page" or "pages" \n'
+    'Return the page numbers as a list of strings, sorted in ascending order. \n'
+    'Do NOT include "**Output:**" in your response. If no page numbers are mentioned, output ["1"]. \n'
+
+    '## Examples:\n'
+    '**Query:** "Give me the main events from page 1 to page 4." \n'
+    '**Output:** ["1", "2", "3", "4"] \n'
+
+    '**Query:** "Summarize pages 10-15 of the document." \n'
+    '**Output:** ["10", "11", "12", "13", "14", "15"] \n'
+
+    '**Query:** "What are the key findings on page 2?" \n'
+    '**Output:** ["2"] \n'
+
+    '**Query:** "What is mentioned about YC (Y Combinator) on pages 19 and 20?" \n'
+    '**Output:** ["19", "20"] \n'
+
+    '**Query:** "What are the lessons learned by the author at the company Interleaf?" \n'
+    '**Output:** ["1"] \n'
+
+    '## Now extract the page numbers from the following query: \n'
+
+    '**Query:** {query_str} \n'
+    )
+
+    prompt = PromptTemplate(query_text)
+    _page_numbers = llm.predict(prompt=prompt, query_str=_query_str)
+    _page_numbers = json.loads(_page_numbers)  # Convert the string to a list
+
     # Create a vector retreiver with a filter on page numbers
-    _vector_filter_retriever = _vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k,
+    _vector_filter_retriever = vector_index.as_retriever(
+                                    similarity_top_k=similarity_top_k_fusion,
                                     filters=MetadataFilters.from_dicts(
                                         [{
                                             "key": "source", 
@@ -333,7 +423,7 @@ def get_fusion_tree_page_filter_sort_detail_tool(
     _fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
                                                         name="page_filter_tool",
                                                         query_engine=_fusion_tree_page_filter_sort_detail_engine,
-                                                        description=_page_tool_description,
+                                                        description=page_tool_description,
                                                         )
 
     return _fusion_tree_keyphrase_sort_detail_tool
@@ -513,9 +603,6 @@ summary_tool = get_summary_tree_detail_tool(
 
 # query_str = "What is the summary of the MetaGPT paper?"
 # query_str = "How do agents share information with other agents?"
-# query_str = "What are the high-level results of MetaGPT as described on page 2?"
-# query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
-# query_str = "What are the MetaGPT comparisons with ChatDev described on page 8?"
 # query_str = "What are the MetaGPT comparisons with ChatDev?"
 # query_str = "What are agent roles in MetaGPT, and then how they communicate with each other?"
 # query_str = "What are the high-level results of MetaGPT?"
@@ -540,15 +627,26 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Who is Sam?"  # NOT A GOOD PROMPT
 # query_str = "What are the things that are mentioned about startups?"
 # query_str = "What are mentioned about YC (Y Combinator)?"
+
+# query_str = "What are the high-level results of MetaGPT as described on page 2?"
+# query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
+# query_str = "What are the MetaGPT comparisons with ChatDev described on page 8?"
+
 # query_str = "What are mentioned about YC (Y Combinator) on pages 19 and 20?"
 # query_str = "What are the contents from page 2 to page 4"
+# query_str = "Describe the content on pages 19 and 20."
+# query_str = "Give me the main events from page 1 to page 4."
+# query_str = "Give me the main events on page 2."
+# query_str = "Give me the main events on pages 1 and 2."
+# query_str = (
+#     "Give me the main events from page 1 to 4. Provide as many details as possible.")
+
 # query_str = "What is the summary of the paul graham essay?"
 # query_str = "Author's school days."
 # query_str = "What are the schools that the author attended?"
 # query_str = "What are the specific things that happened at Rhode Island School of Design (RISD)"
 # query_str = "What happen in the author's early days?"
 # query_str = "What are the specific things that happened in the author's early days?"
-# query_str = "Describe the content on pages 19 and 20."
 # query_str = "Who have been the president of YC (Y Combinator)?"
 # query_str = "What are the thinkgs happened in New York in detail?"
 # query_str = "What happened in New York?"
@@ -564,9 +662,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = (
 #     "What are the lessons learned by the author from his experiences at the companies Interleaf"
 #      " and Viaweb? Provide as many details as possible.")
-# query_str = (
-#     "Give me the main events from page 1 to 4. Provide as many details as possible.")
-# query_str = "Give me the main events from page 1 to 4."
+
 # query_str = "What did Paul Graham do in the summer of 1995?"
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
@@ -574,7 +670,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months afterward?")  # BAD RESULTS!
-query_str = "What did Paul Graham do in 1995 and in 1996?"
+# query_str = "What did Paul Graham do in 1995 and in 1996?"
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (ONLY CHANGE AFTERWARD TO BEFORE)?
@@ -582,33 +678,24 @@ query_str = "What did Paul Graham do in 1995 and in 1996?"
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
 # query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
+query_str = "What did the author hand off Y Combinator to Sam Altman?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "How was the author's life during Y Combinator (YC)?"
 # query_str = "When was Y Combinator (YC) founded?"
 # query_str = "What did Paul Graham do in the summer of 1995? Provide as many details as possible."
 # query_str = (
-#     "What are the specific lessons learned by the author from his experience at the companies Interleaf"
+#     "What are the lessons learned by the author from his experience at the companies Interleaf"
 #      " and Viaweb?")
 # query_str = "At what school did the author attend a BFA program in painting?"
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
 similarity_top_k_keyphrase = 14
-
-# Retrieves page numbers that contain a keyphrase of the query using bm25
-page_numbers = get_page_numbers_from_query_keyphrase(
-                                                vector_docstore, 
-                                                similarity_top_k_keyphrase, 
-                                                query_str) 
-for p in page_numbers:
-    print(f"Page number that contains the keyphrase: {p}")
-
-similarity_top_k = 12
+similarity_top_k_fusion = 12
 num_queries = 1  # for QueryFusionRetriever() in utility.py
 fusion_top_n = 10
-
-# rerank_top_n = 8
-rerank_top_n = 8  # for PrevNextNodePostprocessor() with 1 final node
+rerank_top_n = 8  
+# with PrevNextNodePostprocessor() retrieve 8 notes (plus the other note on the same page)
 
 # # Define reranker
 # rerank_model = "BAAI/bge-reranker-base"
@@ -645,11 +732,11 @@ specific_tool_description = (
             )
 
 # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
-fusion_keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
+keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
                                                     vector_index,
                                                     vector_docstore,
-                                                    similarity_top_k,
-                                                    page_numbers,
+                                                    similarity_top_k_keyphrase,
+                                                    similarity_top_k_fusion,
                                                     fusion_top_n,
                                                     query_str,
                                                     num_queries,
@@ -659,18 +746,22 @@ fusion_keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
 
 page_tool_description = (
                 "Perform a query search over the page numbers mentioned in the query. "
-                "Use this function when you only need to retrieve information from specific pages, "
+                "Use this function when user only need to retrieve information from specific pages, "
                 "for example when user asks 'What happened on page 19?' "
                 "or 'What are the things mentioned on pages 19 and 20?' "
                 " or 'Describe the contents from page 1 to page 4'."
                 )
 
-fusion_page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool(
-                                                    vector_index,
-                                                    similarity_top_k,
-                                                    page_numbers,
-                                                    query_str,
-                                                    page_tool_description,
+# Retrieves page numbers that contain a keyphrase of the query using bm25
+# page_numbers = get_page_numbers_from_query_keyphrase(
+#                                                 vector_docstore, 
+#                                                 similarity_top_k_keyphrase, 
+#                                                 query_str) 
+# for p in page_numbers:
+#     print(f"Page number that contains the keyphrase: {p}")
+
+page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool(
+                                                    query_str
                                                     )
 
 # fusion_page_filter_tool = FunctionTool.from_defaults(
@@ -703,10 +794,21 @@ question_gen = GuidanceQuestionGenerator.from_defaults(guidance_llm=llm)
 #                                     guidance_llm=GuidanceOpenAI("gpt-4o"))
 
 tools=[
-    fusion_keyphrase_tool,
+    keyphrase_tool,
     summary_tool,
-    fusion_page_filter_tool
+    page_filter_tool
     ]
+
+# tools=[
+#     keyphrase_tool,
+#     summary_tool,
+#     fusion_page_filter_tool
+#     ]
+
+# tools=[
+#     keyphrase_tool,
+#     summary_tool,
+#     ]
 
 sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         question_gen=question_gen, 
@@ -714,9 +816,21 @@ sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         verbose=True,
                                         )
 
+# sub_quesrion_tool_description = (
+#                 "Perform a search over the document using sub-questions. "
+#                 "Use this function when user asks a question that does not "
+#                 "mention page number. "
+#                 )
+
+# sub_question_tool = QueryEngineTool.from_defaults(
+#     name="sub_question_tool",
+#     query_engine=sub_question_engine,
+#     description=sub_quesrion_tool_description,
+#     )
+
 # response = llm.predict_and_call(
 #                         tools=[
-#                             fusion_keyphrase_tool,
+#                             keyphrase_tool,
 #                             summary_tool,
 #                             fusion_page_filter_tool
 #                             ], 

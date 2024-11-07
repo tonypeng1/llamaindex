@@ -1064,11 +1064,88 @@ def get_summary_tree_detail_tool(
 #     return _fusion_accumulate_keyphrase_sort_detail_tool
 
 
+# def get_fusion_tree_keyphrase_sort_detail_tool(
+#                                         _vector_index: VectorStoreIndex,
+#                                         _vector_docstore: MongoDocumentStore,
+#                                         _similarity_top_k: int,
+#                                         _page_numbers: list,
+#                                         _fusion_top_n: int,
+#                                         _query_str: str,
+#                                         _num_queries: int,
+#                                         _rerank: BaseNodePostprocessor,
+#                                         _specific_tool_description: str,
+#                                         ) -> QueryEngineTool:
+#     """
+#     This function creates a QueryEngineTool that uses a fusion tree filter sort detail engine.
+#     The engine is built using a vector retriever and a BM25 filter retriever. The BM25 
+#     filter retriever is built using the vector filter retriever and a query string. The fusion 
+#     tree filter sort detail engine is then created using the vector retriever, the BM25 
+#     filter retriever, the fusion top n, the number of queries, and a rerank object.
+
+#     Args:
+#         _vector_index (VectorStoreIndex): The vector store index.
+#         _similarity_top_k (int): The number of similar nodes to retrieve.
+#         _page_numbers (list): The page numbers to filter the nodes by.
+#         _fusion_top_n (int): The number of nodes to return from the fusion engine.
+#         _query_str (str): The query string to use for the BM25 filter retriever.
+#         _num_queries (int): The number of queries to use for the fusion engine.
+#         _rerank (SentenceTransformerRerank): The rerank object to use for the fusion engine.
+
+#     Returns:
+#         QueryEngineTool: A QueryEngineTool that uses the fusion tree filter sort detail 
+#         engine.
+#     """
+
+#     # Create vector retreiver (against a query) with metadata filter using page numbers
+#     _vector_filter_retriever = _vector_index.as_retriever(
+#                                     similarity_top_k=_similarity_top_k,
+#                                     filters=MetadataFilters.from_dicts(
+#                                         [{
+#                                             "key": "source", 
+#                                             "value": _page_numbers,
+#                                             "operator": "in"
+#                                         }]
+#                                     )
+#                                 )
+
+#     # Create vector retreiver (against a query) with metadata filter using page numbers
+#     _vector_retriever = _vector_index.as_retriever(
+#                                     similarity_top_k=_similarity_top_k,
+#                                 )
+
+#     # Get bm25 filter retriever to build a fusion engine with metadata filter 
+#     # (query_str is for getting the nodes first)
+#     _bm25_filter_retriever = get_bm25_filter_retriever(
+#                                                     _vector_filter_retriever, 
+#                                                     _query_str, 
+#                                                     _similarity_top_k
+#                                                     )
+
+#     # Get fusion tree filter sort detail engine using _bm25_filter_retriever 
+#     # and _vector_retriever (Note: _vector_filter_retriever is not used in this engine)
+#     _fusion_tree_filter_sort_detail_engine = get_fusion_tree_keyphrase_filter_sort_detail_engine(
+#                                                     _vector_retriever,
+#                                                     _vector_docstore,
+#                                                     _bm25_filter_retriever,
+#                                                     _fusion_top_n,
+#                                                     _num_queries,
+#                                                     _rerank
+#                                                     )   
+
+#     _fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
+#         name="fusion_keyphrase_tool",
+#         query_engine=_fusion_tree_filter_sort_detail_engine,
+#         description=_specific_tool_description,
+#     )
+
+#     return _fusion_tree_keyphrase_sort_detail_tool
+
+
 def get_fusion_tree_keyphrase_sort_detail_tool(
                                         _vector_index: VectorStoreIndex,
                                         _vector_docstore: MongoDocumentStore,
-                                        _similarity_top_k: int,
-                                        _page_numbers: list,
+                                        _similarity_top_k_keyphrase: int,
+                                        _similarity_top_k_fusion: int,
                                         _fusion_top_n: int,
                                         _query_str: str,
                                         _num_queries: int,
@@ -1096,13 +1173,23 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
         engine.
     """
 
+    print(f"The query is: {_query_str}\n")
+    # Retrieves page numbers that contain a keyphrase of the query using bm25
+    page_numbers = get_page_numbers_from_query_keyphrase(
+                                                    _vector_docstore, 
+                                                    _similarity_top_k_keyphrase, 
+                                                    _query_str) 
+    print("\n")
+    for p in page_numbers:
+        print(f"Page number that contains the keyphrase: {p}")
+        
     # Create vector retreiver (against a query) with metadata filter using page numbers
     _vector_filter_retriever = _vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k,
+                                    similarity_top_k=_similarity_top_k_fusion,
                                     filters=MetadataFilters.from_dicts(
                                         [{
                                             "key": "source", 
-                                            "value": _page_numbers,
+                                            "value": page_numbers,
                                             "operator": "in"
                                         }]
                                     )
@@ -1110,7 +1197,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
 
     # Create vector retreiver (against a query) with metadata filter using page numbers
     _vector_retriever = _vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k,
+                                    similarity_top_k=_similarity_top_k_fusion,
                                 )
 
     # Get bm25 filter retriever to build a fusion engine with metadata filter 
@@ -1118,7 +1205,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
     _bm25_filter_retriever = get_bm25_filter_retriever(
                                                     _vector_filter_retriever, 
                                                     _query_str, 
-                                                    _similarity_top_k
+                                                    _similarity_top_k_fusion
                                                     )
 
     # Get fusion tree filter sort detail engine using _bm25_filter_retriever 
