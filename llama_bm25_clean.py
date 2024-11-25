@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import pprint
 from pydantic import Field
-from typing import List
+from typing import List, Optional
 
 # from readable_log_formatter import ReadableFormatter
 from llama_index.core import (
@@ -12,18 +12,21 @@ from llama_index.core import (
                         Settings,
                         StorageContext,
                         VectorStoreIndex,
+                        SimpleDirectoryReader
                         )
 from llama_index.core.callbacks import (
-    CallbackManager,
-    LlamaDebugHandler,
-    CBEventType,
-)
+                        CallbackManager,
+                        LlamaDebugHandler,
+                        CBEventType,
+                        )
 from llama_index.core.indices.postprocessor import (
                         SentenceTransformerRerank,
                         )
+from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import (
                         SentenceSplitter,
                         )
+from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.prompts import PromptTemplate
 from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core.tools import (
@@ -35,14 +38,17 @@ from llama_index.core.vector_stores import MetadataFilters
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.extractors.entity import EntityExtractor
+from llama_index.llms.anthropic import Anthropic
 from llama_index.llms.mistralai import MistralAI
 from llama_index.llms.openai import OpenAI
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.readers.file import (
                         PyMuPDFReader,
                         )
+from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.question_gen.guidance import GuidanceQuestionGenerator
 from guidance.models import OpenAI as GuidanceOpenAI
+import nltk
 
 import openai
 # from trulens_eval import Tru
@@ -100,11 +106,15 @@ def load_document_pdf(doc_link) -> List:
     loader = PyMuPDFReader()
     docs0 = loader.load(file_path=Path(doc_link))
 
+    # docs0 = SimpleDirectoryReader(
+    # input_files=[doc_link]
+    # ).load_data()
+
     return docs0
 
 
 def get_nodes_from_document_sentence_splitter(
-        _documnet, 
+        _document, 
         _chunk_size,
         _chunk_overlap
         ) -> List:
@@ -119,21 +129,82 @@ def get_nodes_from_document_sentence_splitter(
     Returns:
     list: A list of nodes, where each node is a chunk of the document.
     """
+
     # create the sentence spitter node parser
     node_parser = SentenceSplitter(
                                 chunk_size=_chunk_size,
                                 chunk_overlap=_chunk_overlap
                                 )
-    # _nodes = node_parser.get_nodes_from_documents([_documnet])
-    _nodes = node_parser.get_nodes_from_documents(_documnet)
+    
+    # _nodes = node_parser.get_nodes_from_documents([_document])
+    _nodes = node_parser.get_nodes_from_documents(_document)
 
     return _nodes
+
+
+def get_nodes_from_document_sentence_splitter_entity_extractor(
+        _document, 
+        _chunk_size,
+        _chunk_overlap
+        ) -> List:
+    """
+    This function splits a document into nodes based on sentence boundaries.
+
+    Parameters:
+    _document (List): A list of documents to be split into nodes.
+    _chunk_size (int): The size of each chunk.
+    _chunk_overlap (int): The amount of overlap between chunks.
+
+    Returns:
+    list: A list of nodes, where each node is a chunk of the document.
+    """
+
+    entity_extractor = EntityExtractor(
+        model_name="lxyuan/span-marker-bert-base-multilingual-cased-multinerd",
+        prediction_threshold=0.5,
+        label_entities=True,
+        device="cpu",
+        # entity_map=entity_map,
+    )
+
+    # create the sentence spitter node parser
+    # node_parser = SentenceSplitter()
+    node_parser = SentenceSplitter(
+                                chunk_size=_chunk_size,
+                                chunk_overlap=_chunk_overlap
+                                )
+    
+    # # _nodes = node_parser.get_nodes_from_documents([_document])
+    # _nodes = node_parser.get_nodes_from_documents(_document)
+
+    transformations = [node_parser, entity_extractor]
+    # transformations = [entity_extractor]
+    # transformations = [node_parser]
+
+    # create the ingestion pipeline
+    pipeline = IngestionPipeline(transformations=transformations)
+
+    # run the ingestion pipeline (THIS STEP MAY TAKE A WHILE)
+    # _nodes_entity = pipeline.run(nodes=_nodes)
+    #                     #   show_progress=True)  
+    _nodes_entity = pipeline.run(documents=_document)
+                        #   show_progress=True)  
+    # for n in _nodes_entity:
+    #     if "entities" in n.metadata:
+    #         print(n.metadata["entities"])
+    #     else:
+    #         print("No entities found.")
+    for n in _nodes_entity:
+        print(n.metadata)
+
+    return _nodes_entity
 
 
 def load_document_nodes_sentence_splitter(
                                 _article_link: str,
                                 _chunk_size: int,
-                                _chunk_overlap: int
+                                _chunk_overlap: int,
+                                _metadata: Optional[str] = None
                                 ) -> List:  
     """
     This function loads a document from a given link, splits it into nodes 
@@ -148,13 +219,22 @@ def load_document_nodes_sentence_splitter(
     Returns:
     _nodes (list): A list of nodes, where each node is a chunk of the document.
     """
+    
     # Only load and parse document if either index or docstore not saved.
     _document = load_document_pdf(_article_link)
-    _nodes = get_nodes_from_document_sentence_splitter(
-        _document,
-        _chunk_size,
-        _chunk_overlap
-        )
+
+    if _metadata is not None:
+        _nodes = get_nodes_from_document_sentence_splitter_entity_extractor(
+            _document,
+            _chunk_size,
+            _chunk_overlap
+            )
+    else:
+        _nodes = get_nodes_from_document_sentence_splitter(
+            _document,
+            _chunk_size,
+            _chunk_overlap
+            )
     return _nodes
 
 
@@ -244,57 +324,57 @@ def create_and_save_vector_index_to_milvus_database(
 #     return _response
 
 
-def get_fusion_tree_page_filter_sort_detail_response(
-        query_str_: str = Field(
-            description="A query string that is intersted only about information on specific pages."
-        ), 
-        page_numbers_: List[str] = Field(
-            description="The specific page numbers mentioned in the query string"
-        )
-        ) -> str:
-    """
-    This function generates a response based on a query string and a list of specific page numbers in
-    this query. It creates a vector retriever with a filter on the specified page numbers, retrieves 
-    relevant nodes, and uses them to generate a response using a fusion tree page filter sort detail 
-    engine.
+# def get_fusion_tree_page_filter_sort_detail_response(
+#         query_str_: str = Field(
+#             description="A query string that is intersted only about information on specific pages."
+#         ), 
+#         page_numbers_: List[str] = Field(
+#             description="The specific page numbers mentioned in the query string"
+#         )
+#         ) -> str:
+#     """
+#     This function generates a response based on a query string and a list of specific page numbers in
+#     this query. It creates a vector retriever with a filter on the specified page numbers, retrieves 
+#     relevant nodes, and uses them to generate a response using a fusion tree page filter sort detail 
+#     engine.
 
-    Parameters:
-    query_str_ (str): A query string that contains instructions about the information on specific pages.
-    page_numbers_ (List[str]): A list of specific page numbers mentioned in the query string.
+#     Parameters:
+#     query_str_ (str): A query string that contains instructions about the information on specific pages.
+#     page_numbers_ (List[str]): A list of specific page numbers mentioned in the query string.
 
-    Returns:
-    str: A response generated based on the query string and the specified page numbers.
-    """
-    # Create a vector retreiver with a filter on page numbers
-    _vector_filter_retriever = vector_index.as_retriever(
-                                    similarity_top_k=similarity_top_k_fusion,
-                                    filters=MetadataFilters.from_dicts(
-                                        [{
-                                            "key": "source", 
-                                            "value": page_numbers_,
-                                            "operator": "in"
-                                        }]
-                                    )
-                                )
+#     Returns:
+#     str: A response generated based on the query string and the specified page numbers.
+#     """
+#     # Create a vector retreiver with a filter on page numbers
+#     _vector_filter_retriever = vector_index.as_retriever(
+#                                     similarity_top_k=similarity_top_k_fusion,
+#                                     filters=MetadataFilters.from_dicts(
+#                                         [{
+#                                             "key": "source", 
+#                                             "value": page_numbers_,
+#                                             "operator": "in"
+#                                         }]
+#                                     )
+#                                 )
     
-    # Calculate the number of nodes retrieved from the vector index on these pages
-    _nodes = _vector_filter_retriever.retrieve(query_str_)
+#     # Calculate the number of nodes retrieved from the vector index on these pages
+#     _nodes = _vector_filter_retriever.retrieve(query_str_)
 
-    _similarity_top_k_filter = len(_nodes)
-    _fusion_top_n_filter = len(_nodes)
-    _num_queries_filter = 1
+#     _similarity_top_k_filter = len(_nodes)
+#     _fusion_top_n_filter = len(_nodes)
+#     _num_queries_filter = 1
 
-    _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
-                                                                            _vector_filter_retriever,
-                                                                            _similarity_top_k_filter,
-                                                                            _fusion_top_n_filter,
-                                                                            query_str_,
-                                                                            _num_queries_filter,
-                                                                            )
+#     _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
+#                                                                             _vector_filter_retriever,
+#                                                                             _similarity_top_k_filter,
+#                                                                             _fusion_top_n_filter,
+#                                                                             query_str_,
+#                                                                             _num_queries_filter,
+#                                                                             )
     
-    _response = _fusion_tree_page_filter_sort_detail_engine.query(query_str_)
+#     _response = _fusion_tree_page_filter_sort_detail_engine.query(query_str_)
     
-    return _response
+#     return _response
 
 
 # def get_fusion_tree_page_filter_sort_detail_tool(
@@ -343,9 +423,10 @@ def get_fusion_tree_page_filter_sort_detail_response(
 
 
 def get_fusion_tree_page_filter_sort_detail_tool(
-    _query_str: str = Field(
-            description="A query string that is intersted only about information on specific pages."
-        ),
+    _query_str: str, 
+    _similarity_top_k_page: int,
+    _reranker: ColbertRerank,
+    _vector_docstore: MongoDocumentStore,
     ) -> QueryEngineTool:
     
     """
@@ -372,6 +453,9 @@ def get_fusion_tree_page_filter_sort_detail_tool(
     '**Query:** "Give me the main events from page 1 to page 4." \n'
     '**Output:** ["1", "2", "3", "4"] \n'
 
+    '**Query:** "Give me the main events in the first 6 pages." \n'
+    '**Output:** ["1", "2", "3", "4", "5", "6"] \n'
+
     '**Query:** "Summarize pages 10-15 of the document." \n'
     '**Output:** ["10", "11", "12", "13", "14", "15"] \n'
 
@@ -382,7 +466,7 @@ def get_fusion_tree_page_filter_sort_detail_tool(
     '**Output:** ["19", "20"] \n'
 
     '**Query:** "What are the lessons learned by the author at the company Interleaf?" \n'
-    '**Output:** ["1"] \n'
+    '**Output:** ["0"] \n'
 
     '## Now extract the page numbers from the following query: \n'
 
@@ -391,11 +475,12 @@ def get_fusion_tree_page_filter_sort_detail_tool(
 
     prompt = PromptTemplate(query_text)
     _page_numbers = llm.predict(prompt=prompt, query_str=_query_str)
-    _page_numbers = json.loads(_page_numbers)  # Convert the string to a list
+    _page_numbers = json.loads(_page_numbers)  # Convert the string to a list of string
+    print(_page_numbers)
 
     # Create a vector retreiver with a filter on page numbers
     _vector_filter_retriever = vector_index.as_retriever(
-                                    similarity_top_k=similarity_top_k_fusion,
+                                    similarity_top_k=_similarity_top_k_page,
                                     filters=MetadataFilters.from_dicts(
                                         [{
                                             "key": "source", 
@@ -412,39 +497,67 @@ def get_fusion_tree_page_filter_sort_detail_tool(
     _fusion_top_n_filter = len(_nodes)
     _num_queries_filter = 1
 
+    # _similarity_top_k_filter = _similarity_top_k_page
+    # _fusion_top_n_filter = _similarity_top_k_page
+    # _num_queries_filter = 1
+
+    print(f"page filter: {_similarity_top_k_filter}")
+
+    # _similarity_top_k_filter = len(_page_numbers) * 2
+    # _fusion_top_n_filter = len(_page_numbers) * 2
+    # _num_queries_filter = 1
+
     _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
                                                                 _vector_filter_retriever,
                                                                 _similarity_top_k_filter,
                                                                 _fusion_top_n_filter,
                                                                 _query_str,
                                                                 _num_queries_filter,
+                                                                _reranker,
+                                                                _vector_docstore,
+                                                                _page_numbers
                                                                 )
     
-    _fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
+    _fusion_tree_page_filter_sort_detail_tool = QueryEngineTool.from_defaults(
                                                         name="page_filter_tool",
                                                         query_engine=_fusion_tree_page_filter_sort_detail_engine,
                                                         description=page_tool_description,
                                                         )
 
-    return _fusion_tree_keyphrase_sort_detail_tool
+    return _fusion_tree_page_filter_sort_detail_tool
 
 
-# Set OpenAI API key, LLM, and embedding model
-# openai.api_key = os.environ['OPENAI_API_KEY']
-# openai_api_key = os.environ['OPENAI_API_KEY']
-# llm = OpenAI(model="gpt-3.5-turbo", temperature=0.0)
-# Settings.llm = llm
+# nltk.download('punkt_tab')
 
-mistral_api_key = os.environ['MISTRAL_API_KEY']
-llm = MistralAI(
-    model="mistral-large-latest", 
+anthropic_api_key = os.environ['ANTHROPIC_API_KEY']
+llm = Anthropic(
+    model="claude-3-sonnet-20240229",
     temperature=0.0,
     max_tokens=2000,
-    api_key=mistral_api_key
+    api_key=anthropic_api_key,
     )
 Settings.llm = llm
 
+# Set OpenAI API key and LLM
+openai_api_key = os.environ['OPENAI_API_KEY']
+llm = OpenAI(
+    model="gpt-4o", 
+    temperature=0.0,
+    max_tokens=2000,
+    api_key=openai_api_key
+    )
+Settings.llm = llm
 
+# mistral_api_key = os.environ['MISTRAL_API_KEY']
+# llm = MistralAI(
+#     model="mistral-large-latest", 
+#     temperature=0.0,
+#     max_tokens=2000,
+#     api_key=mistral_api_key
+#     )
+# Settings.llm = llm
+
+## Set embedding model
 # embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 # Settings.embed_model = embed_model
 # embed_model_dim = 384  # for bge-small-en-v1.5
@@ -481,12 +594,24 @@ article_link = get_article_link(article_dictory,
 chunk_method = "sentence_splitter"
 chunk_size = 512
 chunk_overlap = 128
+metadata = "entity"
 
 # chunk_method = "sentence_splitter"
 # chunk_size = 256
 # chunk_overlap = 50
 
 # Create database name and colleciton names
+# (database_name, 
+# collection_name_vector,
+# collection_name_summary) = get_database_and_sentence_splitter_collection_name(
+#                                                             article_dictory, 
+#                                                             chunk_method, 
+#                                                             embed_model_name, 
+#                                                             chunk_size,
+#                                                             chunk_overlap,
+#        
+
+# metadata is an optional parameter, will include it if it is not None                                              )
 (database_name, 
 collection_name_vector,
 collection_name_summary) = get_database_and_sentence_splitter_collection_name(
@@ -494,20 +619,23 @@ collection_name_summary) = get_database_and_sentence_splitter_collection_name(
                                                             chunk_method, 
                                                             embed_model_name, 
                                                             chunk_size,
-                                                            chunk_overlap
+                                                            chunk_overlap,
+                                                            metadata
                                                             )
 
 # Initiate Milvus and MongoDB database
 uri_milvus = "http://localhost:19530"
 uri_mongo = "mongodb://localhost:27017/"
 
-# Check if the vector index has already been saved to Milvus database.
+# Check if the vector index has already been saved to Milvus database. 
+# If not, set save_index_vector to True.
 save_index_vector = check_if_milvus_database_collection_exist(uri_milvus, 
                                                        database_name, 
                                                        collection_name_vector
                                                        )
 
 # Check if the vector document has already been saved to MongoDB database.
+# If not, set save_document_vector to True.
 add_document_vector = check_if_mongo_database_namespace_exist(uri_mongo, 
                                                        database_name, 
                                                        collection_name_vector
@@ -540,11 +668,14 @@ storage_context_summary = get_summary_storage_context(uri_mongo,
 # print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
 
 # Load documnet nodes if either vector index or docstore not saved.
+# metadata is an optional parameter, will use another function to parse the document
+# if the metadata is not None.
 if save_index_vector or add_document_vector or add_document_summary: 
     extracted_nodes = load_document_nodes_sentence_splitter(
                                                     article_link,
                                                     chunk_size,
-                                                    chunk_overlap
+                                                    chunk_overlap,
+                                                    metadata
                                                     )
 
 if save_index_vector == True:
@@ -613,34 +744,33 @@ summary_tool = get_summary_tree_detail_tool(
 #     "What could be the potential outcomes of adjusting the amount of safety"
 #     " data used in the RLHF stage?"
 # )
+# query_str = "What are the high-level results of MetaGPT as described on page 2?"
+# query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
+# query_str = "What are the MetaGPT comparisons with ChatDev described on page 8?"
 
 # query_str = "Tell me the output of the mystery function on 2 and 9."
 # query_str = "What is the sum of 2 and 9?"
 
 # query_str = "What are the things that happen in New York?"
-# query_str = "Who is Jessica Livingston?"  # NOT A GOOD PROMPT
+# query_str = "Who is Jessica Livingston?"
 # query_str = "Who is Jessica?"  # NOT A GOOD PROMPT
-# query_str = "What are the things that are mentioned about Sam Altman?"
-# query_str = "What are the things that are mentioned about Jessica Livingston?"  # BETTER PROMPT
-# query_str = "What are the things that are mentioned about Jessica?"  # BETTER PROMPT
-# query_str = "Who is Sam Altman?"  # NOT A GOOD PROMPT
-# query_str = "Who is Sam?"  # NOT A GOOD PROMPT
+# query_str = "What are mentioned about Sam Altman?"
 # query_str = "What are the things that are mentioned about startups?"
 # query_str = "What are mentioned about YC (Y Combinator)?"
-
-# query_str = "What are the high-level results of MetaGPT as described on page 2?"
-# query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
-# query_str = "What are the MetaGPT comparisons with ChatDev described on page 8?"
-
 # query_str = "What are mentioned about YC (Y Combinator) on pages 19 and 20?"
 # query_str = "What are the contents from page 2 to page 4"
 # query_str = "Describe the content on pages 19 and 20."
+# query_str = "Describe the content from page 18 to page 21."
+# query_str = "Is there anything discussed about Sam Altman from page 18 to page 21?"
+# query_str = "What is said about the author on the first 10 pages?"
+# query_str = "Describe the content on the first 5 pages?"
+# query_str = "What lessons does the author learn on the first 10 pages?"
 # query_str = "Give me the main events from page 1 to page 4."
+query_str = "What was mentioned about Jessica on pages 17 and 18?"
 # query_str = "Give me the main events on page 2."
 # query_str = "Give me the main events on pages 1 and 2."
 # query_str = (
 #     "Give me the main events from page 1 to 4. Provide as many details as possible.")
-
 # query_str = "What is the summary of the paul graham essay?"
 # query_str = "Author's school days."
 # query_str = "What are the schools that the author attended?"
@@ -657,16 +787,21 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What happened at Interleaf and Viaweb?"
 # query_str = "What are the lessions learned by the author from his experience at Interleaf and Viaweb?"
 # query_str = (
+#     "What are the lessons learned by the author at the companies Interleaf "
+#      "and Viaweb?")
+# query_str = (
 #     "What are the lessons learned by the author from his experiences at the companies Interleaf"
 #      " and Viaweb?")
 # query_str = (
 #     "What are the lessons learned by the author from his experiences at the companies Interleaf"
 #      " and Viaweb? Provide as many details as possible.")
-
+# query_str = (
+#     "What was Paul Graham's life at school like and what was it like "
+#     "after he handed over YC to Sam Altman?")
 # query_str = "What did Paul Graham do in the summer of 1995?"
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
-#     "months after the summer of 1995?")  # BAD RESULTS!
+#     "months after the summer of 1995?")
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months afterward?")  # BAD RESULTS!
@@ -678,7 +813,7 @@ summary_tool = get_summary_tree_detail_tool(
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
 # query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
-query_str = "What did the author hand off Y Combinator to Sam Altman?"
+# query_str = "When did the author hand off Y Combinator to Sam Altman?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "How was the author's life during Y Combinator (YC)?"
 # query_str = "When was Y Combinator (YC) founded?"
@@ -687,14 +822,21 @@ query_str = "What did the author hand off Y Combinator to Sam Altman?"
 #     "What are the lessons learned by the author from his experience at the companies Interleaf"
 #      " and Viaweb?")
 # query_str = "At what school did the author attend a BFA program in painting?"
+# query_str = "What was the significance of the orange color chosen for Y Combinator's logo?"
+# query_str = "Create a table of content for this article."
+# query_str = "What project did the author work on from March 2015 to October 2019?"
+# query_str = "What was the author's experience like living in England?"
+# query_str = "What was the arrangement between the students and faculty at the Accademia?"
+
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
-similarity_top_k_keyphrase = 14
-similarity_top_k_fusion = 12
+similarity_top_k_page = 60
+similarity_top_k_keyphrase = 18
+similarity_top_k_fusion = 16
 num_queries = 1  # for QueryFusionRetriever() in utility.py
-fusion_top_n = 10
-rerank_top_n = 8  
+fusion_top_n = 14
+rerank_top_n = 12  
 # with PrevNextNodePostprocessor() retrieve 8 notes (plus the other note on the same page)
 
 # # Define reranker
@@ -749,8 +891,13 @@ page_tool_description = (
                 "Use this function when user only need to retrieve information from specific pages, "
                 "for example when user asks 'What happened on page 19?' "
                 "or 'What are the things mentioned on pages 19 and 20?' "
-                " or 'Describe the contents from page 1 to page 4'."
+                "or 'Describe the contents from page 1 to page 4'. "
+                "DO NOT GENERATE A SUB-QUESTION ASKING ABOUT ONE PAGE ONLY "
+                "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
                 )
+
+                # "Generate multiple sub-questions by using words semantically similar"
+                # "towards the original query. "
 
 # Retrieves page numbers that contain a keyphrase of the query using bm25
 # page_numbers = get_page_numbers_from_query_keyphrase(
@@ -761,7 +908,10 @@ page_tool_description = (
 #     print(f"Page number that contains the keyphrase: {p}")
 
 page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool(
-                                                    query_str
+                                                    query_str,
+                                                    similarity_top_k_page,
+                                                    colbert_reranker,
+                                                    vector_docstore,
                                                     )
 
 # fusion_page_filter_tool = FunctionTool.from_defaults(
@@ -789,15 +939,13 @@ page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool(
 #                                             api_key=openai_api_key,
 #                                             temperature=0.0,
 #                                             ))
-question_gen = GuidanceQuestionGenerator.from_defaults(guidance_llm=llm)
-# question_gen = GuidanceQuestionGenerator.from_defaults(
-#                                     guidance_llm=GuidanceOpenAI("gpt-4o"))
-
-tools=[
-    keyphrase_tool,
-    summary_tool,
-    page_filter_tool
-    ]
+# question_gen = GuidanceQuestionGenerator.from_defaults()  # not working
+# question_gen = GuidanceQuestionGenerator.from_defaults(guidance_llm=llm)
+question_gen = GuidanceQuestionGenerator.from_defaults(
+                            guidance_llm=GuidanceOpenAI(
+                                model="gpt-4o-2024-11-20",
+                                echo=False)
+                                )
 
 # tools=[
 #     keyphrase_tool,
@@ -810,9 +958,16 @@ tools=[
 #     summary_tool,
 #     ]
 
+tools=[
+    keyphrase_tool,
+    summary_tool,
+    page_filter_tool
+    ]
+
 sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         question_gen=question_gen, 
                                         query_engine_tools=tools,
+                                        # verbose=False,
                                         verbose=True,
                                         )
 
