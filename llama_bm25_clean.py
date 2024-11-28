@@ -466,19 +466,35 @@ def get_fusion_tree_page_filter_sort_detail_tool(
     '**Output:** ["19", "20"] \n'
 
     '**Query:** "What are the lessons learned by the author at the company Interleaf?" \n'
-    '**Output:** ["0"] \n'
+    '**Output:** ["1"] \n'
 
     '## Now extract the page numbers from the following query: \n'
 
     '**Query:** {query_str} \n'
     )
 
+    # Need to print "1" if no page numbers are mentioned so that this code can run correctly
+
     prompt = PromptTemplate(query_text)
     _page_numbers = llm.predict(prompt=prompt, query_str=_query_str)
     _page_numbers = json.loads(_page_numbers)  # Convert the string to a list of string
-    print(_page_numbers)
+    print(f"Page_numbers in page filter: {_page_numbers}")
 
     # Create a vector retreiver with a filter on page numbers
+    _vector_retriever = vector_index.as_retriever(
+                                    similarity_top_k=_similarity_top_k_page,
+                                )
+    # Retrieve nodes  using the vector retriever and the query
+    scored_nodes = _vector_retriever.retrieve(_query_str)
+
+    # Extract TextNodes from NodeWithScore objects
+    text_nodes = [scored_node.node for scored_node in scored_nodes]
+
+    print(f"Text nodes in page vector index length is: {len(text_nodes)}")
+    for i, n in enumerate(text_nodes):
+        print(f"Item {i+1} of the text nodes in page vector index is page: {n.metadata['source']}")
+    
+
     _vector_filter_retriever = vector_index.as_retriever(
                                     similarity_top_k=_similarity_top_k_page,
                                     filters=MetadataFilters.from_dicts(
@@ -538,15 +554,15 @@ llm = Anthropic(
     )
 Settings.llm = llm
 
-# Set OpenAI API key and LLM
-openai_api_key = os.environ['OPENAI_API_KEY']
-llm = OpenAI(
-    model="gpt-4o", 
-    temperature=0.0,
-    max_tokens=2000,
-    api_key=openai_api_key
-    )
-Settings.llm = llm
+# # Set OpenAI API key and LLM
+# openai_api_key = os.environ['OPENAI_API_KEY']
+# llm = OpenAI(
+#     model="gpt-4o", 
+#     temperature=0.0,
+#     max_tokens=2000,
+#     api_key=openai_api_key
+#     )
+# Settings.llm = llm
 
 # mistral_api_key = os.environ['MISTRAL_API_KEY']
 # llm = MistralAI(
@@ -766,7 +782,10 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Describe the content on the first 5 pages?"
 # query_str = "What lessons does the author learn on the first 10 pages?"
 # query_str = "Give me the main events from page 1 to page 4."
-query_str = "What was mentioned about Jessica on pages 17 and 18?"
+# query_str = "What was mentioned about Jessica on pages 17 and 18?"
+
+# query_str = "What was mentioned about Jessica from pages 17 to 22?"
+
 # query_str = "Give me the main events on page 2."
 # query_str = "Give me the main events on pages 1 and 2."
 # query_str = (
@@ -805,7 +824,9 @@ query_str = "What was mentioned about Jessica on pages 17 and 18?"
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months afterward?")  # BAD RESULTS!
+
 # query_str = "What did Paul Graham do in 1995 and in 1996?"
+
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (ONLY CHANGE AFTERWARD TO BEFORE)?
@@ -814,7 +835,9 @@ query_str = "What was mentioned about Jessica on pages 17 and 18?"
 #     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
 # query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
 # query_str = "When did the author hand off Y Combinator to Sam Altman?"
-# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+
+query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+
 # query_str = "How was the author's life during Y Combinator (YC)?"
 # query_str = "When was Y Combinator (YC) founded?"
 # query_str = "What did Paul Graham do in the summer of 1995? Provide as many details as possible."
@@ -822,8 +845,12 @@ query_str = "What was mentioned about Jessica on pages 17 and 18?"
 #     "What are the lessons learned by the author from his experience at the companies Interleaf"
 #      " and Viaweb?")
 # query_str = "At what school did the author attend a BFA program in painting?"
+# query_str = "At what companies did the author work for?"
+# query_str = "At what companies did the author work for or as a founder?"
 # query_str = "What was the significance of the orange color chosen for Y Combinator's logo?"
+
 # query_str = "Create a table of content for this article."
+
 # query_str = "What project did the author work on from March 2015 to October 2019?"
 # query_str = "What was the author's experience like living in England?"
 # query_str = "What was the arrangement between the students and faculty at the Accademia?"
@@ -831,12 +858,15 @@ query_str = "What was mentioned about Jessica on pages 17 and 18?"
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
-similarity_top_k_page = 60
-similarity_top_k_keyphrase = 18
-similarity_top_k_fusion = 16
+# An initial large number making sure nodes of all mentioned pages are retrieved
+# This value needs to be larger than the toral number of nodes of the document
+similarity_top_k_page = 60  
+
+similarity_top_k_keyphrase = 36
+similarity_top_k_fusion = 32
 num_queries = 1  # for QueryFusionRetriever() in utility.py
-fusion_top_n = 14
-rerank_top_n = 12  
+fusion_top_n = 28
+rerank_top_n = 20
 # with PrevNextNodePostprocessor() retrieve 8 notes (plus the other note on the same page)
 
 # # Define reranker
