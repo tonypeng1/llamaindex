@@ -21,7 +21,10 @@ from llama_index.core.retrievers import (
 from llama_index.core.query_engine import RetrieverQueryEngine
 
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
-from llama_index.core.schema import NodeWithScore
+from llama_index.core.schema import (
+                        NodeWithScore, 
+                        TextNode,
+                        )
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core.vector_stores import MetadataFilters
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
@@ -800,27 +803,46 @@ def get_keyphrase_from_query_str(query_str: str) -> str:
 #     return final_keywords.lstrip()  
 
 
-def get_page_numbers_using_bm25_and_keyphrase(bm25_retriever, keywords) -> list:
-    """
-    This function retrieves a list of page numbers of the nodes that contain a given keyphrase in a 
-    document using BM25 retriever. The page numbers are sorted in ascending order.
+# def get_text_nodes_using_bm25_and_keyphrase(bm25_retriever, keywords) -> list:
+#     """
+#     This function retrieves a list of page numbers of the nodes that contain a given keyphrase in a 
+#     document using BM25 retriever. The page numbers are sorted in ascending order.
 
-    Parameters:
-    bm25_retriever (BM25Retriever): An instance of the BM25Retriever class.
-    keywords (str): The keyword to search for in the documents.
+#     Parameters:
+#     bm25_retriever (BM25Retriever): An instance of the BM25Retriever class.
+#     keywords (str): The keyword to search for in the documents.
 
-    Returns:
-    list: A list of page numbers (as strings) that contain the keyphrase, sorted in ascending order.
-    """
+#     Returns:
+#     list: A list of page numbers (as strings) that contain the keyphrase, sorted in ascending order.
+#     """
 
-    bm25_score_nodes = bm25_retriever.retrieve(keywords)
-    bm25_text_nodes = [node.node for node in bm25_score_nodes ]  # get TextNode from ScoredNode
+#     bm25_score_nodes = bm25_retriever.retrieve(keywords)
+#     bm25_text_nodes = [node.node for node in bm25_score_nodes ]  # get TextNode from ScoredNode
 
-    # page_numbers = sorted([int(n.metadata["source"]) for n in bm25_text_nodes])  # get and sort the page numbers
-    page_numbers = [int(n.metadata["source"]) for n in bm25_text_nodes]  # get and sort the page numbers
-    page_numbers = [str(p) for p in page_numbers]  # convert back to str
+#     return bm25_text_nodes
 
-    return page_numbers
+
+# def get_page_numbers_using_bm25_and_keyphrase(bm25_retriever, keywords) -> list:
+#     """
+#     This function retrieves a list of page numbers of the nodes that contain a given keyphrase in a 
+#     document using BM25 retriever. The page numbers are sorted in ascending order.
+
+#     Parameters:
+#     bm25_retriever (BM25Retriever): An instance of the BM25Retriever class.
+#     keywords (str): The keyword to search for in the documents.
+
+#     Returns:
+#     list: A list of page numbers (as strings) that contain the keyphrase, sorted in ascending order.
+#     """
+
+#     bm25_score_nodes = bm25_retriever.retrieve(keywords)
+#     bm25_text_nodes = [node.node for node in bm25_score_nodes ]  # get TextNode from ScoredNode
+
+#     # page_numbers = sorted([int(n.metadata["source"]) for n in bm25_text_nodes])  # get and sort the page numbers
+#     page_numbers = [int(n.metadata["source"]) for n in bm25_text_nodes]  # get and sort the page numbers
+#     page_numbers = [str(p) for p in page_numbers]  # convert back to str
+
+#     return page_numbers
 
 
 
@@ -842,7 +864,7 @@ def get_vector_tree_filter_sort_detail_engine(_vector_filter_retriever):
 def get_bm25_filter_retriever(
         vector_filter_retriever: BaseRetriever, 
         query: str, 
-        vector_docstore: Optional[MongoDocumentStore] = None,
+        # vector_docstore: Optional[MongoDocumentStore] = None,
         ) -> BM25Retriever:
     """
     This function creates a BM25 filter retriever using nodes retrieved from a vector retriever
@@ -858,36 +880,35 @@ def get_bm25_filter_retriever(
     bm25_filter_retriever (BM25Retriever): An instance of BM25Retriever class that uses the
                                            retrieved nodes from the vector retriever on a query string.
     """
+    try:
+        # Retrieve nodes for BM25 filter retriever using the vector filter retriever and the query
+        scored_nodes = vector_filter_retriever.retrieve(query)
 
-    # Retrieve nodes for BM25 filter retriever using the vector filter retriever and the query
-    scored_nodes = vector_filter_retriever.retrieve(query)
+        # Extract TextNodes from NodeWithScore objects
+        text_nodes = [scored_node.node for scored_node in scored_nodes]
 
-    # Extract TextNodes from NodeWithScore objects
-    text_nodes = [scored_node.node for scored_node in scored_nodes]
+        print(f"Text nodes in page Bm25 length is: {len(text_nodes)}")
+        for i, n in enumerate(text_nodes):
+            print(f"Item {i+1} of the text nodes in page Bm25 is page: {n.metadata['source']}")
+    except Exception as e:
+        print(f"Error in retrieving nodes for BM25 page filter retriever: {e}")
+        return None
 
-    print(f"Text nodes in keyphrase Bm25 length is: {len(text_nodes)}")
-    for i, n in enumerate(text_nodes):
-        print(f"Item {i+1} of the text nodes in keyphrase Bm25 is page: {n.metadata['source']}")
+    # # Create simple BM25 filter 
+    # bm25_retriever= BM25Retriever.from_defaults(
+    #     similarity_top_k=36,
+    #     docstore=vector_docstore
+    # )
 
+    # # Retrieve nodes for BM25 retriever
+    # scored_nodes_raw = bm25_retriever.retrieve(query)
 
+    # # Extract TextNodes from NodeWithScore objects
+    # text_nodes_raw = [scored_node.node for scored_node in scored_nodes_raw]
 
-    # Create simple BM25 filter 
-    bm25_retriever= BM25Retriever.from_defaults(
-        similarity_top_k=36,
-        docstore=vector_docstore
-    )
-
-    # Retrieve nodes for BM25 retriever
-    scored_nodes_raw = bm25_retriever.retrieve(query)
-
-    # Extract TextNodes from NodeWithScore objects
-    text_nodes_raw = [scored_node.node for scored_node in scored_nodes_raw]
-
-    print(f"keyphrase RAW Bm25 retrieved nodes length is: {len(text_nodes_raw)}")
-    for i, n in enumerate(text_nodes_raw):
-        print(f"Item {i+1} of the RAW keyphrase Bm25 retrieved nodes is page: {n.metadata['source']}")
-
-
+    # print(f"keyphrase RAW Bm25 retrieved nodes length is: {len(text_nodes_raw)}")
+    # for i, n in enumerate(text_nodes_raw):
+    #     print(f"Item {i+1} of the RAW keyphrase Bm25 retrieved nodes is page: {n.metadata['source']}")
 
 
     # Create BM25 filter retriever using the extracted TextNodes
@@ -1058,15 +1079,15 @@ def get_fusion_tree_filter_sort_detail_engine(
     )
 
     # Modify the prompt to provide detailed results
-    if page_numbers is not None:
-        fusion_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
-                                                            fusion_tree_filter_sort_engine,
-                                                            page_numbers,
-                                                            )
-    else:
-        fusion_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
-                                                            fusion_tree_filter_sort_engine
-                                                            )
+    # if page_numbers is not None:
+    fusion_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
+                                                        fusion_tree_filter_sort_engine,
+                                                        page_numbers,
+                                                        )
+    # else:
+    #     fusion_tree_filter_sort_detail_engine = change_tree_engine_prompt_to_in_detail(
+    #                                                         fusion_tree_filter_sort_engine
+    #                                                         )
 
     return fusion_tree_filter_sort_detail_engine
 
@@ -1115,7 +1136,7 @@ def get_fusion_tree_filter_sort_detail_engine(
 def get_fusion_tree_keyphrase_filter_sort_detail_engine(
                                                 vector_retriever,
                                                 vector_docstore: MongoDocumentStore,
-                                                bm25_filter_retriever: BM25Retriever,
+                                                bm25_retriever: BM25Retriever,
                                                 fusion_top_n: int,
                                                 num_queries: int,
                                                 rerank: ColbertRerank = None,
@@ -1142,7 +1163,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
     fusion_filter_retriever = QueryFusionRetriever(
                                 retrievers=[
                                         vector_retriever, 
-                                        bm25_filter_retriever
+                                        bm25_retriever
                                         ],
                                 similarity_top_k=fusion_top_n,
                                 # similarity_top_k=2,
@@ -1191,7 +1212,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
     return fusion_tree_filter_sort_detail_engine
 
 
-def get_page_numbers_from_query_keyphrase(
+def get_text_nodes_from_query_keyphrase(
         vector_docstore,
         similarity_top_n: int,
         query_str: str
@@ -1219,12 +1240,46 @@ def get_page_numbers_from_query_keyphrase(
     print(f"\nThe keyphrase is: {query_keyphrase}.")
 
     # Get page numbers containing the keyphrase using bm25 model, sorted in ascending order
-    page_numbers = get_page_numbers_using_bm25_and_keyphrase(
-        bm25_retriever, 
-        query_keyphrase)
+    bm25_score_nodes = bm25_retriever.retrieve(query_keyphrase)
+    bm25_text_nodes = [node.node for node in bm25_score_nodes ]  # get TextNode from ScoredNode
 
-    print(f"\nThe keyphrase page numbers are: {page_numbers}.")
-    return page_numbers
+    return bm25_text_nodes
+
+
+# def get_page_numbers_from_query_keyphrase(
+#         vector_docstore,
+#         similarity_top_n: int,
+#         query_str: str
+#         ) -> List[int]:
+#     """
+#     This function takes a vectorized document store, a similarity top-k value, and a query string.
+#     It creates a BM25 retriever, extracts a keyphrase from the query string, and uses the BM25 retriever
+#     and the keyphrase to get a list of page numbers containing the keyphrase, sorted in ascending order.
+
+#     :param vector_docstore: A vectorized document store.
+#     :param similarity_top_k: An integer value representing the number of results to return.
+#     :param query_str: A string value representing the query.
+#     :return: A list of page numbers containing the keyphrase.
+#     """
+
+#     bm25_retriever = BM25Retriever.from_defaults(
+#         similarity_top_k=similarity_top_n,
+#         docstore=vector_docstore,
+#     )
+
+#     # Get keyphrase from the query string using the keyBURT model
+#     query_keyphrase = get_keyphrase_from_query_str(query_str)
+
+#     print(f"\nThe query in keyphrase tool is: {query_str}.")
+#     print(f"\nThe keyphrase is: {query_keyphrase}.")
+
+#     # Get page numbers containing the keyphrase using bm25 model, sorted in ascending order
+#     page_numbers = get_page_numbers_using_bm25_and_keyphrase(
+#         bm25_retriever, 
+#         query_keyphrase)
+
+#     print(f"\nThe keyphrase page numbers are: {page_numbers}.")
+#     return page_numbers
 
 
 # def get_page_numbers_from_query_keyphrase(
@@ -1521,10 +1576,106 @@ def get_summary_tree_detail_tool(
 #     return _fusion_tree_keyphrase_sort_detail_tool
 
 
-def get_fusion_tree_keyphrase_sort_detail_tool(
+# def get_fusion_tree_keyphrase_sort_detail_tool(
+#                                 vector_index: VectorStoreIndex,
+#                                 vector_docstore: MongoDocumentStore,
+#                                 similarity_top_k_keyphrase: int,
+#                                 similarity_top_k_fusion: int,
+#                                 fusion_top_n: int,
+#                                 query_str: str,
+#                                 num_queries: int,
+#                                 rerank: BaseNodePostprocessor,
+#                                 tool_description: str,
+#                                 ) -> QueryEngineTool:
+#     """
+#     Create a QueryEngineTool that uses a fusion tree filter sort detail engine.
+#     The engine is built using a vector retriever and a BM25 filter retriever.
+
+#     Args:
+#         vector_index (VectorStoreIndex): The vector store index.
+#         vector_docstore (MongoDocumentStore): The vector document store.
+#         similarity_top_k_keyphrase (int): Number of similar nodes to retrieve for keyphrase.
+#         similarity_top_k_fusion (int): Number of similar nodes to retrieve for fusion.
+#         fusion_top_n (int): Number of nodes to return from the fusion engine.
+#         query_str (str): The query string to use for the BM25 filter retriever.
+#         num_queries (int): Number of queries to use for the fusion engine.
+#         rerank (BaseNodePostprocessor): The rerank object to use for the fusion engine.
+#         tool_description (str): Description for the QueryEngineTool.
+
+#     Returns:
+#         QueryEngineTool: A QueryEngineTool that uses the fusion tree filter sort detail engine.
+#     """
+
+#     # Retrieve page numbers that contain a keyphrase of the query using BM25
+#     # Currently similarity_top_k = 36, use 18 for bm25 retriever to reduce noise
+#     # TODO: tune this parameter
+#     similarity_top_n_keyphrase = int(similarity_top_k_keyphrase/2)
+
+#     page_numbers = get_page_numbers_from_query_keyphrase(
+#         vector_docstore,
+#         similarity_top_n_keyphrase,
+#         query_str,
+#     )
+
+#     # Create vector retriever with metadata filter using page numbers
+#     vector_filter_retriever = vector_index.as_retriever(
+#         similarity_top_k=similarity_top_k_keyphrase,  # Retrieve more nodes for filtering
+#         filters=MetadataFilters.from_dicts(
+#             [
+#                 {
+#                     "key": "source",
+#                     "value": page_numbers,
+#                     "operator": "in",
+#                 }
+#             ]
+#         ),
+#     )
+
+#     # Get BM25 filter retriever to build a fusion engine with metadata filter
+#     bm25_filter_retriever = get_bm25_filter_retriever(
+#         vector_filter_retriever,
+#         query_str,
+#         vector_docstore
+#     )
+
+#     # Create vector retriever without metadata filter
+#     vector_retriever = vector_index.as_retriever(
+#         similarity_top_k=similarity_top_k_fusion,
+#     )
+
+#     # Retrieve nodes  using the vector retriever and the query
+#     scored_nodes = vector_retriever.retrieve(query_str)
+
+#     # Extract TextNodes from NodeWithScore objects
+#     text_nodes = [scored_node.node for scored_node in scored_nodes]
+
+#     print(f"Text nodes in keyphrase vector index length is: {len(text_nodes)}")
+#     for i, n in enumerate(text_nodes):
+#         print(f"Item {i+1} of the text nodes in keyphrase vector index is page: {n.metadata['source']}")
+
+#     # Get fusion tree filter sort detail engine using vector_retriever and bm25_filter_retriever
+#     fusion_tree_filter_sort_detail_engine = get_fusion_tree_keyphrase_filter_sort_detail_engine(
+#         vector_retriever,
+#         vector_docstore,
+#         bm25_filter_retriever,
+#         fusion_top_n,
+#         num_queries,
+#         rerank,
+#     )
+
+#     fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
+#         name="fusion_keyphrase_tool",
+#         query_engine=fusion_tree_filter_sort_detail_engine,
+#         description=tool_description,
+#     )
+
+#     return fusion_tree_keyphrase_sort_detail_tool
+
+
+
+def get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                 vector_index: VectorStoreIndex,
                                 vector_docstore: MongoDocumentStore,
-                                similarity_top_k_keyphrase: int,
                                 similarity_top_k_fusion: int,
                                 fusion_top_n: int,
                                 query_str: str,
@@ -1554,34 +1705,20 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
     # Retrieve page numbers that contain a keyphrase of the query using BM25
     # Currently similarity_top_k = 36, use 18 for bm25 retriever to reduce noise
     # TODO: tune this parameter
-    similarity_top_n_keyphrase = int(similarity_top_k_keyphrase/2)
+    # similarity_top_n_keyphrase = int(similarity_top_k_keyphrase/2)
 
-    page_numbers = get_page_numbers_from_query_keyphrase(
+    text_nodes = get_text_nodes_from_query_keyphrase(
         vector_docstore,
-        similarity_top_n_keyphrase,
+        similarity_top_k_fusion,
         query_str,
     )
 
-    # Create vector retriever with metadata filter using page numbers
-    vector_filter_retriever = vector_index.as_retriever(
-        similarity_top_k=similarity_top_k_keyphrase,  # Retrieve more nodes for filtering
-        filters=MetadataFilters.from_dicts(
-            [
-                {
-                    "key": "source",
-                    "value": page_numbers,
-                    "operator": "in",
-                }
-            ]
-        ),
-    )
-
-    # Get BM25 filter retriever to build a fusion engine with metadata filter
-    bm25_filter_retriever = get_bm25_filter_retriever(
-        vector_filter_retriever,
-        query_str,
-        vector_docstore
-    )
+    # Get BM25 keyphrase retriever to build a fusion engine
+    bm25_keyphrase_retriever= BM25Retriever.from_defaults(
+    similarity_top_k=similarity_top_k_fusion,
+    # similarity_top_k=len(text_nodes),
+    nodes=text_nodes,
+)
 
     # Create vector retriever without metadata filter
     vector_retriever = vector_index.as_retriever(
@@ -1602,7 +1739,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool(
     fusion_tree_filter_sort_detail_engine = get_fusion_tree_keyphrase_filter_sort_detail_engine(
         vector_retriever,
         vector_docstore,
-        bm25_filter_retriever,
+        bm25_keyphrase_retriever,
         fusion_top_n,
         num_queries,
         rerank,
@@ -1734,7 +1871,7 @@ def get_fusion_tree_page_filter_sort_detail_engine(
     vector_filter_retriever,
     similarity_top_k_filter: int,
     fusion_top_n_filter: int,
-    query_str: str,
+    text_nodes: List[TextNode],
     num_queries_filter: int,
     rerank: BaseNodePostprocessor,
     vector_docstore: MongoDocumentStore,
@@ -1757,33 +1894,50 @@ def get_fusion_tree_page_filter_sort_detail_engine(
     print(f"similarity_top_k_filter: {similarity_top_k_filter} ")
     print(f"fusion_top_n_filter: {fusion_top_n_filter} ")
 
-    # Get bm25 filter retriever to build a fusion engine with metadata filter
-    bm25_filter_retriever = get_bm25_filter_retriever(
-        vector_filter_retriever,
-        query_str,
-        similarity_top_k_filter
+    # # Get bm25 filter retriever to build a fusion engine with metadata filter
+    # bm25_filter_retriever = get_bm25_filter_retriever(
+    #     vector_filter_retriever,
+    #     query_str,
+    #     # similarity_top_k_filter
+    # )
+
+    # Create BM25 filter retriever using the extracted TextNodes
+    bm25_filter_retriever= BM25Retriever.from_defaults(
+        similarity_top_k=len(text_nodes),
+        nodes=text_nodes,
     )
 
     # Get fusion tree filter sort detail engine
-    if page_numbers is not None:
-        fusion_tree_filter_sort_detail_engine = get_fusion_tree_filter_sort_detail_engine(
-            vector_filter_retriever,
-            bm25_filter_retriever,
-            fusion_top_n_filter,
-            num_queries_filter,
-            rerank,
-            vector_docstore,
-            page_numbers,
-            )
-    else:
-        fusion_tree_filter_sort_detail_engine = get_fusion_tree_filter_sort_detail_engine(
-            vector_filter_retriever,
-            bm25_filter_retriever,
-            fusion_top_n_filter,
-            num_queries_filter,
-            rerank,
-            vector_docstore,
-            )
+    fusion_tree_filter_sort_detail_engine = get_fusion_tree_filter_sort_detail_engine(
+        vector_filter_retriever,
+        bm25_filter_retriever,
+        fusion_top_n_filter,
+        num_queries_filter,
+        rerank,
+        vector_docstore,
+        page_numbers,
+        )
+
+    # # Get fusion tree filter sort detail engine
+    # if page_numbers is not None:
+    #     fusion_tree_filter_sort_detail_engine = get_fusion_tree_filter_sort_detail_engine(
+    #         vector_filter_retriever,
+    #         bm25_filter_retriever,
+    #         fusion_top_n_filter,
+    #         num_queries_filter,
+    #         rerank,
+    #         vector_docstore,
+    #         page_numbers,
+    #         )
+    # else:
+    #     fusion_tree_filter_sort_detail_engine = get_fusion_tree_filter_sort_detail_engine(
+    #         vector_filter_retriever,
+    #         bm25_filter_retriever,
+    #         fusion_top_n_filter,
+    #         num_queries_filter,
+    #         rerank,
+    #         vector_docstore,
+    #         )
 
     return fusion_tree_filter_sort_detail_engine
 
@@ -1933,8 +2087,13 @@ def change_summary_engine_prompt_to_in_detail(engine):
     "---------------------\n"
     "Given the information from multiple sources and NOT PRIOR KNOWLEDGE, "
     "answer the query below.\n"
-    "Try to provide a detailed summary that captures the major story line, \n"
-    "main arguments, supporting evidence, and key conclusions \n"
+    "Try to provide a summary IN DETAIL that captures the major story lines, \n"
+    "main arguments, supporting evidence, and key conclusions. \n"
+    "If asked to create table of contents, create a table of contents that \n"
+    " 1. includes the major story lines, \n"
+    " 2. main arguments, \n"
+    " 3. supporting evidence, and \n"
+    " 4. key conclusions. \n"
     "DO NOT INCLUDE ANYTHING THAT IS NOT IN THE PROVIDED CONTEXT INFORMATION.\n"
     "Query: {query_str}\n"
     "Answer: "

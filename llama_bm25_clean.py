@@ -55,9 +55,9 @@ import openai
 from utility import (
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
-                get_fusion_tree_keyphrase_sort_detail_tool,
+                get_fusion_tree_keyphrase_sort_detail_tool_simple,
                 get_fusion_tree_page_filter_sort_detail_engine,
-                get_page_numbers_from_query_keyphrase,
+                # get_page_numbers_from_query_keyphrase,
                 get_summary_storage_context,
                 get_summary_tree_detail_tool,
                 get_vector_store_docstore_and_storage_context,
@@ -422,9 +422,9 @@ def create_and_save_vector_index_to_milvus_database(
 #     return _fusion_tree_keyphrase_sort_detail_tool
 
 
-def get_fusion_tree_page_filter_sort_detail_tool(
+def get_fusion_tree_page_filter_sort_detail_tool_simple(
     _query_str: str, 
-    _similarity_top_k_page: int,
+    # _similarity_top_k_page: int,
     _reranker: ColbertRerank,
     _vector_docstore: MongoDocumentStore,
     ) -> QueryEngineTool:
@@ -480,23 +480,31 @@ def get_fusion_tree_page_filter_sort_detail_tool(
     _page_numbers = json.loads(_page_numbers)  # Convert the string to a list of string
     print(f"Page_numbers in page filter: {_page_numbers}")
 
-    # Create a vector retreiver with a filter on page numbers
-    _vector_retriever = vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k_page,
-                                )
-    # Retrieve nodes  using the vector retriever and the query
-    scored_nodes = _vector_retriever.retrieve(_query_str)
+    # Get text nodes from the vector docstore that match the page numbers
+    _text_nodes = []
+    for node_id, node in _vector_docstore.docs.items():
+        if node.metadata['source'] in _page_numbers:
+            _text_nodes.append(node) 
 
-    # Extract TextNodes from NodeWithScore objects
-    text_nodes = [scored_node.node for scored_node in scored_nodes]
+    node_length = len(vector_docstore.docs)
+    print(f"Node length in docstore: {node_length}")
 
-    print(f"Text nodes in page vector index length is: {len(text_nodes)}")
-    for i, n in enumerate(text_nodes):
-        print(f"Item {i+1} of the text nodes in page vector index is page: {n.metadata['source']}")
+    # # Create a vector retreiver with a filter on page numbers
+    # _vector_retriever = vector_index.as_retriever(
+    #                                 similarity_top_k=_similarity_top_k_page,
+    #                             )
+    # # Retrieve nodes  using the vector retriever and the query
+    # scored_nodes = _vector_retriever.retrieve(_query_str)
+
+    # # Extract TextNodes from NodeWithScore objects
+    # text_nodes = [scored_node.node for scored_node in scored_nodes]
+
+    print(f"Text nodes retrieved from docstore length is: {len(_text_nodes)}")
+    for i, n in enumerate(_text_nodes):
+        print(f"Item {i+1} of the text nodes retrieved from docstore is page: {n.metadata['source']}")
     
-
     _vector_filter_retriever = vector_index.as_retriever(
-                                    similarity_top_k=_similarity_top_k_page,
+                                    similarity_top_k=node_length,
                                     filters=MetadataFilters.from_dicts(
                                         [{
                                             "key": "source", 
@@ -506,18 +514,18 @@ def get_fusion_tree_page_filter_sort_detail_tool(
                                     )
                                 )
     
-    # Calculate the number of nodes retrieved from the vector index on these pages
-    _nodes = _vector_filter_retriever.retrieve(_query_str)
+    # # Calculate the number of nodes retrieved from the vector index on these pages
+    # _nodes = _vector_filter_retriever.retrieve(_query_str)
 
-    _similarity_top_k_filter = len(_nodes)
-    _fusion_top_n_filter = len(_nodes)
+    _similarity_top_k_filter = len(_text_nodes)
+    _fusion_top_n_filter = len(_text_nodes)
     _num_queries_filter = 1
 
     # _similarity_top_k_filter = _similarity_top_k_page
     # _fusion_top_n_filter = _similarity_top_k_page
     # _num_queries_filter = 1
 
-    print(f"page filter: {_similarity_top_k_filter}")
+    # print(f"page filter: {_similarity_top_k_filter}")
 
     # _similarity_top_k_filter = len(_page_numbers) * 2
     # _fusion_top_n_filter = len(_page_numbers) * 2
@@ -527,7 +535,7 @@ def get_fusion_tree_page_filter_sort_detail_tool(
                                                                 _vector_filter_retriever,
                                                                 _similarity_top_k_filter,
                                                                 _fusion_top_n_filter,
-                                                                _query_str,
+                                                                _text_nodes,
                                                                 _num_queries_filter,
                                                                 _reranker,
                                                                 _vector_docstore,
@@ -541,6 +549,127 @@ def get_fusion_tree_page_filter_sort_detail_tool(
                                                         )
 
     return _fusion_tree_page_filter_sort_detail_tool
+
+
+# def get_fusion_tree_page_filter_sort_detail_tool(
+#     _query_str: str, 
+#     _similarity_top_k_page: int,
+#     _reranker: ColbertRerank,
+#     _vector_docstore: MongoDocumentStore,
+#     ) -> QueryEngineTool:
+    
+#     """
+#     This function generates a response based on a query string and a list of specific page 
+#     numbers in this query. It creates a vector retriever with a filter on the specified 
+#     page numbers, retrieves relevant nodes, and uses them to generate a query engine tool.
+
+#     Parameters:
+#     query_str_ (str): A query string that contains instructions about the information on specific pages.
+#     page_numbers_ (List[str]): A list of specific page numbers mentioned in the query string.
+
+#     Returns:
+#     str: A response generated based on the query string and the specified page numbers.
+#     """
+
+#     query_text = (
+#     '## Instruction:\n'
+#     'Extract all page numbers from the user query. \n'
+#     'The page numbers are usually indicated by the phrases "page" or "pages" \n'
+#     'Return the page numbers as a list of strings, sorted in ascending order. \n'
+#     'Do NOT include "**Output:**" in your response. If no page numbers are mentioned, output ["1"]. \n'
+
+#     '## Examples:\n'
+#     '**Query:** "Give me the main events from page 1 to page 4." \n'
+#     '**Output:** ["1", "2", "3", "4"] \n'
+
+#     '**Query:** "Give me the main events in the first 6 pages." \n'
+#     '**Output:** ["1", "2", "3", "4", "5", "6"] \n'
+
+#     '**Query:** "Summarize pages 10-15 of the document." \n'
+#     '**Output:** ["10", "11", "12", "13", "14", "15"] \n'
+
+#     '**Query:** "What are the key findings on page 2?" \n'
+#     '**Output:** ["2"] \n'
+
+#     '**Query:** "What is mentioned about YC (Y Combinator) on pages 19 and 20?" \n'
+#     '**Output:** ["19", "20"] \n'
+
+#     '**Query:** "What are the lessons learned by the author at the company Interleaf?" \n'
+#     '**Output:** ["1"] \n'
+
+#     '## Now extract the page numbers from the following query: \n'
+
+#     '**Query:** {query_str} \n'
+#     )
+
+#     # Need to print "1" if no page numbers are mentioned so that this code can run correctly
+
+#     prompt = PromptTemplate(query_text)
+#     _page_numbers = llm.predict(prompt=prompt, query_str=_query_str)
+#     _page_numbers = json.loads(_page_numbers)  # Convert the string to a list of string
+#     print(f"Page_numbers in page filter: {_page_numbers}")
+
+#     # Create a vector retreiver with a filter on page numbers
+#     _vector_retriever = vector_index.as_retriever(
+#                                     similarity_top_k=_similarity_top_k_page,
+#                                 )
+#     # Retrieve nodes  using the vector retriever and the query
+#     scored_nodes = _vector_retriever.retrieve(_query_str)
+
+#     # Extract TextNodes from NodeWithScore objects
+#     text_nodes = [scored_node.node for scored_node in scored_nodes]
+
+#     print(f"Text nodes in page vector index length is: {len(text_nodes)}")
+#     for i, n in enumerate(text_nodes):
+#         print(f"Item {i+1} of the text nodes in page vector index is page: {n.metadata['source']}")
+    
+
+#     _vector_filter_retriever = vector_index.as_retriever(
+#                                     similarity_top_k=_similarity_top_k_page,
+#                                     filters=MetadataFilters.from_dicts(
+#                                         [{
+#                                             "key": "source", 
+#                                             "value": _page_numbers,
+#                                             "operator": "in"
+#                                         }]
+#                                     )
+#                                 )
+    
+#     # Calculate the number of nodes retrieved from the vector index on these pages
+#     _nodes = _vector_filter_retriever.retrieve(_query_str)
+
+#     _similarity_top_k_filter = len(_nodes)
+#     _fusion_top_n_filter = len(_nodes)
+#     _num_queries_filter = 1
+
+#     # _similarity_top_k_filter = _similarity_top_k_page
+#     # _fusion_top_n_filter = _similarity_top_k_page
+#     # _num_queries_filter = 1
+
+#     print(f"page filter: {_similarity_top_k_filter}")
+
+#     # _similarity_top_k_filter = len(_page_numbers) * 2
+#     # _fusion_top_n_filter = len(_page_numbers) * 2
+#     # _num_queries_filter = 1
+
+#     _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
+#                                                                 _vector_filter_retriever,
+#                                                                 _similarity_top_k_filter,
+#                                                                 _fusion_top_n_filter,
+#                                                                 _query_str,
+#                                                                 _num_queries_filter,
+#                                                                 _reranker,
+#                                                                 _vector_docstore,
+#                                                                 _page_numbers
+#                                                                 )
+    
+#     _fusion_tree_page_filter_sort_detail_tool = QueryEngineTool.from_defaults(
+#                                                         name="page_filter_tool",
+#                                                         query_engine=_fusion_tree_page_filter_sort_detail_engine,
+#                                                         description=page_tool_description,
+#                                                         )
+
+#     return _fusion_tree_page_filter_sort_detail_tool
 
 
 # nltk.download('punkt_tab')
@@ -784,7 +913,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Give me the main events from page 1 to page 4."
 # query_str = "What was mentioned about Jessica on pages 17 and 18?"
 
-# query_str = "What was mentioned about Jessica from pages 17 to 22?"
+query_str = "What was mentioned about Jessica from pages 17 to 22?"
 
 # query_str = "Give me the main events on page 2."
 # query_str = "Give me the main events on pages 1 and 2."
@@ -826,6 +955,9 @@ summary_tool = get_summary_tree_detail_tool(
 #     "months afterward?")  # BAD RESULTS!
 
 # query_str = "What did Paul Graham do in 1995 and in 1996?"
+# query_str = "What did Paul Graham do in the year 1980, in 1996 and in 2019?"
+
+# query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 
 # query_str = (
 #     "What did Paul Graham do in the summer of 1995 and in the couple of "
@@ -836,7 +968,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
 # query_str = "When did the author hand off Y Combinator to Sam Altman?"
 
-query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 
 # query_str = "How was the author's life during Y Combinator (YC)?"
 # query_str = "When was Y Combinator (YC) founded?"
@@ -848,8 +980,9 @@ query_str = "What did the author do after handing off Y Combinator to Sam Altman
 # query_str = "At what companies did the author work for?"
 # query_str = "At what companies did the author work for or as a founder?"
 # query_str = "What was the significance of the orange color chosen for Y Combinator's logo?"
+# query_str = "Create a table of content for this essay." 
 
-# query_str = "Create a table of content for this article."
+# query_str = "Create table of contents for this article."
 
 # query_str = "What project did the author work on from March 2015 to October 2019?"
 # query_str = "What was the author's experience like living in England?"
@@ -860,13 +993,19 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 
 # An initial large number making sure nodes of all mentioned pages are retrieved
 # This value needs to be larger than the toral number of nodes of the document
-similarity_top_k_page = 60  
+# similarity_top_k_page = 60  
 
-similarity_top_k_keyphrase = 36
-similarity_top_k_fusion = 32
+# similarity_top_k_keyphrase = 36
+# similarity_top_k_fusion = 32
+# num_queries = 1  # for QueryFusionRetriever() in utility.py
+# fusion_top_n = 28
+# rerank_top_n = 20
+
+similarity_top_k_fusion = 36
 num_queries = 1  # for QueryFusionRetriever() in utility.py
-fusion_top_n = 28
-rerank_top_n = 20
+fusion_top_n = 32
+rerank_top_n = 24
+
 # with PrevNextNodePostprocessor() retrieve 8 notes (plus the other note on the same page)
 
 # # Define reranker
@@ -904,10 +1043,9 @@ specific_tool_description = (
             )
 
 # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
-keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
+keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                                     vector_index,
                                                     vector_docstore,
-                                                    similarity_top_k_keyphrase,
                                                     similarity_top_k_fusion,
                                                     fusion_top_n,
                                                     query_str,
@@ -918,10 +1056,10 @@ keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool(
 
 page_tool_description = (
                 "Perform a query search over the page numbers mentioned in the query. "
-                "Use this function when user only need to retrieve information from specific pages, "
-                "for example when user asks 'What happened on page 19?' "
-                "or 'What are the things mentioned on pages 19 and 20?' "
-                "or 'Describe the contents from page 1 to page 4'. "
+                "Use this function when user only need to retrieve information from specific PAGES, "
+                "for example when user asks 'What happened on PAGE 19?' "
+                "or 'What are the things mentioned on PAGES 19 and 20?' "
+                "or 'Describe the contents from PAGE 1 to PAGE 4'. "
                 "DO NOT GENERATE A SUB-QUESTION ASKING ABOUT ONE PAGE ONLY "
                 "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
                 )
@@ -937,9 +1075,9 @@ page_tool_description = (
 # for p in page_numbers:
 #     print(f"Page number that contains the keyphrase: {p}")
 
-page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool(
+page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
                                                     query_str,
-                                                    similarity_top_k_page,
+                                                    # similarity_top_k_page,
                                                     colbert_reranker,
                                                     vector_docstore,
                                                     )
