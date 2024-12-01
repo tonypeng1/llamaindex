@@ -1,12 +1,10 @@
 import json
 import os
 from pathlib import Path
-
 from typing import List, Optional
 
 from llama_index.core import (
                         Settings,
-                        StorageContext,
                         VectorStoreIndex,
                         )
 from llama_index.core.callbacks import (
@@ -259,13 +257,11 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
                                 )
     
     # Calculate the number of nodes retrieved from the vector index on these pages
-    _similarity_top_k_filter = len(_text_nodes)
     _fusion_top_n_filter = len(_text_nodes)
     _num_queries_filter = 1
 
     _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
                                                                 _vector_filter_retriever,
-                                                                _similarity_top_k_filter,
                                                                 _fusion_top_n_filter,
                                                                 _text_nodes,
                                                                 _num_queries_filter,
@@ -415,8 +411,8 @@ summary_tool = get_summary_tree_detail_tool(
 
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
-query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
-# query_str = "Create table of contents for this article."
+# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+query_str = "Create table of contents for this article."
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
@@ -505,8 +501,6 @@ for i, n in enumerate(response.source_nodes):
 
 vector_store.client.release_collection(collection_name=collection_name_vector)
 vector_store.client.close()  
-# Need to do this (otherwise Milvus container will hault when closing)
-# del docstore  # MongoDB may frnot need to be manually closed.
 
 
 
