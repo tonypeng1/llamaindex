@@ -279,12 +279,12 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
     return _fusion_tree_page_filter_sort_detail_tool
 
 # Set LLM and embedding models
-anthropic_api_key = os.environ['ANTHROPIC_API_KEY']
+ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
 llm = Anthropic(
     model="claude-3-sonnet-20240229",
     temperature=0.0,
     max_tokens=2000,
-    api_key=anthropic_api_key,
+    api_key=ANTHROPIC_API_KEY,
     )
 Settings.llm = llm
 
@@ -462,14 +462,15 @@ page_tool_description = (
 
 page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
                                                     query_str,
-                                                    # similarity_top_k_page,
                                                     colbert_reranker,
                                                     vector_docstore,
                                                     )
 
+OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 question_gen = GuidanceQuestionGenerator.from_defaults(
                             guidance_llm=GuidanceOpenAI(
                                 model="gpt-4o-2024-11-20",
+                                api_key=OPENAI_API_KEY,
                                 echo=False)
                                 )
 
