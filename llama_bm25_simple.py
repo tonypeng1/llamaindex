@@ -413,164 +413,25 @@ summary_tool = get_summary_tree_detail_tool(
                                         storage_context_summary
                                         )
 
-# query_str = "What are the keys to building a career in AI?"
-# query_str = "What is the importance of networking in AI?"
-
-# query_str = "What is the summary of the MetaGPT paper?"
-# query_str = "How do agents share information with other agents?"
-# query_str = "What are the MetaGPT comparisons with ChatDev?"
-# query_str = "What are agent roles in MetaGPT, and then how they communicate with each other?"
-# query_str = "What are the high-level results of MetaGPT?"
-# query_str = "How does metagpt deal with halluciation?"
-# query_str = "What is SOPs and how do agents use it?"
-# query_str = "Tell me about the ablation study results."
-# query_str = (
-#     "What could be the potential outcomes of adjusting the amount of safety"
-#     " data used in the RLHF stage?"
-# )
-# query_str = "What are the high-level results of MetaGPT as described on page 2?"
-# query_str = "What are the high-level results of MetaGPT as described on page 1, page 2, and page 3?"
-# query_str = "What are the MetaGPT comparisons with ChatDev described on page 8?"
-
-# query_str = "Tell me the output of the mystery function on 2 and 9."
-# query_str = "What is the sum of 2 and 9?"
-
-# query_str = "What are the things that happen in New York?"
-# query_str = "Who is Jessica Livingston?"
-# query_str = "Who is Jessica?"  # NOT A GOOD PROMPT
-# query_str = "What are mentioned about Sam Altman?"
-# query_str = "What are the things that are mentioned about startups?"
-# query_str = "What are mentioned about YC (Y Combinator)?"
-# query_str = "What are mentioned about YC (Y Combinator) on pages 19 and 20?"
-# query_str = "What are the contents from page 2 to page 4"
-# query_str = "Describe the content on pages 19 and 20."
-# query_str = "Describe the content from page 18 to page 21."
-# query_str = "Is there anything discussed about Sam Altman from page 18 to page 21?"
-# query_str = "What is said about the author on the first 10 pages?"
-# query_str = "Describe the content on the first 5 pages?"
-# query_str = "What lessons does the author learn on the first 10 pages?"
-# query_str = "Give me the main events from page 1 to page 4."
-# query_str = "What was mentioned about Jessica on pages 17 and 18?"
-
 query_str = "What was mentioned about Jessica from pages 17 to 22?"
-
-# query_str = "Give me the main events on page 2."
-# query_str = "Give me the main events on pages 1 and 2."
-# query_str = (
-#     "Give me the main events from page 1 to 4. Provide as many details as possible.")
-# query_str = "What is the summary of the paul graham essay?"
-# query_str = "Author's school days."
-# query_str = "What are the schools that the author attended?"
-# query_str = "What are the specific things that happened at Rhode Island School of Design (RISD)"
-# query_str = "What happen in the author's early days?"
-# query_str = "What are the specific things that happened in the author's early days?"
-# query_str = "Who have been the president of YC (Y Combinator)?"
-# query_str = "What are the thinkgs happened in New York in detail?"
-# query_str = "What happened in New York?"
-# query_str = "Describe everything that is mentioned about Interleaf one by one."
-# query_str = "Describe everything that is mentioned about Interleaf."
-# query_str = "Describe everything that is mentioned about Viaweb."
-# query_str = "What happened at Interleaf?"
-# query_str = "What happened at Interleaf and Viaweb?"
-# query_str = "What are the lessions learned by the author from his experience at Interleaf and Viaweb?"
-# query_str = (
-#     "What are the lessons learned by the author at the companies Interleaf "
-#      "and Viaweb?")
-# query_str = (
-#     "What are the lessons learned by the author from his experiences at the companies Interleaf"
-#      " and Viaweb?")
-# query_str = (
-#     "What are the lessons learned by the author from his experiences at the companies Interleaf"
-#      " and Viaweb? Provide as many details as possible.")
-# query_str = (
-#     "What was Paul Graham's life at school like and what was it like "
-#     "after he handed over YC to Sam Altman?")
-# query_str = "What did Paul Graham do in the summer of 1995?"
-# query_str = (
-#     "What did Paul Graham do in the summer of 1995 and in the couple of "
-#     "months after the summer of 1995?")
-# query_str = (
-#     "What did Paul Graham do in the summer of 1995 and in the couple of "
-#     "months afterward?")  # BAD RESULTS!
-
-# query_str = "What did Paul Graham do in 1995 and in 1996?"
-# query_str = "What did Paul Graham do in the year 1980, in 1996 and in 2019?"
-
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
-
-# query_str = (
-#     "What did Paul Graham do in the summer of 1995 and in the couple of "
-#     "months before?")  # THIS PROMPT GOT POOR SCORE (ONLY CHANGE AFTERWARD TO BEFORE)?
-# query_str = (
-#     "What did Paul Graham do in the summer of 1995 and in the couple of "
-#     "months before?")  # THIS PROMPT GOT POOR SCORE (OR EMPTY RESPONSE)?
-# query_str = "What did Paul Graham do in the summer of 1995 and earlier in the year?"  # EMPTY RESPONSE!
-# query_str = "When did the author hand off Y Combinator to Sam Altman?"
-
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
-
-# query_str = "How was the author's life during Y Combinator (YC)?"
-# query_str = "When was Y Combinator (YC) founded?"
-# query_str = "What did Paul Graham do in the summer of 1995? Provide as many details as possible."
-# query_str = (
-#     "What are the lessons learned by the author from his experience at the companies Interleaf"
-#      " and Viaweb?")
-# query_str = "At what school did the author attend a BFA program in painting?"
-# query_str = "At what companies did the author work for?"
-# query_str = "At what companies did the author work for or as a founder?"
-# query_str = "What was the significance of the orange color chosen for Y Combinator's logo?"
-# query_str = "Create a table of content for this essay." 
-
 # query_str = "Create table of contents for this article."
 
-# query_str = "What project did the author work on from March 2015 to October 2019?"
-# query_str = "What was the author's experience like living in England?"
-# query_str = "What was the arrangement between the students and faculty at the Accademia?"
-
-
 vector_store.client.load_collection(collection_name=collection_name_vector)
-
-# An initial large number making sure nodes of all mentioned pages are retrieved
-# This value needs to be larger than the toral number of nodes of the document
-# similarity_top_k_page = 60  
-
-# similarity_top_k_keyphrase = 36
-# similarity_top_k_fusion = 32
-# num_queries = 1  # for QueryFusionRetriever() in utility.py
-# fusion_top_n = 28
-# rerank_top_n = 20
 
 similarity_top_k_fusion = 36
 num_queries = 1  # for QueryFusionRetriever() in utility.py
 fusion_top_n = 32
 rerank_top_n = 24
 
-# with PrevNextNodePostprocessor() retrieve 8 notes (plus the other note on the same page)
-
-# # Define reranker
-# rerank_model = "BAAI/bge-reranker-base"
-# rerank = SentenceTransformerRerank(
-#     top_n=rerank_top_n,
-#     model=rerank_model,
-#     )
-
+# Define reranker
 colbert_reranker = ColbertRerank(
     top_n=rerank_top_n,
     model="colbert-ir/colbertv2.0",
     tokenizer="colbert-ir/colbertv2.0",
     keep_retrieval_score=True,
 )
-
-# # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
-# fusion_keyphrase_tool = get_fusion_accumulate_keyphrase_sort_detail_tool(
-#                                                                     vector_index,
-#                                                                     similarity_top_k,
-#                                                                     page_numbers,
-#                                                                     fusion_top_n,
-#                                                                     query_str,
-#                                                                     num_queries,
-#                                                                     rerank
-#                                                                     )
 
 specific_tool_description = (
             "Useful for retrieving specific, precise, or targeted content from the document. "
@@ -603,17 +464,6 @@ page_tool_description = (
                 "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
                 )
 
-                # "Generate multiple sub-questions by using words semantically similar"
-                # "towards the original query. "
-
-# Retrieves page numbers that contain a keyphrase of the query using bm25
-# page_numbers = get_page_numbers_from_query_keyphrase(
-#                                                 vector_docstore, 
-#                                                 similarity_top_k_keyphrase, 
-#                                                 query_str) 
-# for p in page_numbers:
-#     print(f"Page number that contains the keyphrase: {p}")
-
 page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
                                                     query_str,
                                                     # similarity_top_k_page,
@@ -621,49 +471,11 @@ page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
                                                     vector_docstore,
                                                     )
 
-# fusion_page_filter_tool = FunctionTool.from_defaults(
-#     name="page_filter_tool",
-#     fn=get_fusion_tree_page_filter_sort_detail_response,
-#     description=page_tool_description,
-#     )
-
-# print("\nLLM PREDICT AND CALL:\n\n") 
-
-# sub_questions = question_gen.generate(
-#                     tools=[
-#                         fusion_keyphrase_tool,
-#                         summary_tool,
-#                         fusion_page_filter_tool
-#                         ], 
-#                     query=QueryBundle(
-#                                 query_str=query_str
-#                                 ),
-#                 )
-
-# question_gen = GuidanceQuestionGenerator.from_defaults(
-#                                 guidance_llm=OpenAI(
-#                                             model="gpt-4o",   
-#                                             api_key=openai_api_key,
-#                                             temperature=0.0,
-#                                             ))
-# question_gen = GuidanceQuestionGenerator.from_defaults()  # not working
-# question_gen = GuidanceQuestionGenerator.from_defaults(guidance_llm=llm)
 question_gen = GuidanceQuestionGenerator.from_defaults(
                             guidance_llm=GuidanceOpenAI(
                                 model="gpt-4o-2024-11-20",
                                 echo=False)
                                 )
-
-# tools=[
-#     keyphrase_tool,
-#     summary_tool,
-#     fusion_page_filter_tool
-#     ]
-
-# tools=[
-#     keyphrase_tool,
-#     summary_tool,
-#     ]
 
 tools=[
     keyphrase_tool,
@@ -674,31 +486,8 @@ tools=[
 sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         question_gen=question_gen, 
                                         query_engine_tools=tools,
-                                        # verbose=False,
                                         verbose=True,
                                         )
-
-# sub_quesrion_tool_description = (
-#                 "Perform a search over the document using sub-questions. "
-#                 "Use this function when user asks a question that does not "
-#                 "mention page number. "
-#                 )
-
-# sub_question_tool = QueryEngineTool.from_defaults(
-#     name="sub_question_tool",
-#     query_engine=sub_question_engine,
-#     description=sub_quesrion_tool_description,
-#     )
-
-# response = llm.predict_and_call(
-#                         tools=[
-#                             keyphrase_tool,
-#                             summary_tool,
-#                             fusion_page_filter_tool
-#                             ], 
-#                         user_msg=query_str, 
-#                         verbose=True
-#                         )
 
 try:
     response = sub_question_engine.query(query_str)
@@ -713,16 +502,6 @@ for i, n in enumerate(response.source_nodes):
         # print(n)
     else:
         print(f"Item {i+1} question and response:\n{n.text}\n ")
-
-# # Debug info from callback manager
-# # get event time
-# print(llama_debug.get_event_time_info(CBEventType.LLM))
-# # Get input to LLM and output from LLM information 
-# event_pairs = llama_debug.get_llm_inputs_outputs()
-# pprint.pprint(event_pairs[1][0])  # human readable format of log
-# print(f"\n{event_pairs[1][0].payload['messages'][0].content}") # Input to LLM
-# print(f"\n{event_pairs[1][1].payload['response']}")  # Output from LLM
-
 
 vector_store.client.release_collection(collection_name=collection_name_vector)
 vector_store.client.close()  
