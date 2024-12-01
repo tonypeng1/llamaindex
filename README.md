@@ -52,11 +52,13 @@ span-marker==1.5.0
 Please note that there is a need to downgrade the transformers package to version 4.40.2, as the latest version is not compatible with the llamaindex packages.
 
 ## Article Directory
-The .pdf file of Paull Graham's article, which is not included in this repository, is located at:
+The .pdf file of Paull Graham's article “What I Worked On”, which is not included in this repository, is located at the directory:
 
 ```
 ./data/paul_graham/paul_graham_essay.pdf
 ```
+
+This article can be found [here](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing).
 
 ## Database and Collection Names
 The database name (includes article name and parsing method) and collection/namespace name (includes embedding model, chuck size, overlap size, and metadata if available) in both the Milvus vector database and the MongoDB document store are:
@@ -79,7 +81,3 @@ ANTHROPIC_API_KEY = your_anthropic_api_key
 ## Examples of Queries and Answers
 
 4 sets of queries and answer that illustrate the capability of this RAG can be found in this [Medium artile](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c).
-
-## The Article
-
-The Paul Graham article “What I Worked On” in pdf can be found [here](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing).
