@@ -13,7 +13,6 @@ from llama_index.core.indices.postprocessor import (
                         )
 from llama_index.core.retrievers import (
                         QueryFusionRetriever, 
-                        BaseRetriever,
                         )
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.postprocessor.types import BaseNodePostprocessor

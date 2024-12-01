@@ -41,7 +41,7 @@ from utility_simple import (
                 get_summary_tree_detail_tool,
                 get_vector_store_docstore_and_storage_context,
                 )
-from database_operation import (
+from database_operation_simple import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
@@ -494,8 +494,6 @@ for i, n in enumerate(response.source_nodes):
     if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
         print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
         (with score: {round(n.score, 3) if n.score is not None else None})")
-        # print(f"Item {i+1} score: {round(n.score, 4) if n.score is not None else None}\n")
-        # print(n)
     else:
         print(f"Item {i+1} question and response:\n{n.text}\n ")
 
