@@ -79,3 +79,7 @@ ANTHROPIC_API_KEY = your_anthropic_api_key
 ## Examples of Queries and Answers
 
 4 sets of queries and answer that illustrate the capability of this RAG can be found in the Medium [artile](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c).
+
+## The Article
+
+The Paul Graham article “What I Worked On” in pdf can be found [here](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing).
