@@ -9,61 +9,51 @@ from llama_index.core import (
                         VectorStoreIndex
                         )
 from llama_index.core.indices.postprocessor import (
-                        AutoPrevNextNodePostprocessor,
                         PrevNextNodePostprocessor,
-                        SentenceTransformerRerank,
-                        SimilarityPostprocessor,
                         )
 from llama_index.core.retrievers import (
                         QueryFusionRetriever, 
                         BaseRetriever,
                         )
 from llama_index.core.query_engine import RetrieverQueryEngine
-
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.schema import (
                         NodeWithScore, 
                         TextNode,
                         )
 from llama_index.core.tools import QueryEngineTool
-from llama_index.core.vector_stores import MetadataFilters
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.vector_stores.milvus import MilvusVectorStore
 
 
-
-class SortNodePostprocessor(BaseNodePostprocessor):
-    def _postprocess_nodes(
-            self, 
-            nodes: List[NodeWithScore], 
-            query_bundle: Optional[QueryBundle]
-            ) -> List[NodeWithScore]:
-        
-        # Custom post-processor: Order nodes based on the order it appears in a document (using "start_char_idx")
-
-        # Create new node dictionary
-        _nodes_dic = [{"start_char_idx": node.node.start_char_idx, "node": node} for node in nodes]
-
-        # Sort based on start_char_idx
-        sorted_nodes_dic = sorted(_nodes_dic, key=lambda x: x["start_char_idx"])
-
-        # Get the new nodes from the sorted node dic
-        sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
-
-        return sorted_new_nodes
-
-
 class PageSortNodePostprocessor(BaseNodePostprocessor):
+    """
+    A custom node postprocessor that sorts nodes based on page number and the order they appear in a document.
+
+    Attributes:
+        None
+
+    Methods:
+        _postprocess_nodes: Sorts nodes based on the page they appear on and the order they appear in that page.
+    """
     def _postprocess_nodes(
             self,
             nodes: List[NodeWithScore],
             query_bundle: Optional[QueryBundle]
             ) -> List[NodeWithScore]:
-        
-        # Custom post-processor: Order nodes first based on page number and then based on
-        # the order it appears in a document (using "start_char_idx")
+        """
+        Sorts nodes based on the page they appear on and the order they appear in that page.
+        (IMPORTANT: ALTHOUGH QUERY_BUNDLE IS NOT USED IN THIS METHOD, IT IS REQUIRED FOR THE INTERFACE.
+        IF REMOVED WILL CAUSE AN ERROR OF TOO MANY POSITIONAL ARGUMENTS.)
+        Args:
+            nodes (List[NodeWithScore]): A list of nodes to be sorted.
+
+        Returns:
+            List[NodeWithScore]: A list of nodes sorted based on the page they appear on and the order they appear 
+            in that page.
+        """
 
         # Create new node dictionary
         _nodes_dic = [{"source": node.node.metadata["source"], \
@@ -96,299 +86,47 @@ def get_article_link(article_dir, article_name):
     return f"./data/{article_dir}/{article_name}"
 
 
-# def get_article_link(
-#         _article_dictory, 
-#         _article_name
-#         ):
-    
-#     return "./data/" + _article_dictory + "/" + _article_name
-
-
-def get_database_and_window_collection_name(
-        _article_dictory, 
-        _chunk_method, 
-        _embed_model_name,
-        _window_size
-        ):
-    
-    _database_name = _article_dictory + "_" + _chunk_method
-    _collection_name = _embed_model_name + "_window_size_" + str(_window_size)
-    return _database_name, _collection_name
-
-
 def get_database_and_sentence_splitter_collection_name(
-        _article_dictory: str, 
-        _chunk_method: str,
-        _embed_model_name: str,
-        _chunk_size: int,
-        _chunk_overlap: int,
-        _metadata: Optional[str]=None,
-        ):
+        article_directory: str,
+        chunk_method: str,
+        embed_model_name: str,
+        chunk_size: int,
+        chunk_overlap: int,
+        metadata: Optional[str] = None,
+        ) -> tuple:
     """
-    This function generates the names for the database, collection, and summary collection 
-    based on the given parameters.
+    Generate names for the database, collection, and summary collection based on the given 
+    parameters.
 
     Parameters:
-    _article_dictory (str): The directory where the articles are stored.
-    _chunk_method (str): The method used for chunking the text.
-    _embed_model_name (str): The name of the embedding model.
-    _chunk_size (int): The size of each chunk.
-    _chunk_overlap (int): The overlap between chunks.
-    _metadata (Optional[str], optional): Any additional metadata to be included in 
-    the collection name. Defaults to None.
+    article_directory (str): The directory where the articles are stored.
+    chunk_method (str): The method used for chunking the text.
+    embed_model_name (str): The name of the embedding model.
+    chunk_size (int): The size of each chunk.
+    chunk_overlap (int): The overlap between chunks.
+    metadata (Optional[str], optional): Any additional metadata to be included in the 
+    collection name. Defaults to None.
 
     Returns:
-    _database_name (str): The name of the database.
-    _collection_name (str): The name of the collection.
-    _collection_name_summary (str): The name of the summary collection.
+    tuple: A tuple containing the names of the database, collection, and summary collection.
     """
-    
-    _database_name = _article_dictory + "_" + _chunk_method
-    
-    _collection_name = _embed_model_name \
-                            + "_chunk_size_" + str(_chunk_size) \
-                            + "_chunk_overlap_" + str(_chunk_overlap)
-    _collection_name_summary = _embed_model_name \
-                            + "_chunk_size_" + str(_chunk_size) \
-                            + "_chunk_overlap_" + str(_chunk_overlap) \
-                            + "_summary"
-    
-    if _metadata is not None:  # If metadata is provided, add it to the collection names
-        _collection_name += "_metadata_" + str(_metadata)  # Add metadata to collection name
-        _collection_name_summary += "_metadata_" + str(_metadata)  # Add metadata to collection name
 
-    return _database_name, _collection_name, _collection_name_summary
+    # Generate the database name
+    database_name = f"{article_directory}_{chunk_method}"
 
+    # Generate the base collection name
+    base_collection_name = \
+        f"{embed_model_name}_chunk_size_{chunk_size}_chunk_overlap_{chunk_overlap}"
 
-def get_database_and_llamaparse_collection_name(
-        _article_dictory, 
-        _chunk_method, 
-        _embed_model_name,
-        _parse_method,
-        ):
-    
-    _database_name = _article_dictory + "_" + _chunk_method
-    _collection_name = _embed_model_name \
-                            + "_parse_method_" + _parse_method
-    _collection_name_summary = _embed_model_name \
-                            + "_parse_method_" + _parse_method \
-                            + "_summary"
+    # Generate the collection name with optional metadata
+    collection_name = f"{base_collection_name}_metadata_{metadata}" \
+        if metadata else base_collection_name
 
-    return _database_name, _collection_name, _collection_name_summary
+    # Generate the summary collection name with optional metadata
+    collection_name_summary = f"{base_collection_name}_summary_metadata_{metadata}" \
+        if metadata else f"{base_collection_name}_summary"
 
-
-def get_database_and_automerge_collection_name(
-        _article_dictory, 
-        _chunk_method, 
-        _embed_model_name,
-        chunk_sizes,
-        ):
-    
-    _database_name = _article_dictory + "_" + _chunk_method
-    _collection_name = _embed_model_name + "_size_" + str(chunk_sizes[0]) + "_" + \
-                        str(chunk_sizes[1]) + "_" + str(chunk_sizes[2])
-    
-    return _database_name, _collection_name
-
-
-def get_compact_tree_and_accumulate_engine_from_index(
-        _index,
-        _similarity_top_k,
-        _postproc
-        ):
-    
-    _compact_engine = _index.as_query_engine(
-                                similarity_top_k=_similarity_top_k,
-                                node_postprocessors=[_postproc],
-                                response_mode="compact",
-                                )
-    _tree_engine = _index.as_query_engine(
-                                similarity_top_k=_similarity_top_k,
-                                node_postprocessors=[_postproc],
-                                response_mode="tree_summarize",
-                                )
-    _accumulate_engine = _index.as_query_engine(
-                                similarity_top_k=_similarity_top_k,
-                                node_postprocessors=[_postproc],
-                                response_mode="accumulate",
-                                )
-    return _compact_engine, _tree_engine, _accumulate_engine
-
-
-def get_rerank_compact_tree_and_accumulate_engine_from_index(
-        _index,
-        _similarity_top_k,
-        _postproc,
-        _rerank
-        ):
-    
-    _compact_rerank_engine = _index.as_query_engine(
-                            similarity_top_k=_similarity_top_k,
-                            node_postprocessors=[_postproc, _rerank],
-                            response_mode="compact",
-                            )
-
-    _tree_rerank_engine = _index.as_query_engine(
-                                similarity_top_k=_similarity_top_k,
-                                node_postprocessors=[_postproc, _rerank],
-                                response_mode="tree_summarize",
-                                )
-
-    _accumulate_rerank_engine = _index.as_query_engine(
-                                similarity_top_k=_similarity_top_k,
-                                node_postprocessors=[_postproc, _rerank],
-                                response_mode="accumulate",
-                                )
-    return _compact_rerank_engine, _tree_rerank_engine, _accumulate_rerank_engine
-
-
-def get_default_query_engine_from_retriever(
-    retriever_1,
-    retriever_2,
-    ):
-
-    query_engine_1 = RetrieverQueryEngine.from_args(
-        retriever=retriever_1
-        )
-    query_engine_2 = RetrieverQueryEngine.from_args(
-        retriever=retriever_2
-        )
-
-    return query_engine_1, query_engine_2
-
-
-def get_tree_query_engine_from_retriever(
-        retriever_1,
-        retriever_2,
-        ):
-
-    query_engine_1 = RetrieverQueryEngine.from_args(
-        retriever=retriever_1, 
-        response_mode="tree_summarize",
-        )
-
-    query_engine_2 = RetrieverQueryEngine.from_args(
-        retriever=retriever_2, 
-        response_mode="tree_summarize",
-        )
-
-    return query_engine_1, query_engine_2
-
-
-# def get_tree_query_engine_with_sort_from_retriever(
-#         retriever_1,
-#         retriever_2,
-#         ):
-
-#     query_engine_1 = RetrieverQueryEngine.from_args(
-#         retriever=retriever_1, 
-#         response_mode="tree_summarize",
-#         node_postprocessors=[SortNodePostprocessor()],
-#         )
-
-#     query_engine_2 = RetrieverQueryEngine.from_args(
-#         retriever=retriever_2, 
-#         response_mode="tree_summarize",
-#         node_postprocessors=[SortNodePostprocessor()],
-#         )
-
-#     return query_engine_1, query_engine_2
-
-
-def get_tree_engine_from_retriever(
-        retriever_1,
-        retriever_2,
-        retriever_3,
-        retriever_4,
-        ):
-
-    query_engine_1 = RetrieverQueryEngine.from_args(
-        retriever=retriever_1, 
-        response_mode="tree_summarize",
-        )
-
-    query_engine_2 = RetrieverQueryEngine.from_args(
-        retriever=retriever_2, 
-        response_mode="tree_summarize",
-        )
-
-    query_engine_3 = RetrieverQueryEngine.from_args(
-        retriever=retriever_3, 
-        response_mode="tree_summarize",
-        )
-    
-    query_engine_4 = RetrieverQueryEngine.from_args(
-        retriever=retriever_4, 
-        response_mode="tree_summarize",
-        use_async= True,
-        )
-
-    return query_engine_1, query_engine_2, query_engine_3, query_engine_4
-
-
-# def get_tree_engine_with_sort_from_retriever(
-#         retriever_1,
-#         retriever_2,
-#         retriever_3,
-#         ):
-
-#     query_engine_1 = RetrieverQueryEngine.from_args(
-#         retriever=retriever_1, 
-#         response_mode="tree_summarize",
-#         node_postprocessors=[SortNodePostprocessor()],
-#         )
-
-#     query_engine_2 = RetrieverQueryEngine.from_args(
-#         retriever=retriever_2, 
-#         response_mode="tree_summarize",
-#         node_postprocessors=[SortNodePostprocessor()],
-#         )
-
-#     query_engine_3 = RetrieverQueryEngine.from_args(
-#         retriever=retriever_3, 
-#         response_mode="tree_summarize",
-#         node_postprocessors=[SortNodePostprocessor()],
-#         )
-
-#     return query_engine_1, query_engine_2, query_engine_3
-
-
-def get_accumulate_query_engine_from_retriever(
-        retriever_1,
-        retriever_2,
-        ):
-
-    query_engine_1 = RetrieverQueryEngine.from_args(
-        retriever=retriever_1, 
-        response_mode="accumulate",
-        )
-
-    retriever_2_engine = RetrieverQueryEngine.from_args(
-        retriever=retriever_2, 
-        response_mode="accumulate",
-        )
-
-    return query_engine_1, retriever_2_engine
-
-
-# def get_accumulate_query_engine_with_sort_from_retriever(
-#         retriever_1,
-#         retriever_2,
-#         ):
-
-#     query_engine_1 = RetrieverQueryEngine.from_args(
-#         retriever=retriever_1, 
-#         response_mode="accumulate",
-#         node_postprocessors=[SortNodePostprocessor()],
-#         )
-
-#     retriever_2_engine = RetrieverQueryEngine.from_args(
-#         retriever=retriever_2, 
-#         response_mode="accumulate",
-#         node_postprocessors=[SortNodePostprocessor()],
-#         )
-
-#     return query_engine_1, retriever_2_engine
+    return database_name, collection_name, collection_name_summary
 
 
 def get_vector_store_docstore_and_storage_context(
@@ -440,68 +178,6 @@ def get_vector_store_docstore_and_storage_context(
     return vector_store, vector_docstore, storage_context_vector
 
 
-# def get_vector_store_docstore_and_storage_context(_uri_milvus,
-#                                                 _uri_mongo,
-#                                                 _database_name,
-#                                                 _collection_name_vector,
-#                                                 _embed_model_dim):
-    
-#     # Initiate vector store (a new empty collection will be created in Milvus server)
-#     _vector_store = MilvusVectorStore(
-#         uri=_uri_milvus,
-#         db_name=_database_name,
-#         collection_name=_collection_name_vector,
-#         dim=_embed_model_dim,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
-#         enable_dynamic_field=False,
-#         )
-
-#     # Initiate MongoDB vector docstore (Not yet save to MongoDB server)
-#     _vector_docstore = MongoDocumentStore.from_uri(
-#         uri=_uri_mongo,
-#         db_name=_database_name,
-#         namespace=_collection_name_vector
-#         )
-
-#     # Initiate vector storage context: use Milvus as vector store and Mongo as docstore 
-#     _storage_context_vector = StorageContext.from_defaults(
-#         vector_store=_vector_store,
-#         docstore=_vector_docstore
-#         )
-    
-#     return _vector_store, _vector_docstore, _storage_context_vector
-
-
-def get_llamaparse_vector_store_docstore_and_storage_context(_uri_milvus,
-                                                _uri_mongo,
-                                                _database_name,
-                                                _collection_name_vector,
-                                                _embed_model_dim):
-    
-    # Initiate vector store (a new empty collection will be created in Milvus server)
-    _vector_store = MilvusVectorStore(
-        uri=_uri_milvus,
-        db_name=_database_name,
-        collection_name=_collection_name_vector,
-        dim=_embed_model_dim,  # dim of HuggingFace "BAAI/bge-small-en-v1.5" embedding model
-        enable_dynamic_field=False,
-        )
-
-    # Initiate MongoDB vector docstore (Not yet save to MongoDB server)
-    _vector_docstore = MongoDocumentStore.from_uri(
-        uri=_uri_mongo,
-        db_name=_database_name,
-        namespace=_collection_name_vector
-        )
-
-    # Initiate vector storage context: use Milvus as vector store and Mongo as docstore 
-    _storage_context_vector = StorageContext.from_defaults(
-        vector_store=_vector_store,
-        docstore=_vector_docstore
-        )
-    
-    return _vector_store, _vector_docstore, _storage_context_vector
-
-
 def get_summary_storage_context(
         uri_mongo: str, 
         database_name: str, 
@@ -539,25 +215,6 @@ def get_summary_storage_context(
     return storage_context_summary
 
 
-# def get_summary_storage_context(_uri_mongo,
-#                                 _database_name,
-#                                 _collection_name_summary):
-
-#     # Initiate MongoDB summary docstore (Not yet save to MongoDB server)
-#     _summary_docstore = MongoDocumentStore.from_uri(
-#         uri=_uri_mongo,
-#         db_name=_database_name,
-#         namespace=_collection_name_summary
-#         )
-
-#     # Initiate summary storage context: use Milvus as vector store and Mongo as docstore 
-#     _storage_context_summary = StorageContext.from_defaults(
-#         docstore=_summary_docstore
-#         )
-    
-#     return _storage_context_summary
-
-
 def get_summary_tree_detail_engine(storage_context_summary):
     """
     This function creates a summary tree detail engine.
@@ -589,97 +246,6 @@ def get_summary_tree_detail_engine(storage_context_summary):
     tree_summary_detail_engine = change_summary_engine_prompt_to_in_detail(tree_summary_engine)
 
     return tree_summary_detail_engine
-
-
-# def get_summary_tree_detail_engine(_storage_context_summary):
-
-#     # Get nodes from summary storage context
-#     _extracted_nodes = list(_storage_context_summary.docstore.docs.values())
-#     # Create index
-#     _summary_index = SummaryIndex(
-#                         nodes=_extracted_nodes
-#                         )
-#     # Create retriever aka query engine
-#     _summary_retriever = _summary_index.as_retriever()
-#     _tree_summary_engine = RetrieverQueryEngine.from_args(
-#                                         retriever=_summary_retriever, 
-#                                         response_mode="tree_summarize",
-#                                         # node_postprocessors=[PageSortNodePostprocessor()],
-#                                         use_async= True,
-#                                         )
-#     _tree_summary_detail_engine = change_summary_engine_prompt_to_in_detail(_tree_summary_engine)
-
-#     return _tree_summary_detail_engine
-
-
-def get_summary_retriever_and_tree_detail_engine(_storage_context_summary):
-
-    # Get nodes from summary storage context
-    _extracted_nodes = list(_storage_context_summary.docstore.docs.values())
-    # Create index
-    _summary_index = SummaryIndex(
-                        nodes=_extracted_nodes
-                        )
-    # Create retriever aka query engine
-    _summary_retriever = _summary_index.as_retriever()
-    _tree_summary_engine = RetrieverQueryEngine.from_args(
-                                        retriever=_summary_retriever, 
-                                        response_mode="tree_summarize",
-                                        use_async= True,
-                                        )
-    _tree_summary_detail_engine = change_summary_engine_prompt_to_in_detail(_tree_summary_engine)
-
-    return _summary_retriever, _tree_summary_detail_engine
-
-
-def get_vector_retriever_and_tree_sort_detail_engine(
-        _index,
-        _similarity_top_k,
-        ):
-
-    _retriever = _index.as_retriever(
-        similarity_top_k=_similarity_top_k
-        )
-    _tree_sort_engine = RetrieverQueryEngine.from_args(
-        retriever=_retriever, 
-        response_mode="tree_summarize",
-        node_postprocessors=[PageSortNodePostprocessor()],
-        )
-    _tree_sort_detail_engine = change_tree_engine_prompt_to_in_detail(_tree_sort_engine)
-
-    return _retriever, _tree_sort_detail_engine
-
-
-def get_bm25_retriever(
-        _vector_docstore,
-        _similarity_top_k,
-        ):
-    
-    _retriever = BM25Retriever.from_defaults(
-        similarity_top_k=_similarity_top_k,
-        docstore=_vector_docstore,
-        )
-
-    return _retriever
-
-
-def get_bm25_retriever_and_tree_sort_detail_engine(
-        _vector_docstore,
-        _similarity_top_k,
-        ):
-
-    _retriever = BM25Retriever.from_defaults(
-        similarity_top_k=_similarity_top_k,
-        docstore=_vector_docstore,
-        )
-    _tree_sort_engine = RetrieverQueryEngine.from_args(
-        retriever=_retriever, 
-        response_mode="tree_summarize",
-        node_postprocessors=[PageSortNodePostprocessor()],
-        )
-    _tree_sort_detail_engine = change_tree_engine_prompt_to_in_detail(_tree_sort_engine)
-
-    return _retriever, _tree_sort_detail_engine
 
 
 def get_fusion_retriever(

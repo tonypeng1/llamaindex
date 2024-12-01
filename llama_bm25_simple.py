@@ -413,9 +413,9 @@ summary_tool = get_summary_tree_detail_tool(
                                         storage_context_summary
                                         )
 
-query_str = "What was mentioned about Jessica from pages 17 to 22?"
+# query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
-# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "Create table of contents for this article."
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
