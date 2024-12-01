@@ -75,3 +75,7 @@ The API keys for OpenAI and Anthropic are stored in the .env file, which is not 
 OPENAI_API_KEY = your_openai_api_key
 ANTHROPIC_API_KEY = your_anthropic_api_key
 ```
+
+## Examples of Queries and Answers
+
+4 sets of queries and answer that illustrate the capability of this RAG can be found in the Medium [artile](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c).
