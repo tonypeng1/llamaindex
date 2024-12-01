@@ -179,22 +179,21 @@ def load_document_nodes_sentence_splitter(
 
 def get_fusion_tree_page_filter_sort_detail_tool_simple(
     _query_str: str, 
-    # _similarity_top_k_page: int,
     _reranker: ColbertRerank,
     _vector_docstore: MongoDocumentStore,
     ) -> QueryEngineTool:
-    
     """
-    This function generates a response based on a query string and a list of specific page 
-    numbers in this query. It creates a vector retriever with a filter on the specified 
-    page numbers, retrieves relevant nodes, and uses them to generate a query engine tool.
+    This function generates a QueryEngineTool that extracts specific pages from a document store,
+    retrieves the text nodes corresponding to those pages, and then uses these nodes to create a fusion tree.
+    The fusion tree is then used to answer queries about the content of the specified pages.
 
     Parameters:
-    query_str_ (str): A query string that contains instructions about the information on specific pages.
-    page_numbers_ (List[str]): A list of specific page numbers mentioned in the query string.
+    _query_str (str): The query string from which to extract page numbers.
+    _reranker (ColbertRerank): The reranker to use for the fusion tree.
+    _vector_docstore (MongoDocumentStore): The document store containing the text nodes.
 
     Returns:
-    str: A response generated based on the query string and the specified page numbers.
+    QueryEngineTool: A tool that uses the fusion tree to answer queries about the specified pages.
     """
 
     query_text = (
@@ -237,22 +236,12 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
 
     # Get text nodes from the vector docstore that match the page numbers
     _text_nodes = []
-    for node_id, node in _vector_docstore.docs.items():
+    for _, node in _vector_docstore.docs.items():
         if node.metadata['source'] in _page_numbers:
             _text_nodes.append(node) 
 
     node_length = len(vector_docstore.docs)
     print(f"Node length in docstore: {node_length}")
-
-    # # Create a vector retreiver with a filter on page numbers
-    # _vector_retriever = vector_index.as_retriever(
-    #                                 similarity_top_k=_similarity_top_k_page,
-    #                             )
-    # # Retrieve nodes  using the vector retriever and the query
-    # scored_nodes = _vector_retriever.retrieve(_query_str)
-
-    # # Extract TextNodes from NodeWithScore objects
-    # text_nodes = [scored_node.node for scored_node in scored_nodes]
 
     print(f"Text nodes retrieved from docstore length is: {len(_text_nodes)}")
     for i, n in enumerate(_text_nodes):
@@ -269,22 +258,10 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
                                     )
                                 )
     
-    # # Calculate the number of nodes retrieved from the vector index on these pages
-    # _nodes = _vector_filter_retriever.retrieve(_query_str)
-
+    # Calculate the number of nodes retrieved from the vector index on these pages
     _similarity_top_k_filter = len(_text_nodes)
     _fusion_top_n_filter = len(_text_nodes)
     _num_queries_filter = 1
-
-    # _similarity_top_k_filter = _similarity_top_k_page
-    # _fusion_top_n_filter = _similarity_top_k_page
-    # _num_queries_filter = 1
-
-    # print(f"page filter: {_similarity_top_k_filter}")
-
-    # _similarity_top_k_filter = len(_page_numbers) * 2
-    # _fusion_top_n_filter = len(_page_numbers) * 2
-    # _num_queries_filter = 1
 
     _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
                                                                 _vector_filter_retriever,
@@ -305,130 +282,7 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
 
     return _fusion_tree_page_filter_sort_detail_tool
 
-
-# def get_fusion_tree_page_filter_sort_detail_tool(
-#     _query_str: str, 
-#     _similarity_top_k_page: int,
-#     _reranker: ColbertRerank,
-#     _vector_docstore: MongoDocumentStore,
-#     ) -> QueryEngineTool:
-    
-#     """
-#     This function generates a response based on a query string and a list of specific page 
-#     numbers in this query. It creates a vector retriever with a filter on the specified 
-#     page numbers, retrieves relevant nodes, and uses them to generate a query engine tool.
-
-#     Parameters:
-#     query_str_ (str): A query string that contains instructions about the information on specific pages.
-#     page_numbers_ (List[str]): A list of specific page numbers mentioned in the query string.
-
-#     Returns:
-#     str: A response generated based on the query string and the specified page numbers.
-#     """
-
-#     query_text = (
-#     '## Instruction:\n'
-#     'Extract all page numbers from the user query. \n'
-#     'The page numbers are usually indicated by the phrases "page" or "pages" \n'
-#     'Return the page numbers as a list of strings, sorted in ascending order. \n'
-#     'Do NOT include "**Output:**" in your response. If no page numbers are mentioned, output ["1"]. \n'
-
-#     '## Examples:\n'
-#     '**Query:** "Give me the main events from page 1 to page 4." \n'
-#     '**Output:** ["1", "2", "3", "4"] \n'
-
-#     '**Query:** "Give me the main events in the first 6 pages." \n'
-#     '**Output:** ["1", "2", "3", "4", "5", "6"] \n'
-
-#     '**Query:** "Summarize pages 10-15 of the document." \n'
-#     '**Output:** ["10", "11", "12", "13", "14", "15"] \n'
-
-#     '**Query:** "What are the key findings on page 2?" \n'
-#     '**Output:** ["2"] \n'
-
-#     '**Query:** "What is mentioned about YC (Y Combinator) on pages 19 and 20?" \n'
-#     '**Output:** ["19", "20"] \n'
-
-#     '**Query:** "What are the lessons learned by the author at the company Interleaf?" \n'
-#     '**Output:** ["1"] \n'
-
-#     '## Now extract the page numbers from the following query: \n'
-
-#     '**Query:** {query_str} \n'
-#     )
-
-#     # Need to print "1" if no page numbers are mentioned so that this code can run correctly
-
-#     prompt = PromptTemplate(query_text)
-#     _page_numbers = llm.predict(prompt=prompt, query_str=_query_str)
-#     _page_numbers = json.loads(_page_numbers)  # Convert the string to a list of string
-#     print(f"Page_numbers in page filter: {_page_numbers}")
-
-#     # Create a vector retreiver with a filter on page numbers
-#     _vector_retriever = vector_index.as_retriever(
-#                                     similarity_top_k=_similarity_top_k_page,
-#                                 )
-#     # Retrieve nodes  using the vector retriever and the query
-#     scored_nodes = _vector_retriever.retrieve(_query_str)
-
-#     # Extract TextNodes from NodeWithScore objects
-#     text_nodes = [scored_node.node for scored_node in scored_nodes]
-
-#     print(f"Text nodes in page vector index length is: {len(text_nodes)}")
-#     for i, n in enumerate(text_nodes):
-#         print(f"Item {i+1} of the text nodes in page vector index is page: {n.metadata['source']}")
-    
-
-#     _vector_filter_retriever = vector_index.as_retriever(
-#                                     similarity_top_k=_similarity_top_k_page,
-#                                     filters=MetadataFilters.from_dicts(
-#                                         [{
-#                                             "key": "source", 
-#                                             "value": _page_numbers,
-#                                             "operator": "in"
-#                                         }]
-#                                     )
-#                                 )
-    
-#     # Calculate the number of nodes retrieved from the vector index on these pages
-#     _nodes = _vector_filter_retriever.retrieve(_query_str)
-
-#     _similarity_top_k_filter = len(_nodes)
-#     _fusion_top_n_filter = len(_nodes)
-#     _num_queries_filter = 1
-
-#     # _similarity_top_k_filter = _similarity_top_k_page
-#     # _fusion_top_n_filter = _similarity_top_k_page
-#     # _num_queries_filter = 1
-
-#     print(f"page filter: {_similarity_top_k_filter}")
-
-#     # _similarity_top_k_filter = len(_page_numbers) * 2
-#     # _fusion_top_n_filter = len(_page_numbers) * 2
-#     # _num_queries_filter = 1
-
-#     _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
-#                                                                 _vector_filter_retriever,
-#                                                                 _similarity_top_k_filter,
-#                                                                 _fusion_top_n_filter,
-#                                                                 _query_str,
-#                                                                 _num_queries_filter,
-#                                                                 _reranker,
-#                                                                 _vector_docstore,
-#                                                                 _page_numbers
-#                                                                 )
-    
-#     _fusion_tree_page_filter_sort_detail_tool = QueryEngineTool.from_defaults(
-#                                                         name="page_filter_tool",
-#                                                         query_engine=_fusion_tree_page_filter_sort_detail_engine,
-#                                                         description=page_tool_description,
-#                                                         )
-
-#     return _fusion_tree_page_filter_sort_detail_tool
-
-
-# nltk.download('punkt_tab')
-
+# Set LLM and embedding models
 anthropic_api_key = os.environ['ANTHROPIC_API_KEY']
 llm = Anthropic(
     model="claude-3-sonnet-20240229",
@@ -437,31 +291,6 @@ llm = Anthropic(
     api_key=anthropic_api_key,
     )
 Settings.llm = llm
-
-# # Set OpenAI API key and LLM
-# openai_api_key = os.environ['OPENAI_API_KEY']
-# llm = OpenAI(
-#     model="gpt-4o", 
-#     temperature=0.0,
-#     max_tokens=2000,
-#     api_key=openai_api_key
-#     )
-# Settings.llm = llm
-
-# mistral_api_key = os.environ['MISTRAL_API_KEY']
-# llm = MistralAI(
-#     model="mistral-large-latest", 
-#     temperature=0.0,
-#     max_tokens=2000,
-#     api_key=mistral_api_key
-#     )
-# Settings.llm = llm
-
-## Set embedding model
-# embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-# Settings.embed_model = embed_model
-# embed_model_dim = 384  # for bge-small-en-v1.5
-# embed_model_name = "huggingface_embedding_bge_small"
 
 embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
 Settings.embed_model = embed_model
@@ -474,15 +303,6 @@ callback_manager = CallbackManager([llama_debug])
 Settings.callback_manager = callback_manager
 
 # Create article link
-# article_dictory = "metagpt"
-# article_name = "metagpt.pdf"
-
-# article_dictory = "uber"
-# article_name = "uber_10q_march_2022.pdf"
-
-# article_dictory = "andrew"
-# article_name = "eBook-How-to-Build-a-Career-in-AI.pdf"
-
 article_dictory = "paul_graham"
 article_name = "paul_graham_essay.pdf"
 
@@ -495,21 +315,6 @@ chunk_method = "sentence_splitter"
 chunk_size = 512
 chunk_overlap = 128
 metadata = "entity"
-
-# chunk_method = "sentence_splitter"
-# chunk_size = 256
-# chunk_overlap = 50
-
-# Create database name and colleciton names
-# (database_name, 
-# collection_name_vector,
-# collection_name_summary) = get_database_and_sentence_splitter_collection_name(
-#                                                             article_dictory, 
-#                                                             chunk_method, 
-#                                                             embed_model_name, 
-#                                                             chunk_size,
-#                                                             chunk_overlap,
-#        
 
 # metadata is an optional parameter, will include it if it is not None                                              )
 (database_name, 
@@ -563,10 +368,6 @@ storage_context_summary = get_summary_storage_context(uri_mongo,
                                                     collection_name_summary
                                                     )
 
-# for i in list(storage_context.docstore.get_all_ref_doc_info().keys()):
-#     print(i)
-# print(storage_context.docstore.get_node(leaf_nodes[0].node_id))
-
 # Load documnet nodes if either vector index or docstore not saved.
 # metadata is an optional parameter, will use another function to parse the document
 # if the metadata is not None.
@@ -579,7 +380,6 @@ if save_index_vector or add_document_vector or add_document_summary:
                                                     )
 
 if save_index_vector == True:
-    # vector_index = create_and_save_vector_index_to_milvus_database(extracted_nodes)
     vector_index = VectorStoreIndex(
         nodes=extracted_nodes,
         storage_context=storage_context_vector,
@@ -599,22 +399,6 @@ if add_document_vector == True:
 if add_document_summary == True:
     # Save document nodes to Mongodb docstore at the server
     storage_context_summary.docstore.add_documents(extracted_nodes)
-
-# info = storage_context_summary.docstore.get_all_ref_doc_info()
-
-# # Set retriever parameters (with filter)
-# similarity_top_k_filter = 6
-# num_queries_filter = 1  # for QueryFusionRetriever() in utility.py
-# fusion_top_n_filter = 6
-
-# summary_tool: "Useful for summarization or for full context questions related to the documnet"
-
-# summary_tool_description = (
-#             "Useful for summarization or for full context questions related to the document. "
-#             "Call this function when user ask to: 'Summarize the document' or 'Give me an overview' "
-#             "or 'What is the main idea of the document?' or 'What is the document about?' "
-#             "or 'Create document outlines' or 'Create table of contents'."
-#             )
 
 summary_tool_description = (
             "Useful for a question that requires the full context of the entire document. "
