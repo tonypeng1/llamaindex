@@ -88,6 +88,7 @@ def get_article_link(article_dir, article_name):
 
 def get_database_and_sentence_splitter_collection_name(
         article_directory: str,
+        article_name: str,
         chunk_method: str,
         embed_model_name: str,
         chunk_size: int,
@@ -112,7 +113,8 @@ def get_database_and_sentence_splitter_collection_name(
     """
 
     # Generate the database name
-    database_name = f"{article_directory}_{chunk_method}"
+    article_name = article_name.split(".")[0]  # Remove the file extension
+    database_name = f"{article_directory}_{article_name}_{chunk_method}"
 
     # Generate the base collection name
     base_collection_name = \

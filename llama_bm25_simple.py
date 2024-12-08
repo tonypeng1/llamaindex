@@ -114,7 +114,8 @@ def get_nodes_from_document_sentence_splitter_entity_extractor(
         model_name="lxyuan/span-marker-bert-base-multilingual-cased-multinerd",
         prediction_threshold=0.5,
         label_entities=True,
-        device="cpu",
+        # device="cpu",
+        device="mps",
         # entity_map=entity_map,
     )
 
@@ -299,24 +300,28 @@ callback_manager = CallbackManager([llama_debug])
 Settings.callback_manager = callback_manager
 
 # Create article link
-article_dictory = "paul_graham"
-article_name = "paul_graham_essay.pdf"
+article_directory = "paul_graham"
+# article_name = "paul_graham_essay.pdf"
+article_name = "How_to_do_great_work.pdf"
 
-article_link = get_article_link(article_dictory,
+article_link = get_article_link(article_directory,
                                 article_name
                                 )
 
 # Create database and collection names
 chunk_method = "sentence_splitter"
-chunk_size = 512
-chunk_overlap = 128
+# chunk_size = 512
+# chunk_overlap = 128
+chunk_size = 256
+chunk_overlap = 64
 metadata = "entity"
 
 # metadata is an optional parameter, will include it if it is not None                                              )
 (database_name, 
 collection_name_vector,
 collection_name_summary) = get_database_and_sentence_splitter_collection_name(
-                                                            article_dictory, 
+                                                            article_directory, 
+                                                            article_name,
                                                             chunk_method, 
                                                             embed_model_name, 
                                                             chunk_size,
@@ -412,7 +417,12 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
-query_str = "Create table of contents for this article."
+
+# query_str = "Create table of contents for this article."
+
+# query_str = "What did the author advice on choosing what to work on?"
+# query_str = "Why morale needs to be nurtured and protected?" 
+query_str = "What are the contents from pages 26 to 29?"
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
@@ -469,7 +479,7 @@ page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 question_gen = GuidanceQuestionGenerator.from_defaults(
                             guidance_llm=GuidanceOpenAI(
-                                model="gpt-4o-2024-11-20",
+                                model="gpt-4o",
                                 api_key=OPENAI_API_KEY,
                                 echo=False)
                                 )
