@@ -422,7 +422,8 @@ summary_tool = get_summary_tree_detail_tool(
 
 # query_str = "What did the author advice on choosing what to work on?"
 # query_str = "Why morale needs to be nurtured and protected?" 
-query_str = "What are the contents from pages 26 to 29?"
+# query_str = "What are the contents from pages 26 to 29?"
+query_str = "What are the contents from pages 20 to 28 (one page at a time)?"
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
