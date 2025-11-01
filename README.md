@@ -81,3 +81,82 @@ ANTHROPIC_API_KEY = your_anthropic_api_key
 ## Examples of Queries and Answers
 
 4 sets of queries and answer that illustrate the capability of this RAG can be found in this [Medium artile](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c).
+
+## Detailed Introduction
+
+### Overview
+
+`llama_bm25_simple.py` is an advanced Retrieval-Augmented Generation (RAG) system that implements a sophisticated multi-tool query engine for question-answering over PDF documents. The script combines vector-based semantic search with BM25 keyword-based retrieval using a sub-question decomposition approach to answer complex user queries about document content.
+
+### Core Functionality
+
+The script processes PDF documents through the following workflow:
+
+1. **Document Loading & Parsing**: Loads PDF documents and splits them into manageable chunks using sentence-based splitting with configurable chunk sizes and overlaps
+2. **Dual Storage Architecture**: Stores document embeddings in Milvus (vector database) and document metadata in MongoDB for efficient hybrid retrieval
+3. **Multi-Tool Query System**: Routes queries to specialized tools based on query characteristics:
+   - **Summary Tool**: For high-level document overviews and table of contents generation
+   - **Keyphrase Tool**: For specific factual queries using BM25 keyword extraction combined with semantic search
+   - **Page Filter Tool**: For queries targeting specific page numbers or ranges
+4. **Sub-Question Decomposition**: Breaks down complex queries into simpler sub-questions that are routed to appropriate tools
+5. **Advanced Re-ranking**: Uses ColBERT neural re-ranking to improve retrieval quality
+
+### Key Imported Libraries
+
+#### **LlamaIndex Core Components** (`llama_index.core`)
+- **VectorStoreIndex**: Creates and manages vector-based document indexes for semantic search
+- **Settings**: Configures global LLM and embedding model settings
+- **CallbackManager & LlamaDebugHandler**: Provides debugging and tracing capabilities
+- **IngestionPipeline**: Orchestrates document processing transformations
+- **SentenceSplitter**: Splits documents into chunks at sentence boundaries
+- **SubQuestionQueryEngine**: Decomposes complex queries into simpler sub-questions
+- **QueryEngineTool**: Wraps query engines as tools for the sub-question engine
+- **MetadataFilters**: Enables filtering retrieval results by metadata (e.g., page numbers)
+
+#### **LLM & Embedding Models**
+- **Anthropic**: Claude 3 Sonnet model for natural language understanding and generation
+- **OpenAIEmbedding**: text-embedding-3-small model for converting text into 1536-dimensional vectors
+
+#### **Specialized Processors**
+- **EntityExtractor** (`llama_index.extractors.entity`): Extracts named entities (people, organizations, locations) from text using a multilingual BERT model
+- **ColbertRerank** (`llama_index.postprocessor.colbert_rerank`): Neural re-ranking using ColBERT for improved retrieval accuracy
+- **PrevNextNodePostprocessor** (from `utility_simple.py`): Retrieves adjacent context nodes for better answer completeness
+- **PageSortNodePostprocessor** (from `utility_simple.py`): Sorts retrieved nodes by page number and position for coherent responses
+
+#### **Retrieval Methods**
+- **BM25Retriever** (`llama_index.retrievers.bm25`): Implements BM25 probabilistic keyword-based retrieval (Okapi BM25 algorithm)
+- **QueryFusionRetriever** (from `utility_simple.py`): Combines vector and BM25 retrieval using reciprocal rank fusion
+
+#### **Document Readers & Storage**
+- **PyMuPDFReader** (`llama_index.readers.file`): Reads and extracts text from PDF files with page-level metadata
+- **MilvusVectorStore** (`llama_index.vector_stores.milvus`): Interfaces with Milvus for vector similarity search
+- **MongoDocumentStore** (`llama_index.storage.docstore.mongodb`): Stores document text and metadata in MongoDB
+
+#### **Query Generation**
+- **GuidanceQuestionGenerator** (`llama_index.question_gen.guidance`): Uses structured generation (Guidance library) with GPT-4o to decompose queries into focused sub-questions
+- **KeyBERT** (from `utility_simple.py` via `keybert`): Extracts keyphrases from queries for enhanced BM25 retrieval
+
+#### **Database Operations**
+Custom utility functions (`database_operation_simple.py`) handle database management:
+- Check existence of Milvus collections and MongoDB namespaces
+- Create databases and count collection items
+- Manage data persistence across sessions
+
+#### **Custom Utilities**
+Helper functions (`utility_simple.py`) provide:
+- Prompt template customization for detailed responses
+- Fusion retrieval engine construction
+- Tool creation and configuration
+- Page-based filtering and keyphrase extraction
+
+### Technical Architecture
+
+The system implements a **hybrid retrieval architecture** that combines:
+- **Semantic Search**: Dense vector embeddings capture conceptual similarity
+- **Keyword Search**: BM25 algorithm ensures precise keyword matching
+- **Fusion Ranking**: Reciprocal rank fusion merges results from both approaches
+- **Neural Re-ranking**: ColBERT provides fine-grained relevance scoring
+
+This multi-stage retrieval pipeline ensures both broad conceptual understanding and precise factual accuracy, making it suitable for complex document Q&A tasks where users may ask questions ranging from high-level summaries to specific detail extraction.
+
+
