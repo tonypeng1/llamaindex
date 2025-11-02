@@ -159,4 +159,189 @@ The system implements a **hybrid retrieval architecture** that combines:
 
 This multi-stage retrieval pipeline ensures both broad conceptual understanding and precise factual accuracy, making it suitable for complex document Q&A tasks where users may ask questions ranging from high-level summaries to specific detail extraction.
 
+## Database Access Patterns
+
+This section outlines all instances in the codebase where MongoDB and Milvus databases are accessed, showing how the dual storage architecture operates.
+
+### **MongoDB Database Access**
+
+#### **1. Database Existence Checks** (`database_operation_simple.py`)
+
+```python
+def check_if_mongo_database_exists(uri, _database_name) -> bool:
+    client = MongoClient(uri)
+    db_names = client.list_database_names()  # ← MongoDB ACCESS
+    client.close()
+```
+
+```python
+def check_if_mongo_namespace_exists(uri, db_name, namespace) -> bool:
+    client = MongoClient(uri)
+    db = client[db_name]
+    collection_names = db.list_collection_names()  # ← MongoDB ACCESS
+```
+
+#### **2. Document Storage Operations** (`llama_bm25_simple.py`)
+
+```python
+# Save document nodes to MongoDB docstore
+if add_document_vector == True:
+    storage_context_vector.docstore.add_documents(extracted_nodes)  # ← MongoDB WRITE
+
+if add_document_summary == True:
+    storage_context_summary.docstore.add_documents(extracted_nodes)  # ← MongoDB WRITE
+```
+
+#### **3. Document Retrieval for BM25** (`utility_simple.py`)
+
+```python
+# Iterate through all documents in MongoDB docstore
+for _, node in _vector_docstore.docs.items():  # ← MongoDB READ
+    if node.metadata['source'] in _page_numbers:
+        _text_nodes.append(node)
+```
+
+```python
+# Create BM25 retriever from MongoDB docstore
+bm25_retriever = BM25Retriever.from_defaults(
+    similarity_top_k=similarity_top_n,
+    docstore=vector_docstore,  # ← MongoDB READ (implicit)
+)
+```
+
+#### **4. Summary Index Creation** (`utility_simple.py`)
+
+```python
+def get_summary_tree_detail_engine(storage_context_summary):
+    extracted_nodes = list(storage_context_summary.docstore.docs.values())  # ← MongoDB READ
+    summary_index = SummaryIndex(nodes=extracted_nodes)
+```
+
+#### **5. PrevNext Node Processing** (`utility_simple.py`)
+
+```python
+PrevNext = PrevNextNodePostprocessor(
+    docstore=vector_docstore,  # ← MongoDB READ (for adjacent nodes)
+    num_nodes=2,
+    mode="both",
+)
+```
+
+### **Milvus Database Access**
+
+#### **1. Database Management** (`database_operation_simple.py`)
+
+```python
+def check_if_milvus_database_exists(uri, database_name) -> bool:
+    connections.connect(uri=uri)  # ← Milvus CONNECTION
+    db_names = db.list_database()  # ← Milvus READ
+```
+
+```python
+def create_database_milvus(uri, db_name):
+    connections.connect(uri=uri)  # ← Milvus CONNECTION
+    db.create_database(db_name)  # ← Milvus WRITE
+```
+
+#### **2. Collection Operations** (`database_operation_simple.py`)
+
+```python
+def check_if_milvus_collection_exists(uri, db_name, collect_name) -> bool:
+    client = MilvusClient(uri=uri, db_name=db_name)  # ← Milvus CONNECTION
+    collect_names = client.list_collections()  # ← Milvus READ
+```
+
+```python
+def milvus_collection_item_count(uri, database_name, collection_name) -> int:
+    client = MilvusClient(uri=uri, db_name=database_name)  # ← Milvus CONNECTION
+    client.load_collection(collection_name=collection_name)  # ← Milvus READ
+    element_count = client.query(collection_name=collection_name, output_fields=["count(*)"])  # ← Milvus READ
+```
+
+#### **3. Vector Index Creation** (`llama_bm25_simple.py`)
+
+```python
+# Create new vector index (writes embeddings to Milvus)
+if save_index_vector == True:
+    vector_index = VectorStoreIndex(
+        nodes=extracted_nodes,
+        storage_context=storage_context_vector,  # ← Milvus WRITE
+    )
+```
+
+#### **4. Vector Index Loading** (`llama_bm25_simple.py`)
+
+```python
+# Load existing vector index from Milvus
+else:
+    vector_index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store  # ← Milvus READ
+    )
+```
+
+#### **5. Vector Search Operations** (`llama_bm25_simple.py` & `utility_simple.py`)
+
+```python
+# Vector retrieval with metadata filtering
+_vector_filter_retriever = vector_index.as_retriever(
+    similarity_top_k=node_length,
+    filters=MetadataFilters.from_dicts([{...}])  # ← Milvus READ
+)
+```
+
+```python
+# Standard vector retrieval
+vector_retriever = vector_index.as_retriever(
+    similarity_top_k=similarity_top_k_fusion,  # ← Milvus READ
+)
+
+scored_nodes = vector_retriever.retrieve(query_str)  # ← Milvus READ
+```
+
+#### **6. Collection Management** (`llama_bm25_simple.py`)
+
+```python
+# Load collection into memory for search
+vector_store.client.load_collection(collection_name=collection_name_vector)  # ← Milvus READ
+
+# Release collection from memory
+vector_store.client.release_collection(collection_name=collection_name_vector)  # ← Milvus CLEANUP
+
+# Close connection
+vector_store.client.close()  # ← Milvus CLEANUP
+```
+
+#### **7. Fusion Retrieval** (`utility_simple.py`)
+
+```python
+# QueryFusionRetriever combines vector + BM25 retrieval
+fusion_filter_retriever = QueryFusionRetriever(
+    retrievers=[
+        vector_filter_retriever,  # ← Milvus READ (implicit during retrieval)
+        bm25_filter_retriever     # ← MongoDB READ (implicit during retrieval)
+    ],
+)
+```
+
+### **Summary of Access Patterns**
+
+#### **MongoDB Usage**:
+- **Configuration checks**: Database/namespace existence
+- **Document storage**: Saving processed nodes
+- **Text retrieval**: Full document content for BM25, context windows
+- **Node relationships**: Adjacent node retrieval for context
+
+#### **Milvus Usage**:
+- **Configuration checks**: Database/collection existence  
+- **Vector storage**: Saving embeddings during index creation
+- **Semantic search**: Vector similarity retrieval
+- **Metadata filtering**: Page-based and entity-based filtering
+- **Collection management**: Load/release for memory optimization
+
+#### **Dual Access (Fusion)**:
+- **QueryFusionRetriever**: Simultaneously queries both databases
+- **Hybrid retrieval**: Combines semantic (Milvus) + keyword (MongoDB) search
+- **Results merging**: Uses reciprocal rank fusion to combine results
+
+The architecture maintains **separation of concerns**: Milvus handles vector operations while MongoDB manages document text and metadata, with fusion mechanisms bridging both systems for comprehensive retrieval.
 
