@@ -282,7 +282,7 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
 # Set LLM and embedding models
 ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
 llm = Anthropic(
-    model="claude-3-sonnet-20240229",
+    model="claude-3-opus-20240229",
     temperature=0.0,
     max_tokens=2000,
     api_key=ANTHROPIC_API_KEY,
@@ -423,7 +423,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What did the author advice on choosing what to work on?"
 # query_str = "Why morale needs to be nurtured and protected?" 
 # query_str = "What are the contents from pages 26 to 29?"
-query_str = "What are the contents from pages 20 to 28 (one page at a time)?"
+query_str = "What are the contents from pages 20 to 24 (one page at a time)?"
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
