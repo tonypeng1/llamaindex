@@ -1,4 +1,31 @@
-## RAG using Llamaindex
+# RAG using Llamaindex
+
+## Table of Contents
+
+- [RAG using Llamaindex](#rag-using-llamaindex)
+- [RAG Features](#rag-features)
+- [File Structure](#file-structure)
+- [Requirement File](#requirement-file)
+- [Article Directory](#article-directory)
+- [Database and Collection Names](#database-and-collection-names)
+- [Model API Key](#model-api-key)
+- [Examples of Queries and Answers](#examples-of-queries-and-answers)
+- [Detailed Introduction](#detailed-introduction)
+  - [Overview](#overview)
+  - [Core Functionality](#core-functionality)
+  - [Key Imported Libraries](#key-imported-libraries)
+    - [LlamaIndex Core Components](#llamaindex-core-components-llama_indexcore)
+    - [LLM & Embedding Models](#llm--embedding-models)
+    - [Specialized Processors](#specialized-processors)
+    - [Retrieval Methods](#retrieval-methods)
+    - [Document Readers & Storage](#document-readers--storage)
+    - [Query Generation](#query-generation)
+    - [Database Operations](#database-operations)
+    - [Custom Utilities](#custom-utilities)
+  - [Technical Architecture](#technical-architecture)
+- [Database Access Patterns](#database-access-patterns)
+
+---
 
 RAG (Retrieval Augmented Generation) is a technique that combines the power of large language models (LLMs) with external data sources to enhance the accuracy and relevance of generated responses. 
 
