@@ -5,7 +5,6 @@
 - [RAG using Llamaindex](#rag-using-llamaindex)
 - [RAG Features](#rag-features)
 - [File Structure](#file-structure)
-- [Requirement File](#requirement-file)
 - [Article Directory](#article-directory)
 - [Database and Collection Names](#database-and-collection-names)
 - [Model API Key](#model-api-key)
@@ -49,34 +48,6 @@ For this demonstration, 3 files are used:
 3. database_operation_simple.py.
 
 The file "llama_bm25_simple.py" is the main file that uses the functions defined in the other two files.
-
-## Requirement File
-The requirement.txt file contains the necessary packages for this demonstration.
-
-```
-llama-index==0.11.7
-llama-index-embeddings-huggingface==0.3.1
-llama-index-storage-docstore-mongodb==0.2.0
-llama-index-vector-stores-milvus==0.2.3
-llama-index-retrievers-bm25==0.3.0
-motor==3.5.1
-pymilvus==2.4.6
-PyMuPDF==1.24.10
-keybert==0.8.5
-llama-index-llms-mistralai==0.2.2
-llama-parse==0.5.2
-llama-index-llms-anthropic==0.3.1
-llama-index-multi-modal-llms-anthropic==0.2.2
-llama-index-postprocessor-flag-embedding-reranker==0.2.0
-FlagEmbedding==1.2.11
-llama-index-postprocessor-colbert-rerank==0.2.1
-llama-index-question-gen-guidance==0.2.0
-llama-index-extractors-entity==0.2.1
-transformers==4.40.2
-span-marker==1.5.0
-```
-
-Please note that there is a need to downgrade the transformers package to version 4.40.2, as the latest version is not compatible with the llamaindex packages.
 
 ## Article Directory
 The .pdf file of Paull Graham's article “What I Worked On”, which is not included in this repository, is located at the directory:
