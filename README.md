@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [RAG using Llamaindex](#rag-using-llamaindex)
+- [Clone and Installation](#clone-and-installation)
 - [RAG Features](#rag-features)
 - [File Structure](#file-structure)
 - [Article Directory](#article-directory)
@@ -67,6 +68,38 @@ The database name (includes article name and parsing method) and collection/name
 There is one more collection/namespace in the MongoDB document store, which is used to store the summary:
 
 - collection/namespace name: "openai_embedding_3_small_chunk_size_512_chunk_overlap_128_summary_metadata_entity"
+
+## Clone and Installation
+
+### Clone the Repository
+
+```
+git clone https://github.com/tonypeng1/llamaindex.git
+cd llamaindex
+```
+
+### Installation
+
+Install the required dependencies using pip:
+
+```bash
+pip install -r requirements.txt
+```
+
+For Apple Silicon (ARM64) Macs, use the ARM64-specific requirements:
+
+```
+pip install -r requirements_arm64.txt
+```
+
+### Setup Dependencies
+
+This project requires:
+- **Milvus**: Vector database for storing embeddings
+- **MongoDB**: Document store for metadata and text storage
+- **API Keys**: OpenAI and Anthropic API keys (see [Model API Key](#model-api-key) section)
+
+Make sure you have Milvus and MongoDB running locally or accessible via network before running the scripts.
 
 ## Model API Key
 The API keys for OpenAI and Anthropic are stored in the .env file, which is not included in this repository. The .evn file looks like:
