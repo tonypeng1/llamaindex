@@ -1,119 +1,81 @@
-# RAG using Llamaindex
+# RAG using LlamaIndex
 
-## Table of Contents
+A Retrieval Augmented Generation (RAG) system that uses sub-question and tool-selecting query engines from LlamaIndex to query Paul Graham's article "What I Worked On".
 
-- [RAG using Llamaindex](#rag-using-llamaindex)
-- [Clone and Installation](#clone-and-installation)
-- [RAG Features](#rag-features)
-- [File Structure](#file-structure)
-- [Article Directory](#article-directory)
-- [Database and Collection Names](#database-and-collection-names)
-- [Model API Key](#model-api-key)
-- [Examples of Queries and Answers](#examples-of-queries-and-answers)
-- [Detailed Introduction](#detailed-introduction)
-  - [Overview](#overview)
-  - [Core Functionality](#core-functionality)
-  - [Key Imported Libraries](#key-imported-libraries)
-    - [LlamaIndex Core Components](#llamaindex-core-components-llama_indexcore)
-    - [LLM & Embedding Models](#llm--embedding-models)
-    - [Specialized Processors](#specialized-processors)
-    - [Retrieval Methods](#retrieval-methods)
-    - [Document Readers & Storage](#document-readers--storage)
-    - [Query Generation](#query-generation)
-    - [Database Operations](#database-operations)
-    - [Custom Utilities](#custom-utilities)
-  - [Technical Architecture](#technical-architecture)
-- [Database Access Patterns](#database-access-patterns)
-
----
-
-RAG (Retrieval Augmented Generation) is a technique that combines the power of large language models (LLMs) with external data sources to enhance the accuracy and relevance of generated responses. 
-
-A RAG that uses sub-question and tool-selecting query engines from llamaindex is demonstrated to query the article "What I Worked On" by Paul Graham.
-
-## RAG Features
-This RAG has the following features:
-
-1. Use Milvus and MongoDB as the vector database and the document store, respectively. This code prevents duplicate database entries by checking for existing data before parsing the article and adding it to the database.
-2. Use a sub-question query engine with 3 query engine tools: one for answering a query about specific information (keyphrase_tool), one for a query that requires the information on certain pages (page_filter_tool), and finally one for a query that needs a full-context summary (summary_tool). Details about these tools are discussed in the next section.
-3. The keyphrase_tool and the page_filter_tool use a fusion retriever that combines a vector retriever and a BM25 retriever.
-4. The noise of the BM25 retriever used in the keyphrase_tool is reduced by first extracting the key phrase of a query using the model KeyBERT, then using another BM25 retriever to retrieve the relevant text nodes with only the key phrase as the query (rather than the original full query), and finally defining the BM25 retriever with only these text nodes (rather than using all the nodes from the document store).
-5. A Named Entity Recognition (NER) model extracts the named entities in each node.
-6. The nodes retrieved by the fusion retriever are post-processed by a reranker, a previous-next postprocessor (to include all the adjacent nodes on a page), and finally by a custom sorting postprocessor (to sort the nodes in ascending order based on page number and node occurrence within a page using the data start_char_idx).
-
-## File Structure
-
-For this demonstration, 3 files are used:
-1. llama_bm25_simple.py,
-2. utility_simple.py, and
-3. database_operation_simple.py.
-
-The file "llama_bm25_simple.py" is the main file that uses the functions defined in the other two files.
-
-## Article Directory
-The .pdf file of Paull Graham's article “What I Worked On”, which is not included in this repository, is located at the directory:
-
-```
-./data/paul_graham/paul_graham_essay.pdf
-```
-
-This article can be found [here](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing).
-
-## Database and Collection Names
-The database name (includes article name and parsing method) and collection/namespace name (includes embedding model, chuck size, overlap size, and metadata if available) in both the Milvus vector database and the MongoDB document store are:
-
-- database name: "paul_graham_sentence_splitter"
-- collection/namespace name: "openai_embedding_3_small_chunk_size_512_chunk_overlap_128_metadata_entity"
-
-There is one more collection/namespace in the MongoDB document store, which is used to store the summary:
-
-- collection/namespace name: "openai_embedding_3_small_chunk_size_512_chunk_overlap_128_summary_metadata_entity"
-
-## Clone and Installation
+## Quick Start
 
 ### Clone the Repository
 
-```
+```bash
 git clone https://github.com/tonypeng1/llamaindex.git
 cd llamaindex
 ```
 
-### Installation
+### Install Dependencies with uv (Recommended)
 
-Install the required dependencies using pip:
+This project uses [`uv`](https://github.com/astral-sh/uv) for fast Python dependency management.
 
+Install `uv` if you haven't already:
 ```bash
-pip install -r requirements.txt
+pip install uv
 ```
 
-For Apple Silicon (ARM64) Macs, use the ARM64-specific requirements:
-
-```
-pip install -r requirements_arm64.txt
-```
-
-### Setup Dependencies
-
-This project requires:
-- **Milvus**: Vector database for storing embeddings
-- **MongoDB**: Document store for metadata and text storage
-- **API Keys**: OpenAI and Anthropic API keys (see [Model API Key](#model-api-key) section)
-
-Make sure you have Milvus and MongoDB running locally or accessible via network before running the scripts.
-
-## Model API Key
-The API keys for OpenAI and Anthropic are stored in the .env file, which is not included in this repository. The .evn file looks like:
-
-```
-OPENAI_API_KEY = your_openai_api_key
-ANTHROPIC_API_KEY = your_anthropic_api_key
+Install project dependencies:
+```bash
+uv pip install -r requirements_arm64.txt  # For Apple Silicon Macs
+# OR
+uv pip install -r requirements.txt        # For x86 systems
 ```
 
-## Examples of Queries and Answers
+> **Note:** You can still use regular `pip` if preferred, but `uv` is recommended for speed and reliability.
 
-4 sets of queries and answer that illustrate the capability of this RAG can be found in this [Medium artile](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c).
+### Setup
 
-## Detailed Introduction
+1. **Download the article**: Get Paul Graham's "What I Worked On" ([download here](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing)) and place it at:
+   ```
+   ./data/paul_graham/paul_graham_essay.pdf
+   ```
+
+2. **Database setup**: Ensure Milvus and MongoDB are running locally or accessible via network.
+
+3. **API Keys**: Create a `.env` file with your API keys:
+   ```
+   OPENAI_API_KEY=your_openai_api_key
+   ANTHROPIC_API_KEY=your_anthropic_api_key
+   ```
+
+### Contributing
+
+Please use `uv` for installing dependencies and managing your Python environment.
+
+---
+
+## Key Features
+
+- **Dual Storage**: Uses Milvus (vector database) and MongoDB (document store) with duplicate prevention
+- **Multi-Tool Query Engine**: Three specialized tools:
+  - `keyphrase_tool`: Answers specific factual queries
+  - `page_filter_tool`: Retrieves information from specific pages
+  - `summary_tool`: Provides full-context summaries
+- **Hybrid Retrieval**: Combines vector similarity search with BM25 keyword matching
+- **KeyBERT Integration**: Reduces BM25 noise by extracting key phrases before retrieval
+- **Named Entity Recognition**: Extracts entities from each text node
+- **Advanced Post-processing**: Reranking, context expansion, and page-based sorting
+
+## File Structure
+
+Main files:
+- `llama_bm25_simple.py` - Main RAG implementation
+- `utility_simple.py` - Helper functions
+- `database_operation_simple.py` - Database operations
+
+## Examples
+
+See [this Medium article](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c) for query examples and detailed explanations.
+
+---
+
+## Technical Details
 
 ### Overview
 
@@ -125,10 +87,7 @@ The script processes PDF documents through the following workflow:
 
 1. **Document Loading & Parsing**: Loads PDF documents and splits them into manageable chunks using sentence-based splitting with configurable chunk sizes and overlaps
 2. **Dual Storage Architecture**: Stores document embeddings in Milvus (vector database) and document metadata in MongoDB for efficient hybrid retrieval
-3. **Multi-Tool Query System**: Routes queries to specialized tools based on query characteristics:
-   - **Summary Tool**: For high-level document overviews and table of contents generation
-   - **Keyphrase Tool**: For specific factual queries using BM25 keyword extraction combined with semantic search
-   - **Page Filter Tool**: For queries targeting specific page numbers or ranges
+3. **Multi-Tool Query System**: Routes queries to specialized tools based on query characteristics
 4. **Sub-Question Decomposition**: Breaks down complex queries into simpler sub-questions that are routed to appropriate tools
 5. **Advanced Re-ranking**: Uses ColBERT neural re-ranking to improve retrieval quality
 
@@ -375,4 +334,3 @@ fusion_filter_retriever = QueryFusionRetriever(
 - **Results merging**: Uses reciprocal rank fusion to combine results
 
 The architecture maintains **separation of concerns**: Milvus handles vector operations while MongoDB manages document text and metadata, with fusion mechanisms bridging both systems for comprehensive retrieval.
-

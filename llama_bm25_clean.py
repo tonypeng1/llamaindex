@@ -39,7 +39,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.extractors.entity import EntityExtractor
 from llama_index.llms.anthropic import Anthropic
-from llama_index.llms.mistralai import MistralAI
+# from llama_index.llms.mistralai import MistralAI
 from llama_index.llms.openai import OpenAI
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.readers.file import (

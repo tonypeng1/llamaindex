@@ -29,7 +29,7 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.vector_stores import MetadataFilters
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.llms.mistralai import MistralAI
+# from llama_index.llms.mistralai import MistralAI
 from llama_index.llms.openai import OpenAI
 from llama_index.readers.file import (
                         PyMuPDFReader,
@@ -204,18 +204,18 @@ def get_fusion_accumulate_page_filter_sort_detail_response(
 # logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 # Set OpenAI API key, LLM, and embedding model
-# openai.api_key = os.environ['OPENAI_API_KEY']
-# llm = OpenAI(model="gpt-3.5-turbo", temperature=0.0)
-# Settings.llm = llm
-
-mistral_api_key = os.environ['MISTRAL_API_KEY']
-llm = MistralAI(
-    model="mistral-large-latest", 
-    temperature=0.0,
-    max_tokens=2000,
-    api_key=mistral_api_key
-    )
+openai.api_key = os.environ['OPENAI_API_KEY']
+llm = OpenAI(model="gpt-3.5-turbo", temperature=0.0)
 Settings.llm = llm
+
+# mistral_api_key = os.environ['MISTRAL_API_KEY']
+# llm = MistralAI(
+#     model="mistral-large-latest", 
+#     temperature=0.0,
+#     max_tokens=2000,
+#     api_key=mistral_api_key
+#     )
+# Settings.llm = llm
 
 
 # embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")

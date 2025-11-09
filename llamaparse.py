@@ -15,7 +15,7 @@ from llama_index.core.schema import ImageDocument, TextNode
 from llama_index.core.tools import QueryEngineTool
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.anthropic import Anthropic
-from llama_index.llms.mistralai import MistralAI
+# from llama_index.llms.mistralai import MistralAI
 from llama_index.llms.openai import OpenAI
 from llama_index.multi_modal_llms.anthropic import AnthropicMultiModal
 from llama_index.postprocessor.flag_embedding_reranker import FlagEmbeddingReranker
@@ -145,7 +145,7 @@ def create_and_save_llamaparse_vector_index_to_milvus_database(_base_nodes,
 
 nest_asyncio.apply()
 LLAMA_CLOUD_API_KEY = os.environ['LLAMA_CLOUD_API_KEY']
-MISTRAL_API_KEY = os.environ['MISTRAL_API_KEY']
+# MISTRAL_API_KEY = os.environ['MISTRAL_API_KEY']
 ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 
