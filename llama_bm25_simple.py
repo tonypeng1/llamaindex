@@ -1,8 +1,12 @@
 import json
 import nest_asyncio
 import os
+import sys
 from pathlib import Path
 from typing import List, Optional
+
+# Fix sys.excepthook error by ensuring a clean exception hook
+sys.excepthook = sys.__excepthook__
 
 # Apply nest_asyncio to allow nested event loops
 nest_asyncio.apply()
@@ -34,6 +38,7 @@ from llama_index.readers.file import (
                         )
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.question_gen.guidance import GuidanceQuestionGenerator
+from llama_index.core.prompts.guidance_utils import convert_to_handlebars
 from guidance.models import OpenAI as GuidanceOpenAI
 
 from utility_simple import (
@@ -283,6 +288,112 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
 
     return _fusion_tree_page_filter_sort_detail_tool
 
+
+def create_custom_guidance_prompt() -> str:
+    """
+    Create a custom prompt template for GuidanceQuestionGenerator.
+    
+    This function constructs a prompt template that guides the question generation
+    process for sub-question decomposition. The template includes:
+    - A prefix explaining the task
+    - Example 1: Financial comparison (default LlamaIndex example)
+    - Example 2: Page-based content summarization
+    - A suffix for the actual query
+    
+    Returns:
+    str: A Handlebars-formatted prompt template string for use with GuidanceQuestionGenerator.
+    """
+    # Write in Python format string style, then convert to Handlebars
+    PREFIX = """\
+    Given a user question, and a list of tools, output a list of relevant sub-questions \
+    in json markdown that when composed can help answer the full user question:
+
+    """
+
+    # Default example from LlamaIndex
+    EXAMPLE_1 = """\
+    # Example 1
+    <Tools>
+    ```json
+    [
+    {{
+        "name": "uber_10k",
+        "description": "Provides information about Uber financials for year 2021"
+    }},
+    {{
+        "name": "lyft_10k",
+        "description": "Provides information about Lyft financials for year 2021"
+    }}
+    ]
+    ```
+
+    <User Question>
+    Compare and contrast the revenue growth and EBITDA of Uber and Lyft for year 2021
+
+    <Output>
+    ```json
+    {{
+    "items": [
+        {{"sub_question": "What is the revenue growth of Uber", "tool_name": "uber_10k"}},
+        {{"sub_question": "What is the EBITDA of Uber", "tool_name": "uber_10k"}},
+        {{"sub_question": "What is the revenue growth of Lyft", "tool_name": "lyft_10k"}},
+        {{"sub_question": "What is the EBITDA of Lyft", "tool_name": "lyft_10k"}}
+    ]
+    }}
+    ```
+
+    """
+
+    # Tailored example for page-based queries
+    EXAMPLE_2 = """\
+    # Example 2
+    <Tools>
+    ```json
+    [
+    {{
+        "name": "page_filter_tool",
+        "description": "Perform a query search over the page numbers mentioned in the query"
+    }}
+    ]
+    ```
+
+    <User Question>
+    Summarize the content from pages 20 to 22 in the voice of the author by NOT retrieving the text verbatim
+
+    <Output>
+    ```json
+    {{
+    "items": [
+        {{"sub_question": "Summarize the content on page 20 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}},
+        {{"sub_question": "Summarize the content on page 21 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}},
+        {{"sub_question": "Summarize the content on page 22 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}}
+    ]
+    }}
+    ```
+
+    """
+
+    SUFFIX = """\
+    # Example 3
+    <Tools>
+    ```json
+    {tools_str}
+    ```
+
+    <User Question>
+    {query_str}
+
+    <Output>
+    """
+
+    # Combine and convert to Handlebars format
+    custom_guidance_prompt = convert_to_handlebars(PREFIX + EXAMPLE_1 + EXAMPLE_2 + SUFFIX)
+    # Alternative with only one example:
+    # custom_guidance_prompt = convert_to_handlebars(PREFIX + EXAMPLE_1 + SUFFIX)
+    
+    return custom_guidance_prompt
+
+
 # Set LLM and embedding models
 ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
 llm = Anthropic(
@@ -427,7 +538,12 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What did the author advice on choosing what to work on?"
 # query_str = "Why morale needs to be nurtured and protected?" 
 # query_str = "What are the contents from pages 26 to 29?"
-query_str = "What are the contents from pages 20 to 24 (one page at a time)?"
+# query_str = "What are the contents from pages 20 to 24 (one page at a time)?"
+# query_str = ("What are the concise contents from pages 20 to 24 (one page at a time) in the voice of the author?"
+#              )
+query_str = (
+    "Summarize CONCISELY the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
+    )
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
@@ -481,13 +597,16 @@ page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
                                                     vector_docstore,
                                                     )
 
+CUSTOM_GUIDANCE_PROMPT = create_custom_guidance_prompt()
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 question_gen = GuidanceQuestionGenerator.from_defaults(
+                            prompt_template_str=CUSTOM_GUIDANCE_PROMPT,
                             guidance_llm=GuidanceOpenAI(
                                 model="gpt-4o",
                                 api_key=OPENAI_API_KEY,
-                                echo=False)
-                                )
+                                echo=False),
+                            verbose=True
+                            )
 
 tools=[
     keyphrase_tool,
@@ -515,8 +634,19 @@ if response is not None:
         else:
             print(f"Item {i+1} question and response:\n{n.text}\n ")
 
-vector_store.client.release_collection(collection_name=collection_name_vector)
-vector_store.client.close()  
+# Cleanup resources
+try:
+    if 'vector_store' in dir() and hasattr(vector_store, 'client'):
+        vector_store.client.release_collection(collection_name=collection_name_vector)
+        vector_store.client.close()
+except:
+    pass
+
+# Suppress warnings and force immediate exit to avoid excepthook errors during Python shutdown
+import warnings
+warnings.filterwarnings('ignore')
+os._exit(0)
+
 
 
 
