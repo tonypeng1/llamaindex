@@ -1,7 +1,11 @@
 import json
+import nest_asyncio
 import os
 from pathlib import Path
 from typing import List, Optional
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
 
 from llama_index.core import (
                         Settings,
@@ -282,7 +286,7 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
 # Set LLM and embedding models
 ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
 llm = Anthropic(
-    model="claude-3-opus-20240229",
+    model="claude-sonnet-4-0",
     temperature=0.0,
     max_tokens=2000,
     api_key=ANTHROPIC_API_KEY,
@@ -497,17 +501,19 @@ sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         verbose=True,
                                         )
 
+response = None
 try:
     response = sub_question_engine.query(query_str)
 except Exception as e:
     print(f"Error getting json answer from LLM: {e}")
 
-for i, n in enumerate(response.source_nodes):
-    if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
-        print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
-        (with score: {round(n.score, 3) if n.score is not None else None})")
-    else:
-        print(f"Item {i+1} question and response:\n{n.text}\n ")
+if response is not None:
+    for i, n in enumerate(response.source_nodes):
+        if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
+            print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
+            (with score: {round(n.score, 3) if n.score is not None else None})")
+        else:
+            print(f"Item {i+1} question and response:\n{n.text}\n ")
 
 vector_store.client.release_collection(collection_name=collection_name_vector)
 vector_store.client.close()  
