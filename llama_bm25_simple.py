@@ -542,8 +542,14 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = ("What are the concise contents from pages 20 to 24 (one page at a time) in the voice of the author?"
 #              )
 query_str = (
-    "Summarize CONCISELY the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
+    "Summarize the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
     )
+# query_str = (
+#     "Summarize the key takeaways from pages 1 to 5 (one page at a time) in a sequential order and in the voice of the author by NOT retrieving the text verbatim."
+#     )
+# query_str = (
+#     "Summarize the key contents from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
+#     )
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
