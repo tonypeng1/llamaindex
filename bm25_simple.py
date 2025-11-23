@@ -41,7 +41,7 @@ from llama_index.question_gen.guidance import GuidanceQuestionGenerator
 from llama_index.core.prompts.guidance_utils import convert_to_handlebars
 from guidance.models import OpenAI as GuidanceOpenAI
 
-from utility_simple import (
+from utils import (
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
                 get_fusion_tree_keyphrase_sort_detail_tool_simple,
@@ -50,7 +50,7 @@ from utility_simple import (
                 get_summary_tree_detail_tool,
                 get_vector_store_docstore_and_storage_context,
                 )
-from database_operation import (
+from db_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
