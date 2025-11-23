@@ -50,7 +50,7 @@ from utility_simple import (
                 get_summary_tree_detail_tool,
                 get_vector_store_docstore_and_storage_context,
                 )
-from database_operation_simple import (
+from database_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
@@ -554,7 +554,7 @@ query_str = (
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
 similarity_top_k_fusion = 36
-num_queries = 1  # for QueryFusionRetriever() in utility.py
+num_queries = 1
 fusion_top_n = 32
 rerank_top_n = 24
 
