@@ -1,0 +1,220 @@
+<style>
+.lx-highlight { position: relative; border-radius:3px; padding:1px 2px;}
+.lx-highlight .lx-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  background: #333;
+  color: #fff;
+  text-align: left;
+  border-radius: 4px;
+  padding: 6px 8px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  max-width: 240px;
+  white-space: normal;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.lx-highlight:hover .lx-tooltip { visibility: visible; opacity:1; }
+.lx-animated-wrapper { max-width: 100%; font-family: Arial, sans-serif; }
+.lx-controls {
+  background: #fafafa; border: 1px solid #90caf9; border-radius: 8px;
+  padding: 12px; margin-bottom: 16px;
+}
+.lx-button-row {
+  display: flex; justify-content: center; gap: 8px; margin-bottom: 12px;
+}
+.lx-control-btn {
+  background: #4285f4; color: white; border: none; border-radius: 4px;
+  padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 500;
+  transition: background-color 0.2s;
+}
+.lx-control-btn:hover { background: #3367d6; }
+.lx-progress-container {
+  margin-bottom: 8px;
+}
+.lx-progress-slider {
+  width: 100%; margin: 0; appearance: none; height: 6px;
+  background: #ddd; border-radius: 3px; outline: none;
+}
+.lx-progress-slider::-webkit-slider-thumb {
+  appearance: none; width: 18px; height: 18px; background: #4285f4;
+  border-radius: 50%; cursor: pointer;
+}
+.lx-progress-slider::-moz-range-thumb {
+  width: 18px; height: 18px; background: #4285f4; border-radius: 50%;
+  cursor: pointer; border: none;
+}
+.lx-status-text {
+  text-align: center; font-size: 12px; color: #666; margin-top: 4px;
+}
+.lx-text-window {
+  font-family: monospace; white-space: pre-wrap; border: 1px solid #90caf9;
+  padding: 12px; max-height: 260px; overflow-y: auto; margin-bottom: 12px;
+  line-height: 1.6;
+}
+.lx-attributes-panel {
+  background: #fafafa; border: 1px solid #90caf9; border-radius: 6px;
+  padding: 8px 10px; margin-top: 8px; font-size: 13px;
+}
+.lx-current-highlight {
+  border-bottom: 4px solid #ff4444;
+  font-weight: bold;
+  animation: lx-pulse 1s ease-in-out;
+}
+@keyframes lx-pulse {
+  0% { text-decoration-color: #ff4444; }
+  50% { text-decoration-color: #ff0000; }
+  100% { text-decoration-color: #ff4444; }
+}
+.lx-legend {
+  font-size: 12px; margin-bottom: 8px;
+  padding-bottom: 8px; border-bottom: 1px solid #e0e0e0;
+}
+.lx-label {
+  display: inline-block;
+  padding: 2px 4px;
+  border-radius: 3px;
+  margin-right: 4px;
+  color: #000;
+}
+.lx-attr-key {
+  font-weight: 600;
+  color: #1565c0;
+  letter-spacing: 0.3px;
+}
+.lx-attr-value {
+  font-weight: 400;
+  opacity: 0.85;
+  letter-spacing: 0.2px;
+}
+
+/* Add optimizations with larger fonts and better readability for GIFs */
+.lx-gif-optimized .lx-text-window { font-size: 16px; line-height: 1.8; }
+.lx-gif-optimized .lx-attributes-panel { font-size: 15px; }
+.lx-gif-optimized .lx-current-highlight { text-decoration-thickness: 4px; }
+</style>
+    <div class="lx-animated-wrapper lx-gif-optimized">
+      <div class="lx-attributes-panel">
+        <div class="lx-legend">Highlights Legend: <span class="lx-label" style="background-color:#D2E3FC;">concept</span> <span class="lx-label" style="background-color:#C8E6C9;">entity</span> <span class="lx-label" style="background-color:#FEF0C3;">experience</span> <span class="lx-label" style="background-color:#F9DEDC;">time</span></div>
+        <div id="attributesContainer"></div>
+      </div>
+      <div class="lx-text-window" id="textWindow">
+        What I Worked On
+<span class="lx-highlight lx-current-highlight" data-idx="0" style="background-color:#F9DEDC;">February 2021</span>
+Before college <span class="lx-highlight" data-idx="1" style="background-color:#FEF0C3;">the two main things I worked on, outside of school, 
+were <span class="lx-highlight" data-idx="2" style="background-color:#D2E3FC;">writing</span> and <span class="lx-highlight" data-idx="3" style="background-color:#D2E3FC;">programming</span></span>. I didn&#x27;t write essays. I wrote what 
+beginning writers were supposed to write then, and probably still are: 
+short stories. <span class="lx-highlight" data-idx="4" style="background-color:#FEF0C3;">My stories were awful. They had hardly any plot, just 
+characters with strong feelings</span>, which I imagined made them deep.
+The first programs I tried writing were on the <span class="lx-highlight" data-idx="5" style="background-color:#D2E3FC;">IBM 1401</span> that our 
+school district used for what was then called &quot;data processing.&quot; This 
+was in <span class="lx-highlight" data-idx="6" style="background-color:#F9DEDC;">9th grade, so I was 13 or 14</span>. The school district&#x27;s 1401 
+happened to be in the basement of our junior high school, and my 
+friend <span class="lx-highlight" data-idx="7" style="background-color:#C8E6C9;">Rich Draves</span> and I got permission to use it. It was like a <span class="lx-highlight" data-idx="8" style="background-color:#D2E3FC;">mini 
+Bond villain&#x27;s lair</span> down there, with all these alien-looking machines 
+— CPU, disk drives, printer, card reader — sitting up on a raised 
+floor under bright fluorescent lights.
+The language we used was an early version of <span class="lx-highlight" data-idx="9" style="background-color:#D2E3FC;">Fortran</span>. You had to type 
+<span class="lx-highlight" data-idx="10" style="background-color:#D2E3FC;">programs on punch cards</span>, then stack them in the card reader and press 
+a button to load the program into memory and run it. The result would 
+ordinarily be to print something on the spectacularly loud printer.
+I was <span class="lx-highlight" data-idx="11" style="background-color:#FEF0C3;">puzzled by the <span class="lx-highlight" data-idx="12" style="background-color:#C8E6C9;">1401</span>. I couldn&#x27;t figure out what to do with it.</span> 
+And in retrospect there&#x27;s not much I could have done with it. The only 
+form of input to programs was data stored on punched cards, and I 
+didn&#x27;t have any data stored on punched cards. The only other option 
+was to do things that didn&#x27;t rely on any input, like <span class="lx-highlight" data-idx="13" style="background-color:#D2E3FC;">calculate 
+approximations of pi</span>, but I didn&#x27;t know enough math to do anything 
+interesting of that type. So I&#x27;m not surprised I can&#x27;t remember any 
+programs I wrote, because they can&#x27;t have done much. My clearest 
+memory is of the <span class="lx-highlight" data-idx="14" style="background-color:#FEF0C3;">moment I learned it was <span class="lx-highlight" data-idx="15" style="background-color:#D2E3FC;">possible for programs not to 
+terminate</span></span>, when one of mine didn&#x27;t. On a <span class="lx-highlight" data-idx="16" style="background-color:#D2E3FC;">machine without time-sharing</span>, 
+this was a <span class="lx-highlight" data-idx="17" style="background-color:#D2E3FC;">social as well as a <span class="lx-highlight" data-idx="18" style="background-color:#D2E3FC;">technical error</span></span>, as the <span class="lx-highlight" data-idx="19" style="background-color:#C8E6C9;">data center 
+manager</span>&#x27;s expression made clear.
+With <span class="lx-highlight" data-idx="20" style="background-color:#D2E3FC;">microcomputers</span>, everything changed.
+      </div>
+      <div class="lx-controls">
+        <div class="lx-button-row">
+          <button class="lx-control-btn" onclick="playPause()">▶️ Play</button>
+          <button class="lx-control-btn" onclick="prevExtraction()">⏮ Previous</button>
+          <button class="lx-control-btn" onclick="nextExtraction()">⏭ Next</button>
+        </div>
+        <div class="lx-progress-container">
+          <input type="range" id="progressSlider" class="lx-progress-slider"
+                 min="0" max="20" value="0"
+                 onchange="jumpToExtraction(this.value)">
+        </div>
+        <div class="lx-status-text">
+          Entity <span id="entityInfo">1/21</span> |
+          Pos <span id="posInfo">[17-30]</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const extractions = [{"index": 0, "class": "time", "text": "February 2021", "color": "#F9DEDC", "startPos": 17, "endPos": 30, "beforeText": "What I Worked On\n", "extractionText": "February 2021", "afterText": "\nBefore college the two main things I worked on, outside of school, \nwere writing and programming. I didn&#x27;t write essays. I wrote what \nbeginning writ", "attributesHtml": "<div><strong>class:</strong> time</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">decade</span>: <span class=\"lx-attr-value\">2020s</span>, <span class=\"lx-attr-key\">specificity</span>: <span class=\"lx-attr-value\">exact_year</span>}</div>"}, {"index": 1, "class": "experience", "text": "the two main things I worked on, outside of school, were writing and programming", "color": "#FEF0C3", "startPos": 46, "endPos": 127, "beforeText": "What I Worked On\nFebruary 2021\nBefore college ", "extractionText": "the two main things I worked on, outside of school, \nwere writing and programming", "afterText": ". I didn&#x27;t write essays. I wrote what \nbeginning writers were supposed to write then, and probably still are: \nshort stories. My stories were awful. T", "attributesHtml": "<div><strong>class:</strong> experience</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">period</span>: <span class=\"lx-attr-value\">childhood</span>, <span class=\"lx-attr-key\">sentiment</span>: <span class=\"lx-attr-value\">neutral</span>}</div>"}, {"index": 2, "class": "concept", "text": "writing", "color": "#D2E3FC", "startPos": 104, "endPos": 111, "beforeText": "What I Worked On\nFebruary 2021\nBefore college the two main things I worked on, outside of school, \nwere ", "extractionText": "writing", "afterText": " and programming. I didn&#x27;t write essays. I wrote what \nbeginning writers were supposed to write then, and probably still are: \nshort stories. My stori", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">writing</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">high</span>}</div>"}, {"index": 3, "class": "concept", "text": "programming", "color": "#D2E3FC", "startPos": 116, "endPos": 127, "beforeText": "What I Worked On\nFebruary 2021\nBefore college the two main things I worked on, outside of school, \nwere writing and ", "extractionText": "programming", "afterText": ". I didn&#x27;t write essays. I wrote what \nbeginning writers were supposed to write then, and probably still are: \nshort stories. My stories were awful. T", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">programming</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">high</span>}</div>"}, {"index": 4, "class": "experience", "text": "My stories were awful. They had hardly any plot, just characters with strong feelings", "color": "#FEF0C3", "startPos": 253, "endPos": 339, "beforeText": " writing and programming. I didn&#x27;t write essays. I wrote what \nbeginning writers were supposed to write then, and probably still are: \nshort stories. ", "extractionText": "My stories were awful. They had hardly any plot, just \ncharacters with strong feelings", "afterText": ", which I imagined made them deep.\nThe first programs I tried writing were on the IBM 1401 that our \nschool district used for what was then called &quot;da", "attributesHtml": "<div><strong>class:</strong> experience</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">period</span>: <span class=\"lx-attr-value\">childhood</span>, <span class=\"lx-attr-key\">sentiment</span>: <span class=\"lx-attr-value\">negative</span>}</div>"}, {"index": 5, "class": "concept", "text": "IBM 1401", "color": "#D2E3FC", "startPos": 421, "endPos": 429, "beforeText": "ful. They had hardly any plot, just \ncharacters with strong feelings, which I imagined made them deep.\nThe first programs I tried writing were on the ", "extractionText": "IBM 1401", "afterText": " that our \nschool district used for what was then called &quot;data processing.&quot; This \nwas in 9th grade, so I was 13 or 14. The school district&#x27;s 1401 \nhap", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">technology</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">medium</span>}</div>"}, {"index": 6, "class": "time", "text": "9th grade, so I was 13 or 14", "color": "#F9DEDC", "startPos": 518, "endPos": 546, "beforeText": "deep.\nThe first programs I tried writing were on the IBM 1401 that our \nschool district used for what was then called &quot;data processing.&quot; This \nwas in ", "extractionText": "9th grade, so I was 13 or 14", "afterText": ". The school district&#x27;s 1401 \nhappened to be in the basement of our junior high school, and my \nfriend Rich Draves and I got permission to use it. It ", "attributesHtml": "<div><strong>class:</strong> time</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">decade</span>: <span class=\"lx-attr-value\">1970s</span>, <span class=\"lx-attr-key\">specificity</span>: <span class=\"lx-attr-value\">approximate</span>}</div>"}, {"index": 7, "class": "entity", "text": "Rich Draves", "color": "#C8E6C9", "startPos": 649, "endPos": 660, "beforeText": "ing.&quot; This \nwas in 9th grade, so I was 13 or 14. The school district&#x27;s 1401 \nhappened to be in the basement of our junior high school, and my \nfriend ", "extractionText": "Rich Draves", "afterText": " and I got permission to use it. It was like a mini \nBond villain&#x27;s lair down there, with all these alien-looking machines \n\u2014 CPU, disk drives, printe", "attributesHtml": "<div><strong>class:</strong> entity</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">role</span>: <span class=\"lx-attr-value\">friend</span>, <span class=\"lx-attr-key\">significance</span>: <span class=\"lx-attr-value\">minor</span>}</div>"}, {"index": 8, "class": "concept", "text": "mini Bond villain's lair", "color": "#D2E3FC", "startPos": 707, "endPos": 732, "beforeText": "l district&#x27;s 1401 \nhappened to be in the basement of our junior high school, and my \nfriend Rich Draves and I got permission to use it. It was like a ", "extractionText": "mini \nBond villain&#x27;s lair", "afterText": " down there, with all these alien-looking machines \n\u2014 CPU, disk drives, printer, card reader \u2014 sitting up on a raised \nfloor under bright fluorescent ", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">art</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">low</span>}</div>"}, {"index": 9, "class": "concept", "text": "Fortran", "color": "#D2E3FC", "startPos": 935, "endPos": 942, "beforeText": " CPU, disk drives, printer, card reader \u2014 sitting up on a raised \nfloor under bright fluorescent lights.\nThe language we used was an early version of ", "extractionText": "Fortran", "afterText": ". You had to type \nprograms on punch cards, then stack them in the card reader and press \na button to load the program into memory and run it. The res", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">programming</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">high</span>}</div>"}, {"index": 10, "class": "concept", "text": "programs on punch cards", "color": "#D2E3FC", "startPos": 961, "endPos": 984, "beforeText": ", card reader \u2014 sitting up on a raised \nfloor under bright fluorescent lights.\nThe language we used was an early version of Fortran. You had to type \n", "extractionText": "programs on punch cards", "afterText": ", then stack them in the card reader and press \na button to load the program into memory and run it. The result would \nordinarily be to print somethin", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">technology</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">medium</span>}</div>"}, {"index": 11, "class": "experience", "text": "puzzled by the 1401. I couldn't figure out what to do with it.", "color": "#FEF0C3", "startPos": 1177, "endPos": 1239, "beforeText": "ess \na button to load the program into memory and run it. The result would \nordinarily be to print something on the spectacularly loud printer.\nI was ", "extractionText": "puzzled by the 1401. I couldn&#x27;t figure out what to do with it.", "afterText": " \nAnd in retrospect there&#x27;s not much I could have done with it. The only \nform of input to programs was data stored on punched cards, and I \ndidn&#x27;t ha", "attributesHtml": "<div><strong>class:</strong> experience</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">period</span>: <span class=\"lx-attr-value\">childhood</span>, <span class=\"lx-attr-key\">sentiment</span>: <span class=\"lx-attr-value\">negative</span>}</div>"}, {"index": 12, "class": "entity", "text": "1401", "color": "#C8E6C9", "startPos": 1192, "endPos": 1196, "beforeText": "o load the program into memory and run it. The result would \nordinarily be to print something on the spectacularly loud printer.\nI was puzzled by the ", "extractionText": "1401", "afterText": ". I couldn&#x27;t figure out what to do with it. \nAnd in retrospect there&#x27;s not much I could have done with it. The only \nform of input to programs was dat", "attributesHtml": "<div><strong>class:</strong> entity</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">role</span>: <span class=\"lx-attr-value\">company</span>, <span class=\"lx-attr-key\">significance</span>: <span class=\"lx-attr-value\">minor</span>}</div>"}, {"index": 13, "class": "concept", "text": "calculate approximations of pi", "color": "#D2E3FC", "startPos": 1502, "endPos": 1533, "beforeText": "ed on punched cards, and I \ndidn&#x27;t have any data stored on punched cards. The only other option \nwas to do things that didn&#x27;t rely on any input, like ", "extractionText": "calculate \napproximations of pi", "afterText": ", but I didn&#x27;t know enough math to do anything \ninteresting of that type. So I&#x27;m not surprised I can&#x27;t remember any \nprograms I wrote, because they ca", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">programming</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">low</span>}</div>"}, {"index": 14, "class": "experience", "text": "moment I learned it was possible for programs not to terminate", "color": "#FEF0C3", "startPos": 1733, "endPos": 1796, "beforeText": "teresting of that type. So I&#x27;m not surprised I can&#x27;t remember any \nprograms I wrote, because they can&#x27;t have done much. My clearest \nmemory is of the ", "extractionText": "moment I learned it was possible for programs not to \nterminate", "afterText": ", when one of mine didn&#x27;t. On a machine without time-sharing, \nthis was a social as well as a technical error, as the data center \nmanager&#x27;s expressio", "attributesHtml": "<div><strong>class:</strong> experience</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">period</span>: <span class=\"lx-attr-value\">childhood</span>, <span class=\"lx-attr-key\">sentiment</span>: <span class=\"lx-attr-value\">neutral</span>}</div>"}, {"index": 15, "class": "concept", "text": "possible for programs not to terminate", "color": "#D2E3FC", "startPos": 1757, "endPos": 1796, "beforeText": "So I&#x27;m not surprised I can&#x27;t remember any \nprograms I wrote, because they can&#x27;t have done much. My clearest \nmemory is of the moment I learned it was ", "extractionText": "possible for programs not to \nterminate", "afterText": ", when one of mine didn&#x27;t. On a machine without time-sharing, \nthis was a social as well as a technical error, as the data center \nmanager&#x27;s expressio", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">programming</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">high</span>}</div>"}, {"index": 16, "class": "concept", "text": "machine without time-sharing", "color": "#D2E3FC", "startPos": 1828, "endPos": 1856, "beforeText": "ey can&#x27;t have done much. My clearest \nmemory is of the moment I learned it was possible for programs not to \nterminate, when one of mine didn&#x27;t. On a ", "extractionText": "machine without time-sharing", "afterText": ", \nthis was a social as well as a technical error, as the data center \nmanager&#x27;s expression made clear.\nWith microcomputers, everything changed.", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">technology</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">medium</span>}</div>"}, {"index": 17, "class": "concept", "text": "social error", "color": "#D2E3FC", "startPos": 1870, "endPos": 1905, "beforeText": "ry is of the moment I learned it was possible for programs not to \nterminate, when one of mine didn&#x27;t. On a machine without time-sharing, \nthis was a ", "extractionText": "social as well as a technical error", "afterText": ", as the data center \nmanager&#x27;s expression made clear.\nWith microcomputers, everything changed.", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">philosophy</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">medium</span>}</div>"}, {"index": 18, "class": "concept", "text": "technical error", "color": "#D2E3FC", "startPos": 1890, "endPos": 1905, "beforeText": "I learned it was possible for programs not to \nterminate, when one of mine didn&#x27;t. On a machine without time-sharing, \nthis was a social as well as a ", "extractionText": "technical error", "afterText": ", as the data center \nmanager&#x27;s expression made clear.\nWith microcomputers, everything changed.", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">technology</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">medium</span>}</div>"}, {"index": 19, "class": "entity", "text": "data center manager", "color": "#C8E6C9", "startPos": 1914, "endPos": 1934, "beforeText": "e for programs not to \nterminate, when one of mine didn&#x27;t. On a machine without time-sharing, \nthis was a social as well as a technical error, as the ", "extractionText": "data center \nmanager", "afterText": "&#x27;s expression made clear.\nWith microcomputers, everything changed.", "attributesHtml": "<div><strong>class:</strong> entity</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">role</span>: <span class=\"lx-attr-value\">minor</span>, <span class=\"lx-attr-key\">significance</span>: <span class=\"lx-attr-value\">minor</span>}</div>"}, {"index": 20, "class": "concept", "text": "microcomputers", "color": "#D2E3FC", "startPos": 1965, "endPos": 1979, "beforeText": "didn&#x27;t. On a machine without time-sharing, \nthis was a social as well as a technical error, as the data center \nmanager&#x27;s expression made clear.\nWith ", "extractionText": "microcomputers", "afterText": ", everything changed.", "attributesHtml": "<div><strong>class:</strong> concept</div><div><strong>attributes:</strong> {<span class=\"lx-attr-key\">category</span>: <span class=\"lx-attr-value\">technology</span>, <span class=\"lx-attr-key\">importance</span>: <span class=\"lx-attr-value\">high</span>}</div>"}];
+        let currentIndex = 0;
+        let isPlaying = false;
+        let animationInterval = null;
+        let animationSpeed = 1.0;
+
+        function updateDisplay() {
+          const extraction = extractions[currentIndex];
+          if (!extraction) return;
+
+          document.getElementById('attributesContainer').innerHTML = extraction.attributesHtml;
+          document.getElementById('entityInfo').textContent = (currentIndex + 1) + '/' + extractions.length;
+          document.getElementById('posInfo').textContent = '[' + extraction.startPos + '-' + extraction.endPos + ']';
+          document.getElementById('progressSlider').value = currentIndex;
+
+          const playBtn = document.querySelector('.lx-control-btn');
+          if (playBtn) playBtn.textContent = isPlaying ? '⏸ Pause' : '▶️ Play';
+
+          const prevHighlight = document.querySelector('.lx-text-window .lx-current-highlight');
+          if (prevHighlight) prevHighlight.classList.remove('lx-current-highlight');
+          const currentSpan = document.querySelector('.lx-text-window span[data-idx="' + currentIndex + '"]');
+          if (currentSpan) {
+            currentSpan.classList.add('lx-current-highlight');
+            currentSpan.scrollIntoView({block: 'center', behavior: 'smooth'});
+          }
+        }
+
+        function nextExtraction() {
+          currentIndex = (currentIndex + 1) % extractions.length;
+          updateDisplay();
+        }
+
+        function prevExtraction() {
+          currentIndex = (currentIndex - 1 + extractions.length) % extractions.length;
+          updateDisplay();
+        }
+
+        function jumpToExtraction(index) {
+          currentIndex = parseInt(index);
+          updateDisplay();
+        }
+
+        function playPause() {
+          if (isPlaying) {
+            clearInterval(animationInterval);
+            isPlaying = false;
+          } else {
+            animationInterval = setInterval(nextExtraction, animationSpeed * 1000);
+            isPlaying = true;
+          }
+          updateDisplay();
+        }
+
+        window.playPause = playPause;
+        window.nextExtraction = nextExtraction;
+        window.prevExtraction = prevExtraction;
+        window.jumpToExtraction = jumpToExtraction;
+
+        updateDisplay();
+      })();
+    </script>
