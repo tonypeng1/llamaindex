@@ -1,3 +1,51 @@
+"""
+LlamaIndex RAG Implementation with Flexible Metadata Extraction
+
+This script implements a sophisticated RAG (Retrieval Augmented Generation) system
+using LlamaIndex with multiple metadata extraction options:
+
+Metadata Extraction Options:
+----------------------------
+1. None (Basic):
+   - No metadata extraction
+   - Fastest option
+   - Simple chunking with SentenceSplitter only
+   - Best for: Quick testing, simple documents
+
+2. "entity" (EntityExtractor):
+   - Uses HuggingFace span-marker model
+   - Fast and free (local inference)
+   - Extracts basic named entities (PER, ORG, LOC)
+   - Device: MPS (Apple Silicon) or CPU
+   - Best for: Standard entity recognition needs
+
+3. "langextract" (LangExtract):
+   - Uses Google's LangExtract with OpenAI GPT-4
+   - Slow and paid (API calls)
+   - Rich structured metadata (concepts, advice, experiences, etc.)
+   - Requires: OPENAI_API_KEY environment variable
+   - Best for: Deep semantic understanding, complex queries
+
+4. "both" (EntityExtractor + LangExtract):
+   - Combines both extractors
+   - Slowest but most comprehensive
+   - Preserves both entity and semantic metadata
+   - Best for: Maximum metadata richness
+
+Usage:
+------
+1. Set the `metadata` variable to your desired option
+2. If using "langextract" or "both", set `schema_name` to your schema
+3. Ensure required API keys are set in environment variables
+4. Run the script to process documents with your chosen metadata extraction
+
+Database Structure:
+------------------
+- Milvus: Vector index storage
+- MongoDB: Document store for both vector and summary nodes
+- Collections are named based on metadata extraction method used
+"""
+
 import json
 import nest_asyncio
 import os
@@ -54,6 +102,57 @@ from db_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
+from langextract_integration import (
+                enrich_nodes_with_langextract,
+                print_sample_metadata
+                )
+
+
+def print_metadata_extraction_info():
+    """
+    Print information about available metadata extraction options.
+    Helps users understand which option to choose.
+    """
+    info = """
+    ╔════════════════════════════════════════════════════════════════════════════╗
+    ║                    METADATA EXTRACTION OPTIONS                             ║
+    ╠════════════════════════════════════════════════════════════════════════════╣
+    ║                                                                            ║
+    ║  Option: None (Basic)                                                      ║
+    ║  ├─ Speed: ⚡⚡⚡ Very Fast                                                 ║
+    ║  ├─ Cost: FREE                                                             ║
+    ║  ├─ Metadata: Basic (page numbers, file info only)                         ║
+    ║  └─ Best for: Quick testing, simple documents                              ║
+    ║                                                                            ║
+    ║  Option: "entity" (EntityExtractor)                                        ║
+    ║  ├─ Speed: ⚡⚡ Fast                                                       ║
+    ║  ├─ Cost: FREE (local model)                                               ║
+    ║  ├─ Metadata: Named entities (PER, ORG, LOC, etc.)                         ║
+    ║  ├─ Model: span-marker-bert-base-multilingual-cased-multinerd             ║
+    ║  ├─ Device: MPS (Apple Silicon) or CPU                                     ║
+    ║  └─ Best for: Standard entity recognition                                  ║
+    ║                                                                            ║
+    ║  Option: "langextract" (LangExtract)                                       ║
+    ║  ├─ Speed: ⚡ Slow (API calls)                                             ║
+    ║  ├─ Cost: PAID (OpenAI API usage)                                          ║
+    ║  ├─ Metadata: Rich structured metadata                                     ║
+    ║  │   • Concepts (programming, philosophy, business, etc.)                  ║
+    ║  │   • Advice (strategic, tactical, practical, etc.)                       ║
+    ║  │   • Experiences (early career, success, challenges, etc.)               ║
+    ║  │   • Entities (people, organizations, products)                          ║
+    ║  │   • Time references (years, decades, periods)                           ║
+    ║  ├─ Requirements: OPENAI_API_KEY in environment                            ║
+    ║  └─ Best for: Deep semantic understanding, complex queries                 ║
+    ║                                                                            ║
+    ║  Option: "both" (EntityExtractor + LangExtract)                            ║
+    ║  ├─ Speed: ⚡ Slowest (both extractors)                                    ║
+    ║  ├─ Cost: PAID (OpenAI API usage)                                          ║
+    ║  ├─ Metadata: Most comprehensive (entities + semantic metadata)            ║
+    ║  └─ Best for: Maximum metadata richness                                    ║
+    ║                                                                            ║
+    ╚════════════════════════════════════════════════════════════════════════════╝
+    """
+    print(info)
 
 
 def load_document_pdf(doc_link) -> List:
@@ -149,39 +248,85 @@ def load_document_nodes_sentence_splitter(
                                 _article_link: str,
                                 _chunk_size: int,
                                 _chunk_overlap: int,
-                                _metadata: Optional[str] = None
+                                _metadata: Optional[str] = None,
+                                _schema_name: str = "paul_graham_detailed"
                                 ) -> List:  
     """
     This function loads a document from a given link, splits it into nodes based on sentences,
-    and optionally extracts entities from the nodes.
+    and optionally extracts metadata from the nodes.
 
     Parameters:
     _article_link (str): The URL of the document to load.
     _chunk_size (int): The maximum size of each node.
     _chunk_overlap (int): The number of words that should overlap between consecutive nodes.
-    _metadata (Optional[str], optional): If provided, the function will extract entities from the nodes.
-                                        Defaults to None.
+    _metadata (Optional[str], optional): Metadata extraction method:
+        - "entity": Use EntityExtractor (fast, free, basic entity extraction)
+        - "langextract": Use LangExtract (slow, paid, rich structured metadata)
+        - "both": Use both extractors (EntityExtractor + LangExtract)
+        - None: No metadata extraction (basic chunking only)
+        Defaults to None.
+    _schema_name (str): The LangExtract schema to use (only relevant for "langextract" or "both")
+        Defaults to "paul_graham_detailed".
 
     Returns:
     List: A list of nodes, where each node is a dictionary containing the text of the node and optionally,
-          the extracted entities.
+          the extracted metadata.
     """
 
-    # Only load and parse document if either index or docstore not saved.
+    # Load and parse document
     _document = load_document_pdf(_article_link)
 
-    if _metadata is not None:
+    # Process based on metadata extraction method
+    if _metadata == "entity":
+        # Use EntityExtractor only (fast, free)
         _nodes = get_nodes_from_document_sentence_splitter_entity_extractor(
             _document,
             _chunk_size,
             _chunk_overlap
             )
-    else:
+    elif _metadata == "langextract":
+        # Use LangExtract only (slow, paid, rich metadata)
         _nodes = get_nodes_from_document_sentence_splitter(
             _document,
             _chunk_size,
             _chunk_overlap
             )
+        # Enrich with LangExtract metadata
+        _nodes = enrich_nodes_with_langextract(
+            _nodes,
+            schema_name=_schema_name,
+            verbose=True
+        )
+        # Print sample metadata for verification
+        print_sample_metadata(_nodes, num_samples=3)
+        
+    elif _metadata == "both":
+        # Use both extractors (EntityExtractor + LangExtract)
+        print("\n🔄 Using BOTH extractors: EntityExtractor + LangExtract")
+        print("   Step 1: Running EntityExtractor (fast)...")
+        _nodes = get_nodes_from_document_sentence_splitter_entity_extractor(
+            _document,
+            _chunk_size,
+            _chunk_overlap
+            )
+        print("   Step 2: Running LangExtract (slow, API-based)...")
+        # Enrich with LangExtract metadata (preserves EntityExtractor metadata)
+        _nodes = enrich_nodes_with_langextract(
+            _nodes,
+            schema_name=_schema_name,
+            verbose=True
+        )
+        # Print sample metadata for verification
+        print_sample_metadata(_nodes, num_samples=3)
+        
+    else:
+        # No metadata extraction (basic chunking only)
+        _nodes = get_nodes_from_document_sentence_splitter(
+            _document,
+            _chunk_size,
+            _chunk_overlap
+            )
+    
     return _nodes
 
 
@@ -416,8 +561,8 @@ Settings.callback_manager = callback_manager
 
 # Create article link
 article_directory = "paul_graham"
-# article_name = "paul_graham_essay.pdf"
-article_name = "How_to_do_great_work.pdf"
+article_name = "paul_graham_essay.pdf"
+# article_name = "How_to_do_great_work.pdf"
 
 article_link = get_article_link(article_directory,
                                 article_name
@@ -429,7 +574,27 @@ chunk_method = "sentence_splitter"
 # chunk_overlap = 128
 chunk_size = 256
 chunk_overlap = 64
-metadata = "entity"
+
+# Metadata extraction options:
+# - None: No metadata extraction (fastest, basic chunking only)
+# - "entity": EntityExtractor only (fast, free, basic entities)
+# - "langextract": LangExtract only (slow, paid, rich structured metadata)
+# - "both": EntityExtractor + LangExtract (slowest, most comprehensive)
+metadata = "entity"  # Change this to test different options
+
+# LangExtract schema (only used when metadata is "langextract" or "both")
+# Available schemas: "paul_graham_detailed", "paul_graham_simple"
+schema_name = "paul_graham_detailed"
+
+# Display metadata extraction information
+print_metadata_extraction_info()
+print(f"\n📊 Current Configuration:")
+print(f"   Metadata Extraction: {metadata if metadata else 'None (Basic)'}")
+if metadata in ["langextract", "both"]:
+    print(f"   LangExtract Schema: {schema_name}")
+print(f"   Chunk Size: {chunk_size}")
+print(f"   Chunk Overlap: {chunk_overlap}")
+print(f"\n{'='*80}\n")
 
 # metadata is an optional parameter, will include it if it is not None                                              )
 (database_name, 
@@ -492,7 +657,8 @@ if save_index_vector or add_document_vector or add_document_summary:
                                                     article_link,
                                                     chunk_size,
                                                     chunk_overlap,
-                                                    metadata
+                                                    metadata,
+                                                    schema_name
                                                     )
 
 if save_index_vector == True:

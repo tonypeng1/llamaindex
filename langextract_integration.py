@@ -1,0 +1,251 @@
+"""
+LangExtract integration for enriching document nodes with structured metadata.
+
+This module provides functions to extract structured metadata from text chunks
+using Google's LangExtract library with OpenAI GPT-4.
+"""
+
+import os
+from typing import List, Dict, Any
+from dotenv import load_dotenv
+
+import langextract as lx
+from llama_index.core.schema import TextNode
+
+from langextract_schemas import get_schema
+
+# Load environment variables
+load_dotenv()
+
+
+def extract_metadata_from_text(text: str, schema_name: str = "paul_graham_detailed") -> Dict[str, Any]:
+    """
+    Extract structured metadata from a text chunk using LangExtract.
+    
+    Parameters:
+    text (str): The text to extract metadata from (typically a 256-char chunk)
+    schema_name (str): The extraction schema to use
+    
+    Returns:
+    Dict[str, Any]: Extracted metadata with flattened structure for Milvus
+    """
+    # Get the extraction schema
+    schema_config = get_schema(schema_name)
+    
+    try:
+        # Extract using LangExtract with OpenAI GPT-4
+        result = lx.extract(
+            text_or_documents=text,
+            prompt_description=schema_config["prompt"],
+            examples=schema_config["examples"],
+            model_id="gpt-4o",  # Using GPT-4 Omni
+        )
+        
+        # Flatten the extraction results into Milvus-friendly metadata
+        metadata = flatten_extraction_result(result)
+        return metadata
+        
+    except Exception as e:
+        print(f"Warning: LangExtract failed for chunk: {e}")
+        return {}
+
+
+def flatten_extraction_result(result) -> Dict[str, Any]:
+    """
+    Convert LangExtract result into flat metadata structure for Milvus.
+    
+    Parameters:
+    result: LangExtract extraction result
+    
+    Returns:
+    Dict[str, Any]: Flattened metadata dictionary
+    """
+    metadata = {}
+    
+    if not result or not result.extractions:
+        return metadata
+    
+    # Lists to collect extractions by type
+    concepts = []
+    concept_categories = set()
+    concept_importance = set()
+    
+    advice_items = []
+    advice_types = set()
+    advice_domains = set()
+    
+    entities = []
+    entity_roles = set()
+    entity_names = []
+    
+    experiences = []
+    experience_periods = set()
+    experience_sentiments = set()
+    
+    time_refs = []
+    time_decades = set()
+    
+    # Process each extraction
+    for extraction in result.extractions:
+        attrs = extraction.attributes or {}
+        
+        if extraction.extraction_class == "concept":
+            concepts.append(extraction.extraction_text)
+            if "category" in attrs:
+                concept_categories.add(attrs["category"])
+            if "importance" in attrs:
+                concept_importance.add(attrs["importance"])
+                
+        elif extraction.extraction_class == "advice":
+            advice_items.append(extraction.extraction_text)
+            if "type" in attrs:
+                advice_types.add(attrs["type"])
+            if "domain" in attrs:
+                advice_domains.add(attrs["domain"])
+                
+        elif extraction.extraction_class == "entity":
+            entities.append(extraction.extraction_text)
+            entity_names.append(extraction.extraction_text)
+            if "role" in attrs:
+                entity_roles.add(attrs["role"])
+                
+        elif extraction.extraction_class == "experience":
+            experiences.append(extraction.extraction_text)
+            if "period" in attrs:
+                experience_periods.add(attrs["period"])
+            if "sentiment" in attrs:
+                experience_sentiments.add(attrs["sentiment"])
+                
+        elif extraction.extraction_class == "time":
+            time_refs.append(extraction.extraction_text)
+            if "decade" in attrs:
+                time_decades.add(attrs["decade"])
+    
+    # Add to metadata (convert sets to lists for JSON serialization)
+    if concepts:
+        metadata["langextract_concepts"] = concepts
+    if concept_categories:
+        metadata["concept_categories"] = list(concept_categories)
+    if concept_importance:
+        metadata["concept_importance"] = list(concept_importance)
+    
+    if advice_items:
+        metadata["langextract_advice"] = advice_items
+    if advice_types:
+        metadata["advice_types"] = list(advice_types)
+    if advice_domains:
+        metadata["advice_domains"] = list(advice_domains)
+    
+    if entities:
+        metadata["langextract_entities"] = entities
+        metadata["entity_names"] = entity_names
+    if entity_roles:
+        metadata["entity_roles"] = list(entity_roles)
+    
+    if experiences:
+        metadata["langextract_experiences"] = experiences
+    if experience_periods:
+        metadata["experience_periods"] = list(experience_periods)
+    if experience_sentiments:
+        metadata["experience_sentiments"] = list(experience_sentiments)
+    
+    if time_refs:
+        metadata["time_references"] = time_refs
+    if time_decades:
+        metadata["time_decades"] = list(time_decades)
+    
+    return metadata
+
+
+def enrich_nodes_with_langextract(
+    nodes: List[TextNode],
+    schema_name: str = "paul_graham_detailed",
+    verbose: bool = True
+) -> List[TextNode]:
+    """
+    Enrich a list of TextNode objects with LangExtract metadata.
+    
+    This function processes each node (chunk), extracts structured metadata,
+    and adds it to the node's metadata dictionary.
+    
+    Parameters:
+    nodes (List[TextNode]): List of nodes to enrich
+    schema_name (str): The extraction schema to use
+    verbose (bool): Print progress information
+    
+    Returns:
+    List[TextNode]: The same nodes with enriched metadata
+    """
+    if verbose:
+        print(f"\n{'='*80}")
+        print(f"LangExtract Metadata Enrichment")
+        print(f"{'='*80}")
+        print(f"Processing {len(nodes)} nodes with schema: {schema_name}")
+        print(f"This may take several minutes (API calls to OpenAI)...")
+    
+    # Check for API key
+    if not os.environ.get('OPENAI_API_KEY'):
+        print("\n⚠️  Warning: OPENAI_API_KEY not found!")
+        print("   Skipping LangExtract enrichment.")
+        return nodes
+    
+    enriched_count = 0
+    failed_count = 0
+    
+    for i, node in enumerate(nodes):
+        if verbose and (i + 1) % 10 == 0:
+            print(f"  Processed {i + 1}/{len(nodes)} nodes...")
+        
+        try:
+            # Extract metadata from node text
+            langextract_metadata = extract_metadata_from_text(
+                node.text,
+                schema_name=schema_name
+            )
+            
+            # Add to node metadata (preserves existing metadata)
+            if langextract_metadata:
+                node.metadata.update(langextract_metadata)
+                enriched_count += 1
+            
+        except Exception as e:
+            if verbose:
+                print(f"  Warning: Failed to enrich node {i}: {e}")
+            failed_count += 1
+            continue
+    
+    if verbose:
+        print(f"\n{'='*80}")
+        print(f"✅ Enrichment complete!")
+        print(f"   Successfully enriched: {enriched_count}/{len(nodes)} nodes")
+        if failed_count > 0:
+            print(f"   Failed: {failed_count} nodes")
+        print(f"{'='*80}\n")
+    
+    return nodes
+
+
+def print_sample_metadata(nodes: List[TextNode], num_samples: int = 3):
+    """
+    Print sample metadata from enriched nodes for debugging.
+    
+    Parameters:
+    nodes (List[TextNode]): List of enriched nodes
+    num_samples (int): Number of samples to print
+    """
+    print(f"\n{'='*80}")
+    print(f"Sample Enriched Metadata (first {num_samples} nodes)")
+    print(f"{'='*80}")
+    
+    for i, node in enumerate(nodes[:num_samples]):
+        print(f"\nNode {i+1}:")
+        print(f"Text: {node.text[:100]}...")
+        print(f"Metadata keys: {list(node.metadata.keys())}")
+        
+        # Print LangExtract-specific metadata
+        langextract_keys = [k for k in node.metadata.keys() if 'langextract' in k or 'concept' in k or 'advice' in k or 'experience' in k or 'time' in k]
+        if langextract_keys:
+            print(f"LangExtract metadata:")
+            for key in langextract_keys:
+                print(f"  {key}: {node.metadata[key]}")
+        print("-" * 80)

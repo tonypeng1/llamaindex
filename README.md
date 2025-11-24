@@ -57,17 +57,73 @@ Please use `uv` for installing dependencies and managing your Python environment
   - `keyphrase_tool`: Answers specific factual queries
   - `page_filter_tool`: Retrieves information from specific pages
   - `summary_tool`: Provides full-context summaries
+- **Flexible Metadata Extraction**: Four extraction options:
+  - **None**: Basic chunking only (fastest, free)
+  - **EntityExtractor**: Named entity recognition (fast, free)
+  - **LangExtract**: Rich semantic metadata extraction (slow, paid, comprehensive)
+  - **Both**: EntityExtractor + LangExtract (maximum metadata richness)
 - **Hybrid Retrieval**: Combines vector similarity search with BM25 keyword matching
 - **KeyBERT Integration**: Reduces BM25 noise by extracting key phrases before retrieval
-- **Named Entity Recognition**: Extracts entities from each text node
 - **Advanced Post-processing**: Reranking, context expansion, and page-based sorting
+
+## Metadata Extraction Options
+
+The system supports four metadata extraction methods to suit different needs:
+
+### 1. None (Basic) - Fast & Free
+- Basic chunking with page numbers only
+- **Use case**: Quick testing, simple documents
+- **Speed**: ⚡⚡⚡ Very Fast (~10s for 30 pages)
+- **Cost**: FREE
+
+### 2. EntityExtractor - Fast & Free
+- Named entity recognition (PERSON, ORGANIZATION, LOCATION, etc.)
+- Uses HuggingFace span-marker model locally
+- **Use case**: Standard entity recognition needs
+- **Speed**: ⚡⚡ Fast (~30s for 30 pages)
+- **Cost**: FREE
+
+### 3. LangExtract - Slow & Paid
+- Rich semantic metadata: concepts, advice, experiences, entities, time references
+- Uses Google's LangExtract with OpenAI GPT-4
+- **Use case**: Deep semantic understanding, complex queries
+- **Speed**: ⚡ Slow (~15 min for 30 pages)
+- **Cost**: ~$2 for 30 pages with GPT-4
+
+### 4. Both - Most Comprehensive
+- Combines EntityExtractor + LangExtract
+- **Use case**: Maximum metadata richness
+- **Speed**: ⚡ Slowest (~16 min for 30 pages)
+- **Cost**: ~$2 for 30 pages
+
+**Quick Configuration:**
+```python
+# In langextract_simple.py, set:
+metadata = "entity"  # Options: None, "entity", "langextract", "both"
+schema_name = "paul_graham_detailed"  # For LangExtract
+```
+
+**Documentation:**
+- See `METADATA_EXTRACTION_GUIDE.md` for detailed guide
+- See `EXAMPLES_METADATA.py` for quick-start examples
 
 ## File Structure
 
 Main files:
-- `llama_bm25_simple.py` - Main RAG implementation
-- `utility_simple.py` - Helper functions
-- `database_operation_simple.py` - Database operations
+- `langextract_simple.py` - Main RAG implementation with flexible metadata extraction
+- `langextract_integration.py` - LangExtract integration module
+- `langextract_schemas.py` - LangExtract extraction schemas
+- `utils.py` - Helper functions
+- `db_operation.py` - Database operations
+
+Documentation:
+- `METADATA_EXTRACTION_GUIDE.md` - Comprehensive guide to metadata extraction options
+- `EXAMPLES_METADATA.py` - Quick-start examples and configuration templates
+
+Legacy files (archived):
+- `llama_bm25_simple.py` - Previous main implementation
+- `utility_simple.py` - Previous helper functions
+- `database_operation_simple.py` - Previous database operations
 
 ## Examples
 
