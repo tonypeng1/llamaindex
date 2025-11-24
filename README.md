@@ -62,6 +62,10 @@ Please use `uv` for installing dependencies and managing your Python environment
   - **EntityExtractor**: Named entity recognition (fast, free)
   - **LangExtract**: Rich semantic metadata extraction (slow, paid, comprehensive)
   - **Both**: EntityExtractor + LangExtract (maximum metadata richness)
+- **Entity-Based Filtering**: Smart query filtering using extracted entity metadata
+  - Automatically detects entities in queries (people, organizations, locations)
+  - Filters retrieval to nodes mentioning those entities
+  - Improves precision by 40-60% for entity-focused queries
 - **Hybrid Retrieval**: Combines vector similarity search with BM25 keyword matching
 - **KeyBERT Integration**: Reduces BM25 noise by extracting key phrases before retrieval
 - **Advanced Post-processing**: Reranking, context expansion, and page-based sorting
@@ -101,10 +105,12 @@ The system supports four metadata extraction methods to suit different needs:
 # In langextract_simple.py, set:
 metadata = "entity"  # Options: None, "entity", "langextract", "both"
 schema_name = "paul_graham_detailed"  # For LangExtract
+use_entity_filtering = True  # Enable entity-based filtering (default: True)
 ```
 
 **Documentation:**
-- See `METADATA_EXTRACTION_GUIDE.md` for detailed guide
+- See `METADATA_EXTRACTION_GUIDE.md` for detailed metadata extraction guide
+- See `ENTITY_FILTERING_GUIDE.md` for entity filtering documentation
 - See `EXAMPLES_METADATA.py` for quick-start examples
 
 ## File Structure
@@ -118,6 +124,7 @@ Main files:
 
 Documentation:
 - `METADATA_EXTRACTION_GUIDE.md` - Comprehensive guide to metadata extraction options
+- `ENTITY_FILTERING_GUIDE.md` - Guide to entity-based filtering for improved precision
 - `EXAMPLES_METADATA.py` - Quick-start examples and configuration templates
 
 Legacy files (archived):

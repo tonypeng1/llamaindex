@@ -586,6 +586,13 @@ metadata = "entity"  # Change this to test different options
 # Available schemas: "paul_graham_detailed", "paul_graham_simple"
 schema_name = "paul_graham_detailed"
 
+# Entity-based filtering configuration
+# When enabled, queries mentioning entities (people, orgs, locations) will be
+# automatically filtered to only retrieve nodes containing those entities
+# This significantly improves precision for entity-focused queries
+# Only works when metadata is "entity", "langextract", or "both"
+use_entity_filtering = True  # Set to False to disable entity filtering
+
 # Display metadata extraction information
 print_metadata_extraction_info()
 print(f"\n📊 Current Configuration:")
@@ -594,6 +601,8 @@ if metadata in ["langextract", "both"]:
     print(f"   LangExtract Schema: {schema_name}")
 print(f"   Chunk Size: {chunk_size}")
 print(f"   Chunk Overlap: {chunk_overlap}")
+if metadata in ["entity", "langextract", "both"]:
+    print(f"   Entity Filtering: {'✓ Enabled' if use_entity_filtering else '✗ Disabled'}")
 print(f"\n{'='*80}\n")
 
 # metadata is an optional parameter, will include it if it is not None                                              )
@@ -742,6 +751,9 @@ specific_tool_description = (
             )
 
 # fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
+# Enable entity filtering when using entity metadata extraction AND use_entity_filtering is True
+enable_entity_filtering = use_entity_filtering and metadata in ["entity", "langextract", "both"]
+
 keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                                     vector_index,
                                                     vector_docstore,
@@ -750,7 +762,10 @@ keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                                     query_str,
                                                     num_queries,
                                                     colbert_reranker,
-                                                    specific_tool_description
+                                                    specific_tool_description,
+                                                    enable_entity_filtering=enable_entity_filtering,
+                                                    metadata_option=metadata if metadata else "entity",
+                                                    llm=llm,
                                                     )
 
 page_tool_description = (

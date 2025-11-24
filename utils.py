@@ -1,4 +1,5 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
+import re
 
 from keybert import KeyBERT
 from llama_index.core import (
@@ -8,6 +9,7 @@ from llama_index.core import (
                         SummaryIndex,
                         VectorStoreIndex
                         )
+from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
 from llama_index.core.indices.postprocessor import (
                         PrevNextNodePostprocessor,
                         )
@@ -422,6 +424,102 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
     return fusion_tree_filter_sort_detail_engine
 
 
+def extract_entities_from_query(
+        query_str: str,
+        llm=None
+        ) -> Dict[str, List[str]]:
+    """
+    Extract named entities from a query string using pattern matching.
+    
+    This function identifies person names, organizations, and locations mentioned
+    in the user query to enable entity-based filtering.
+    
+    Parameters:
+    query_str (str): The user query string
+    llm: The LLM instance to use for entity extraction (optional, not used in current implementation)
+    
+    Returns:
+    Dict[str, List[str]]: Dictionary with entity types as keys and lists of entities as values
+                         Example: {'PER': ['Paul Graham'], 'ORG': ['Y Combinator']}
+    """
+    # Pattern-based entity extraction
+    entities = {'PER': [], 'ORG': [], 'LOC': []}
+    
+    # Known entities mapping (can be extended based on your document corpus)
+    known_people = ['Paul Graham', 'Jessica Livingston', 'Robert Morris', 'Trevor Blackwell', 'Sam Altman']
+    known_orgs = ['Y Combinator', 'YC', 'Viaweb', 'Yahoo', 'MIT', 'Harvard', 'RISD', 'Interleaf']
+    known_locs = ['Silicon Valley', 'Cambridge', 'San Francisco', 'New York', 'Florence', 'Italy']
+    
+    # Extract entities by matching against known entities
+    for person in known_people:
+        if person.lower() in query_str.lower():
+            entities['PER'].append(person)
+    
+    for org in known_orgs:
+        if org.lower() in query_str.lower():
+            entities['ORG'].append(org)
+    
+    for loc in known_locs:
+        if loc.lower() in query_str.lower():
+            entities['LOC'].append(loc)
+    
+    # Remove empty lists
+    entities = {k: v for k, v in entities.items() if v}
+    
+    return entities
+
+
+def create_entity_metadata_filters(
+        entities: Dict[str, List[str]],
+        metadata_option: str = "entity"
+        ) -> Optional[MetadataFilters]:
+    """
+    Create MetadataFilters for entity-based filtering.
+    
+    Parameters:
+    entities (Dict[str, List[str]]): Dictionary of entities by type
+    metadata_option (str): The metadata extraction option used ('entity', 'langextract', or 'both')
+    
+    Returns:
+    Optional[MetadataFilters]: MetadataFilters object or None if no entities
+    """
+    if not entities:
+        return None
+    
+    filters = []
+    
+    # For EntityExtractor metadata (PER, ORG, LOC fields)
+    if metadata_option in ["entity", "both"]:
+        for entity_type, entity_list in entities.items():
+            for entity in entity_list:
+                # For list fields, checks if value is in list
+                filters.append({
+                    "key": entity_type,
+                    "value": entity,
+                    "operator": "=="
+                })
+    
+    # For LangExtract metadata (entity_names field)
+    if metadata_option in ["langextract", "both"]:
+        all_entities = []
+        for entity_list in entities.values():
+            all_entities.extend(entity_list)
+        
+        if all_entities:
+            for entity in all_entities:
+                filters.append({
+                    "key": "entity_names",
+                    "value": entity,
+                    "operator": "=="
+                })
+    
+    if not filters:
+        return None
+    
+    # Use OR condition - retrieve nodes that mention ANY of the entities
+    return MetadataFilters.from_dicts(filters, condition="or")
+
+
 def get_text_nodes_from_query_keyphrase(
         vector_docstore,
         similarity_top_n: int,
@@ -495,26 +593,51 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                 num_queries: int,
                                 rerank: BaseNodePostprocessor,
                                 tool_description: str,
+                                enable_entity_filtering: bool = False,
+                                metadata_option: str = "entity",
+                                llm = None,
                                 ) -> QueryEngineTool:
     """
     Create a QueryEngineTool that uses a fusion tree filter sort detail engine.
-    The engine is built using a vector retriever and a BM25 filter retriever.
+    The engine is built using a vector retriever and a BM25 filter retriever,
+    with optional entity-based metadata filtering.
 
     Args:
         vector_index (VectorStoreIndex): The vector store index.
         vector_docstore (MongoDocumentStore): The vector document store.
-        similarity_top_k_keyphrase (int): Number of similar nodes to retrieve for keyphrase.
         similarity_top_k_fusion (int): Number of similar nodes to retrieve for fusion.
         fusion_top_n (int): Number of nodes to return from the fusion engine.
         query_str (str): The query string to use for the BM25 filter retriever.
         num_queries (int): Number of queries to use for the fusion engine.
         rerank (BaseNodePostprocessor): The rerank object to use for the fusion engine.
         tool_description (str): Description for the QueryEngineTool.
+        enable_entity_filtering (bool): Whether to enable entity-based filtering (default: False)
+        metadata_option (str): Metadata extraction option used ('entity', 'langextract', or 'both')
+        llm: The LLM instance for entity extraction (optional)
 
     Returns:
         QueryEngineTool: A QueryEngineTool that uses the fusion tree filter sort detail engine.
     """
 
+    # STEP 1: Entity-based filtering (if enabled)
+    entity_filters = None
+    extracted_entities = {}
+    
+    if enable_entity_filtering and metadata_option in ["entity", "langextract", "both"]:
+        # Extract entities from the query
+        extracted_entities = extract_entities_from_query(query_str, llm)
+        
+        if extracted_entities:
+            print(f"\n🔍 Entity Filtering Enabled")
+            print(f"   Extracted entities from query: {extracted_entities}")
+            
+            # Create metadata filters for entities
+            entity_filters = create_entity_metadata_filters(extracted_entities, metadata_option)
+            
+            if entity_filters:
+                print(f"   Applying entity filters to retrieval...\n")
+    
+    # STEP 2: Keyphrase extraction for BM25
     text_nodes = get_text_nodes_from_query_keyphrase(
         vector_docstore,
         similarity_top_k_fusion,
@@ -527,18 +650,32 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
         nodes=text_nodes,
         )
 
-    # Create vector retriever without metadata filter
-    vector_retriever = vector_index.as_retriever(
-        similarity_top_k=similarity_top_k_fusion,
-)
+    # STEP 3: Create vector retriever (with entity filter if applicable)
+    if entity_filters:
+        # Entity-filtered vector retriever
+        vector_retriever = vector_index.as_retriever(
+            similarity_top_k=similarity_top_k_fusion,
+            filters=entity_filters
+        )
+        print(f"✓ Vector retriever created WITH entity filtering")
+    else:
+        # Standard vector retriever without entity filter
+        vector_retriever = vector_index.as_retriever(
+            similarity_top_k=similarity_top_k_fusion,
+        )
+        if enable_entity_filtering:
+            print(f"⚠️  Entity filtering enabled but no entities found in query")
+            print(f"   Using standard retrieval without entity filters\n")
 
-    # Retrieve nodes  using the vector retriever and the query
+    # Retrieve nodes using the vector retriever and the query
     scored_nodes = vector_retriever.retrieve(query_str)
 
     # Extract TextNodes from NodeWithScore objects
     text_nodes = [scored_node.node for scored_node in scored_nodes]
 
-    print(f"Text nodes in keyphrase vector index length is: {len(text_nodes)}")
+    print(f"\nText nodes in keyphrase vector index length is: {len(text_nodes)}")
+    if entity_filters and extracted_entities:
+        print(f"   (Filtered by entities: {', '.join([e for elist in extracted_entities.values() for e in elist])})")
     for i, n in enumerate(text_nodes):
         print(f"Item {i+1} of the text nodes in keyphrase vector index is page: {n.metadata['source']}")
 
