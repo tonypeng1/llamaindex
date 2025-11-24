@@ -109,9 +109,8 @@ use_entity_filtering = True  # Enable entity-based filtering (default: True)
 ```
 
 **Documentation:**
-- See `METADATA_EXTRACTION_GUIDE.md` for detailed metadata extraction guide
-- See `ENTITY_FILTERING_GUIDE.md` for entity filtering documentation
-- See `EXAMPLES_METADATA.py` for quick-start examples
+- See `README_GUIDE.md` for comprehensive guide (metadata extraction, entity filtering, troubleshooting)
+- See `EXAMPLES_METADATA.py` for quick-start examples and code snippets
 
 ## File Structure
 
@@ -123,9 +122,14 @@ Main files:
 - `db_operation.py` - Database operations
 
 Documentation:
-- `METADATA_EXTRACTION_GUIDE.md` - Comprehensive guide to metadata extraction options
-- `ENTITY_FILTERING_GUIDE.md` - Guide to entity-based filtering for improved precision
+- `README_GUIDE.md` - Comprehensive guide covering metadata extraction, entity filtering, visual guides, and troubleshooting
 - `EXAMPLES_METADATA.py` - Quick-start examples and configuration templates
+
+Tests:
+- `test/test_entity_filtering.py` - Entity filtering test suite
+- `test/test_langextract_install.py` - LangExtract installation verification
+- `test/test_langextract_schema.py` - LangExtract schema testing
+- `test/demo_metadata_comparison.py` - Metadata options comparison demo
 
 Legacy files (archived):
 - `llama_bm25_simple.py` - Previous main implementation

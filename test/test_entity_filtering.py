@@ -5,6 +5,12 @@ This script demonstrates how entity filtering improves retrieval precision
 for entity-focused queries.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from utils import extract_entities_from_query, create_entity_metadata_filters
 
 def test_entity_extraction():
