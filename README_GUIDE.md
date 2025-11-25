@@ -151,7 +151,28 @@ schema_name = "paul_graham_detailed"
 
 ### Overview
 
-Entity filtering enhances retrieval precision by filtering results to only nodes mentioning specific entities (people, organizations, locations) from the user's query.
+Entity filtering enhances retrieval precision by filtering the **vector retriever** to only nodes mentioning specific entities (people, organizations, locations) from the user's query. The system uses a **hybrid approach**: BM25 retriever operates on the full docstore (no filtering) while the vector retriever can be entity-filtered, then both results are fused together.
+
+### Architecture
+
+The system uses **two parallel retrievers** that are always fused together:
+
+1. **BM25 Retriever (Keyword-based)**
+   - Operates on: MongoDB docstore
+   - Filtering: NO entity filtering (always searches full docstore)
+   - Strategy: Keyphrase extraction → keyword matching
+   - Purpose: Ensure keyword-relevant results aren't missed
+
+2. **Vector Retriever (Semantic)**
+   - Operates on: Milvus vector index
+   - Filtering: Optional entity filtering (when `use_entity_filtering = True`)
+   - Strategy: Embedding similarity → semantic matching
+   - Purpose: Find semantically relevant results, optionally filtered by entities
+
+3. **Fusion Layer**
+   - ALWAYS combines both retrievers with 50/50 weighting
+   - Uses "relative_score" mode for fair combination
+   - Followed by ColBERT reranking for final precision
 
 ### How It Works
 
@@ -160,14 +181,38 @@ User Query: "What did Paul Graham advise about Y Combinator?"
     ↓
 Extract entities: ["Paul Graham" (PER), "Y Combinator" (ORG)]
     ↓
-Keyphrase extraction (KeyBERT) → BM25 retrieval
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 1: BM25 Retrieval (Keyword-based)                     │
+│   • Keyphrase extraction (KeyBERT)                         │
+│   • Operates on MongoDB docstore                           │
+│   • NO entity filtering                                    │
+│   • Retrieves nodes matching keyphrases                    │
+└─────────────────────────────────────────────────────────────┘
     ↓
-Vector retrieval WITH entity filters (only nodes mentioning entities)
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 2: Vector Retrieval (Semantic)                        │
+│   • Operates on Milvus vector index                        │
+│   • WITH entity filters (only nodes with entities)         │
+│   • Retrieves semantically similar nodes                   │
+└─────────────────────────────────────────────────────────────┘
     ↓
-Fusion & ColBERT reranking
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 3: Fusion                                              │
+│   • ALWAYS combines both retrievers (50/50 weighting)      │
+│   • BM25 results (unfiltered) + Vector results (filtered)  │
+│   • Uses "relative_score" mode                             │
+└─────────────────────────────────────────────────────────────┘
+    ↓
+ColBERT reranking
     ↓
 High-precision results! 🎯
 ```
+
+**Key Points:**
+- **BM25**: Always operates on full MongoDB docstore, no entity filtering
+- **Vector**: Can be entity-filtered when `use_entity_filtering = True`
+- **Fusion**: ALWAYS combines both approaches for hybrid retrieval
+- **Result**: Balance between keyword matching (BM25) and semantic relevance (Vector)
 
 ### Configuration
 
@@ -215,6 +260,8 @@ use_entity_filtering = True
 | Precision (entity queries) | 60% | 85-95% |
 | Retrieval time | 1.2s | 0.8s |
 | Irrelevant results | 40% | 5-15% |
+
+**Note:** Entity filtering only affects the **vector retriever**. The BM25 retriever always operates on the full docstore without entity filtering, ensuring you don't miss keyword-relevant results even if they don't contain the specific entities.
 
 ### Adding New Entities
 

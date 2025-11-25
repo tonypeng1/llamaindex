@@ -64,9 +64,13 @@ Please use `uv` for installing dependencies and managing your Python environment
   - **Both**: EntityExtractor + LangExtract (maximum metadata richness)
 - **Entity-Based Filtering**: Smart query filtering using extracted entity metadata
   - Automatically detects entities in queries (people, organizations, locations)
-  - Filters retrieval to nodes mentioning those entities
+  - Filters **vector retriever only** to nodes mentioning those entities
+  - BM25 retriever operates on full docstore (no entity filtering)
   - Improves precision by 40-60% for entity-focused queries
 - **Hybrid Retrieval**: Combines vector similarity search with BM25 keyword matching
+  - **BM25 Retriever**: Operates on MongoDB docstore, keyword-based, no entity filtering
+  - **Vector Retriever**: Operates on Milvus vector index, semantic search, optional entity filtering
+  - **Fusion**: Always combines both retrievers with 50/50 weighting for optimal results
 - **KeyBERT Integration**: Reduces BM25 noise by extracting key phrases before retrieval
 - **Advanced Post-processing**: Reranking, context expansion, and page-based sorting
 
@@ -209,10 +213,29 @@ Helper functions (`utility_simple.py`) provide:
 ### Technical Architecture
 
 The system implements a **hybrid retrieval architecture** that combines:
-- **Semantic Search**: Dense vector embeddings capture conceptual similarity
-- **Keyword Search**: BM25 algorithm ensures precise keyword matching
-- **Fusion Ranking**: Reciprocal rank fusion merges results from both approaches
+- **Semantic Search**: Dense vector embeddings capture conceptual similarity (Milvus)
+- **Keyword Search**: BM25 algorithm ensures precise keyword matching (MongoDB)
+- **Fusion Ranking**: Reciprocal rank fusion merges results from both approaches (50/50 weighting)
 - **Neural Re-ranking**: ColBERT provides fine-grained relevance scoring
+
+#### Entity Filtering Architecture
+
+When `use_entity_filtering = True` and metadata extraction includes entities:
+
+1. **Entity Extraction**: Detects entities (people, orgs, locations) from the user query
+2. **Parallel Retrieval**:
+   - **BM25 Retriever**: 
+     - Operates on MongoDB docstore
+     - Uses KeyBERT keyphrase extraction
+     - **NO entity filtering** (searches full docstore)
+     - Ensures keyword-relevant results aren't missed
+   - **Vector Retriever**:
+     - Operates on Milvus vector index  
+     - Uses semantic similarity
+     - **WITH entity filtering** (only nodes mentioning entities)
+     - Improves precision for entity-focused queries
+3. **Fusion**: Always combines both retrievers with equal weighting
+4. **Reranking**: ColBERT final ranking for optimal precision
 
 This multi-stage retrieval pipeline ensures both broad conceptual understanding and precise factual accuracy, making it suitable for complex document Q&A tasks where users may ask questions ranging from high-level summaries to specific detail extraction.
 
@@ -260,11 +283,14 @@ for _, node in _vector_docstore.docs.items():  # ← MongoDB READ
 
 ```python
 # Create BM25 retriever from MongoDB docstore
+# NOTE: BM25 always operates on FULL docstore (no entity filtering)
 bm25_retriever = BM25Retriever.from_defaults(
     similarity_top_k=similarity_top_n,
     docstore=vector_docstore,  # ← MongoDB READ (implicit)
 )
 ```
+
+**Important**: BM25 retriever always operates on the complete MongoDB docstore without entity filtering. This ensures keyword-relevant results are not missed even when entity filtering is enabled for the vector retriever.
 
 #### **4. Summary Index Creation** (`utility_simple.py`)
 

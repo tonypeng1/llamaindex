@@ -293,6 +293,7 @@ def get_fusion_tree_filter_sort_detail_engine(
     rerank: BaseNodePostprocessor,
     vector_docstore: MongoDocumentStore,
     page_numbers: Optional[List[str]]=None,
+    num_nodes: int = 0,
 ):
     """
     Build a fusion tree filter sort detail engine using vector filter retriever and bm25 filter retriever.
@@ -302,6 +303,10 @@ def get_fusion_tree_filter_sort_detail_engine(
         bm25_filter_retriever (BM25Retriever): BM25 filter retriever object.
         fusion_top_n (int): The number of top documents to consider for fusion.
         num_queries (int): The number of queries to generate for fusion.
+        rerank (BaseNodePostprocessor): The rerank object to use.
+        vector_docstore (MongoDocumentStore): The vector document store.
+        page_numbers (Optional[List[str]]): Optional list of page numbers to filter.
+        num_nodes (int): Number of neighboring nodes to retrieve (default: 0).
 
     Returns:
         A fusion tree filter sort detail engine object.
@@ -323,7 +328,7 @@ def get_fusion_tree_filter_sort_detail_engine(
 
     PrevNext = PrevNextNodePostprocessor(
                                 docstore=vector_docstore,
-                                num_nodes=2,  # each page now has two nodes, one with next, the other previous
+                                num_nodes=num_nodes,  # retrieve n nodes before and n after
                                 mode="both",
                                 verbose=True,
                                 )  # can only retrieve the two nodes on one page
@@ -364,6 +369,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
                                                 fusion_top_n: int,
                                                 num_queries: int,
                                                 rerank: ColbertRerank = None,
+                                                num_nodes: int = 0,
                                                 ):
     """
     This function creates a fusion filter retriever and engine that combines results from a vector retriever and a BM25 retriever.
@@ -377,6 +383,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
     fusion_top_n (int): The number of top results to consider from each retriever in the fusion.
     num_queries (int): The number of queries to generate. Set to 1 to disable query generation.
     rerank (ColbertRerank, optional): A rerank function to be applied to the results. Defaults to None.
+    num_nodes (int): Number of neighboring nodes to retrieve (default: 0).
 
     Returns:
     fusion_tree_filter_sort_detail_engine (RetrieverQueryEngine): The fusion tree filter sort detail engine created using the provided parameters.
@@ -398,7 +405,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
 
     PrevNext = PrevNextNodePostprocessor(
                                     docstore=vector_docstore,
-                                    num_nodes=2,  # each page now has two nodes, one with next, the other previous
+                                    num_nodes=num_nodes,  # retrieve n nodes before and n after
                                     mode="both",
                                     verbose=True,
                                     )  # can only retrieve the two nodes on one page
@@ -596,6 +603,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                 enable_entity_filtering: bool = False,
                                 metadata_option: str = "entity",
                                 llm = None,
+                                num_nodes: int = 0,
                                 ) -> QueryEngineTool:
     """
     Create a QueryEngineTool that uses a fusion tree filter sort detail engine.
@@ -687,6 +695,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
         fusion_top_n,
         num_queries,
         rerank,
+        num_nodes,
     )
 
     fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(

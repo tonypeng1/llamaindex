@@ -155,6 +155,28 @@ def print_metadata_extraction_info():
     print(info)
 
 
+def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering):
+    """
+    Print the current configuration settings for the RAG system.
+    
+    Parameters:
+    metadata (Optional[str]): The metadata extraction method being used
+    schema_name (str): The LangExtract schema name
+    chunk_size (int): The chunk size for text splitting
+    chunk_overlap (int): The chunk overlap for text splitting
+    use_entity_filtering (bool): Whether entity filtering is enabled
+    """
+    print(f"\n📊 Current Configuration:")
+    print(f"   Metadata Extraction: {metadata if metadata else 'None (Basic)'}")
+    if metadata in ["langextract", "both"]:
+        print(f"   LangExtract Schema: {schema_name}")
+    print(f"   Chunk Size: {chunk_size}")
+    print(f"   Chunk Overlap: {chunk_overlap}")
+    if metadata in ["entity", "langextract", "both"]:
+        print(f"   Entity Filtering: {'✓ Enabled' if use_entity_filtering else '✗ Disabled'}")
+    print(f"\n{'='*80}\n")
+
+
 def load_document_pdf(doc_link) -> List:
     """
     This function loads a PDF document from a given link and returns it as a 
@@ -580,7 +602,10 @@ chunk_overlap = 64
 # - "entity": EntityExtractor only (fast, free, basic entities)
 # - "langextract": LangExtract only (slow, paid, rich structured metadata)
 # - "both": EntityExtractor + LangExtract (slowest, most comprehensive)
-metadata = "entity"  # Change this to test different options
+
+# metadata = "entity"  # Change this to test different options
+# metadata = "langextract"  # Change this to test different options
+metadata = None  # Change this to test different options
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
 # Available schemas: "paul_graham_detailed", "paul_graham_simple"
@@ -594,16 +619,8 @@ schema_name = "paul_graham_detailed"
 use_entity_filtering = True  # Set to False to disable entity filtering
 
 # Display metadata extraction information
-print_metadata_extraction_info()
-print(f"\n📊 Current Configuration:")
-print(f"   Metadata Extraction: {metadata if metadata else 'None (Basic)'}")
-if metadata in ["langextract", "both"]:
-    print(f"   LangExtract Schema: {schema_name}")
-print(f"   Chunk Size: {chunk_size}")
-print(f"   Chunk Overlap: {chunk_overlap}")
-if metadata in ["entity", "langextract", "both"]:
-    print(f"   Entity Filtering: {'✓ Enabled' if use_entity_filtering else '✗ Disabled'}")
-print(f"\n{'='*80}\n")
+# print_metadata_extraction_info()
+print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering)
 
 # metadata is an optional parameter, will include it if it is not None                                              )
 (database_name, 
@@ -652,7 +669,7 @@ add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo,
                                                                     embed_model_dim
                                                                     )
 
-# Create summary summary storage context
+# Create summary storage context
 storage_context_summary = get_summary_storage_context(uri_mongo,
                                                     database_name,
                                                     collection_name_summary
@@ -707,6 +724,9 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+# query_str = "What strategic advice is given about startups?"
+# query_str = "Has the author been to Europe?"
+query_str = "What was mentioned about Jessica from pages 17 to 19?"
 
 # query_str = "Create table of contents for this article."
 
@@ -716,9 +736,9 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What are the contents from pages 20 to 24 (one page at a time)?"
 # query_str = ("What are the concise contents from pages 20 to 24 (one page at a time) in the voice of the author?"
 #              )
-query_str = (
-    "Summarize the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
-    )
+# query_str = (
+#     "Summarize the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
+#     )
 # query_str = (
 #     "Summarize the key takeaways from pages 1 to 5 (one page at a time) in a sequential order and in the voice of the author by NOT retrieving the text verbatim."
 #     )
@@ -731,7 +751,10 @@ vector_store.client.load_collection(collection_name=collection_name_vector)
 similarity_top_k_fusion = 36
 num_queries = 1
 fusion_top_n = 32
-rerank_top_n = 24
+# rerank_top_n = 24
+rerank_top_n = 12
+
+num_nodes = 1 # For PrevNextNodePostprocessor
 
 # Define reranker
 colbert_reranker = ColbertRerank(
@@ -766,6 +789,7 @@ keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                                     enable_entity_filtering=enable_entity_filtering,
                                                     metadata_option=metadata if metadata else "entity",
                                                     llm=llm,
+                                                    num_nodes=num_nodes, # For PrevNextNodePostprocessor
                                                     )
 
 page_tool_description = (
@@ -814,12 +838,31 @@ except Exception as e:
     print(f"Error getting json answer from LLM: {e}")
 
 if response is not None:
+    # Collect nodes with metadata (actual document nodes)
+    document_nodes = []
+    
     for i, n in enumerate(response.source_nodes):
         if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
             print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
             (with score: {round(n.score, 3) if n.score is not None else None})")
+            # Store node info for sequential output
+            document_nodes.append({
+                'page': n.metadata['source'],
+                'text': n.text,
+                'score': n.score
+            })
         else:
             print(f"Item {i+1} question and response:\n{n.text}\n ")
+    
+    # Output sequential nodes with page numbers in a list
+    if document_nodes:
+        print("\n" + "="*80)
+        print("SEQUENTIAL NODES WITH PAGE NUMBERS (sent to LLM for final answer):")
+        print("="*80)
+        for i, node_info in enumerate(document_nodes, 1):
+            print(f"\n--- Node {i} | Page {node_info['page']} | Score: {round(node_info['score'], 3) if node_info['score'] is not None else 'N/A'} ---")
+            print(f"{node_info['text']}")
+            print("-" * 80)
 
 # Cleanup resources
 try:
