@@ -46,9 +46,12 @@ Database Structure:
 - Collections are named based on metadata extraction method used
 """
 
+# Disable tokenizers parallelism warning (must be set before importing any tokenizers)
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import json
 import nest_asyncio
-import os
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -155,7 +158,8 @@ def print_metadata_extraction_info():
     print(info)
 
 
-def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering):
+def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering, 
+                               similarity_top_k_fusion, num_queries, fusion_top_n, rerank_top_n, num_nodes):
     """
     Print the current configuration settings for the RAG system.
     
@@ -165,6 +169,11 @@ def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap
     chunk_size (int): The chunk size for text splitting
     chunk_overlap (int): The chunk overlap for text splitting
     use_entity_filtering (bool): Whether entity filtering is enabled
+    similarity_top_k_fusion (int): Number of nodes to retrieve in fusion retrieval
+    num_queries (int): Number of queries for fusion retrieval
+    fusion_top_n (int): Top N nodes after fusion
+    rerank_top_n (int): Top N nodes after reranking
+    num_nodes (int): Number of nodes for PrevNextNodePostprocessor
     """
     print(f"\n📊 Current Configuration:")
     print(f"   Metadata Extraction: {metadata if metadata else 'None (Basic)'}")
@@ -174,6 +183,12 @@ def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap
     print(f"   Chunk Overlap: {chunk_overlap}")
     if metadata in ["entity", "langextract", "both"]:
         print(f"   Entity Filtering: {'✓ Enabled' if use_entity_filtering else '✗ Disabled'}")
+    print(f"\n   Fusion Tree & Reranker:")
+    print(f"   ├─ Similarity Top K: {similarity_top_k_fusion}")
+    print(f"   ├─ Number of Queries: {num_queries}")
+    print(f"   ├─ Fusion Top N: {fusion_top_n}")
+    print(f"   ├─ Rerank Top N: {rerank_top_n}")
+    print(f"   └─ Prev/Next Nodes: {num_nodes}")
     print(f"\n{'='*80}\n")
 
 
@@ -577,7 +592,7 @@ embed_model_dim = 1536  # for text-embedding-3-small
 embed_model_name = "openai_embedding_3_small"
 
 # Create debug handler
-llama_debug = LlamaDebugHandler(print_trace_on_end=True)
+llama_debug = LlamaDebugHandler(print_trace_on_end=False)
 callback_manager = CallbackManager([llama_debug])
 Settings.callback_manager = callback_manager
 
@@ -598,14 +613,11 @@ chunk_size = 256
 chunk_overlap = 64
 
 # Metadata extraction options:
-# - None: No metadata extraction (fastest, basic chunking only)
-# - "entity": EntityExtractor only (fast, free, basic entities)
-# - "langextract": LangExtract only (slow, paid, rich structured metadata)
-# - "both": EntityExtractor + LangExtract (slowest, most comprehensive)
+# None, "entity", "langextract", and "both"
 
 # metadata = "entity"  # Change this to test different options
-# metadata = "langextract"  # Change this to test different options
-metadata = None  # Change this to test different options
+metadata = "langextract"  # Change this to test different options
+# metadata = None  # Change this to test different options
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
 # Available schemas: "paul_graham_detailed", "paul_graham_simple"
@@ -618,9 +630,17 @@ schema_name = "paul_graham_detailed"
 # Only works when metadata is "entity", "langextract", or "both"
 use_entity_filtering = True  # Set to False to disable entity filtering
 
-# Display metadata extraction information
-# print_metadata_extraction_info()
-print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering)
+# Fusion tree and reranker configuration
+similarity_top_k_fusion = 36
+num_queries = 1
+fusion_top_n = 32
+# rerank_top_n = 24
+rerank_top_n = 12
+num_nodes = 1 # For PrevNextNodePostprocessor
+
+# print metadata extraction info and fusion tree and reranker configurations
+print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
+                           similarity_top_k_fusion, num_queries, fusion_top_n, rerank_top_n, num_nodes)
 
 # metadata is an optional parameter, will include it if it is not None                                              )
 (database_name, 
@@ -725,8 +745,8 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "What strategic advice is given about startups?"
-# query_str = "Has the author been to Europe?"
-query_str = "What was mentioned about Jessica from pages 17 to 19?"
+query_str = "Has the author been to Europe?"
+# query_str = "What was mentioned about Jessica from pages 17 to 19?"
 
 # query_str = "Create table of contents for this article."
 
@@ -747,14 +767,6 @@ query_str = "What was mentioned about Jessica from pages 17 to 19?"
 #     )
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
-
-similarity_top_k_fusion = 36
-num_queries = 1
-fusion_top_n = 32
-# rerank_top_n = 24
-rerank_top_n = 12
-
-num_nodes = 1 # For PrevNextNodePostprocessor
 
 # Define reranker
 colbert_reranker = ColbertRerank(
@@ -787,7 +799,7 @@ keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool_simple(
                                                     colbert_reranker,
                                                     specific_tool_description,
                                                     enable_entity_filtering=enable_entity_filtering,
-                                                    metadata_option=metadata if metadata else "entity",
+                                                    metadata_option=metadata if metadata else None,
                                                     llm=llm,
                                                     num_nodes=num_nodes, # For PrevNextNodePostprocessor
                                                     )
@@ -843,8 +855,8 @@ if response is not None:
     
     for i, n in enumerate(response.source_nodes):
         if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
-            print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
-            (with score: {round(n.score, 3) if n.score is not None else None})")
+            # print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
+            # (with score: {round(n.score, 3) if n.score is not None else None})")
             # Store node info for sequential output
             document_nodes.append({
                 'page': n.metadata['source'],
@@ -860,10 +872,10 @@ if response is not None:
         print("SEQUENTIAL NODES WITH PAGE NUMBERS (sent to LLM for final answer):")
         print("="*80)
         for i, node_info in enumerate(document_nodes, 1):
-            print(f"\n--- Node {i} | Page {node_info['page']} | Score: {round(node_info['score'], 3) if node_info['score'] is not None else 'N/A'} ---")
-            print(f"{node_info['text']}")
-            print("-" * 80)
-
+            print(f"--- Node {i} | Page {node_info['page']} | Score: {round(node_info['score'], 3) if node_info['score'] is not None else 'N/A'} ---")
+            # print(f"{node_info['text']}")
+            # print("-" * 80)
+        print("="*80 + "\n")
 # Cleanup resources
 try:
     if 'vector_store' in dir() and hasattr(vector_store, 'client'):
