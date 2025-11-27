@@ -625,8 +625,8 @@ metadata = "entity"  # Change this to test different options
 schema_name = "paul_graham_detailed"
 
 # Entity-based filtering configuration
-# use_entity_filtering = True
-use_entity_filtering = False 
+use_entity_filtering = True
+# use_entity_filtering = False 
 
 # Fusion tree and reranker configuration
 similarity_top_k_fusion = 36
@@ -761,8 +761,9 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "What strategic advice is given about startups?"
-query_str = "Has the author been to Europe?"
+# query_str = "Has the author been to Europe?"
 # query_str = "What was mentioned about Jessica from pages 17 to 19?"
+query_str = "List all people mentioned in the document."
 
 # query_str = "Create table of contents for this article."
 

@@ -60,7 +60,7 @@ class SafePrevNextNodePostprocessor(PrevNextNodePostprocessor):
 
 class PageSortNodePostprocessor(BaseNodePostprocessor):
     """
-    A custom node postprocessor that sorts nodes based on page number and the order they appear in a document.
+    A custom node postprocessor that sorts nodes based on the page number and the order they appear in a document.
 
     Attributes:
         None
@@ -103,6 +103,30 @@ class PageSortNodePostprocessor(BaseNodePostprocessor):
         except Exception as e:
             print(f"Error in PageSortNodePostprocessor: {e}")
             return nodes
+
+
+class PrintNodesPostprocessor(BaseNodePostprocessor):
+    """
+    A custom node postprocessor that prints the content of the nodes.
+    """
+    def _postprocess_nodes(
+        self, nodes: List[NodeWithScore], query_bundle: Optional[QueryBundle]
+    ) -> List[NodeWithScore]:
+        print("\n" + "="*80)
+        print(f"🔍 INSPECTING {len(nodes)} NODES BEFORE LLM SYNTHESIS")
+        print("="*80)
+        
+        for i, node in enumerate(nodes):
+            print(f"\n📄 NODE {i+1}/{len(nodes)} (Score: {node.score})")
+            print(f"   ID: {node.node.node_id}")
+            print(f"   Metadata: {node.node.metadata}")
+            print("-" * 40)
+            print("   CONTENT:")
+            print(node.node.get_content())
+            print("-" * 40)
+            
+        print("\n" + "="*80 + "\n")
+        return nodes
 
 
 def get_article_link(article_dir, article_name):
@@ -452,6 +476,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
     node_postprocessors = [
                         PrevNext,
                         PageSortNodePostprocessor(),
+                        # PrintNodesPostprocessor(),
                         ]
     
     if rerank is not None:
@@ -695,7 +720,7 @@ def get_summary_tree_detail_tool(
     Returns:
     QueryEngineTool: A QueryEngineTool with the name "summary_tool" and the provided 
                     description. The query_engine of this tool is a summary engine created 
-                    using the provided storage context.
+                    using the provided storage_context.
     """
     # Create summary engine
     summary_tree_detail_engine = get_summary_tree_detail_engine(storage_context_summary)
