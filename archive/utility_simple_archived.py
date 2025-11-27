@@ -11,6 +11,7 @@ from llama_index.core import (
 from llama_index.core.indices.postprocessor import (
                         PrevNextNodePostprocessor,
                         )
+from llama_index.core.postprocessor.node import get_forward_nodes, get_backward_nodes
 from llama_index.core.retrievers import (
                         QueryFusionRetriever, 
                         )
@@ -25,6 +26,34 @@ from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.vector_stores.milvus import MilvusVectorStore
+
+
+class SafePrevNextNodePostprocessor(PrevNextNodePostprocessor):
+    """
+    A custom PrevNextNodePostprocessor that handles missing nodes gracefully.
+    """
+    def _postprocess_nodes(
+        self, nodes: List[NodeWithScore], query_bundle: Optional[QueryBundle]
+    ) -> List[NodeWithScore]:
+        all_nodes = {}
+        for node in nodes:
+            all_nodes[node.node.node_id] = node
+
+            if self.mode in ["next", "both"]:
+                try:
+                    forward_nodes = get_forward_nodes(node, self.num_nodes, self.docstore)
+                    all_nodes.update(forward_nodes)
+                except Exception as e:
+                    print(f"Warning: Failed to get next nodes for {node.node.node_id}: {e}")
+
+            if self.mode in ["prev", "both"]:
+                try:
+                    backward_nodes = get_backward_nodes(node, self.num_nodes, self.docstore)
+                    all_nodes.update(backward_nodes)
+                except Exception as e:
+                    print(f"Warning: Failed to get prev nodes for {node.node.node_id}: {e}")
+        
+        return list(all_nodes.values())
 
 
 class PageSortNodePostprocessor(BaseNodePostprocessor):
@@ -55,19 +84,23 @@ class PageSortNodePostprocessor(BaseNodePostprocessor):
             in that page.
         """
 
-        # Create new node dictionary
-        _nodes_dic = [{"source": node.node.metadata["source"], \
-                       "start_char_idx": node.node.start_char_idx, \
-                        "node": node} for node in nodes]
+        try:
+            # Create new node dictionary
+            _nodes_dic = [{"source": node.node.metadata["source"], \
+                        "start_char_idx": node.node.start_char_idx, \
+                            "node": node} for node in nodes]
 
-        # Sort based on page_label and then start_char_idx
-        sorted_nodes_dic = sorted(_nodes_dic, \
-                                    key=lambda x: (int(x["source"]), x["start_char_idx"]))
+            # Sort based on page_label and then start_char_idx
+            sorted_nodes_dic = sorted(_nodes_dic, \
+                                        key=lambda x: (int(x["source"]), x["start_char_idx"]))
 
-        # Get the new nodes from the sorted node dic
-        sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
+            # Get the new nodes from the sorted node dic
+            sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
 
-        return sorted_new_nodes
+            return sorted_new_nodes
+        except Exception as e:
+            print(f"Error in PageSortNodePostprocessor: {e}")
+            return nodes
 
 
 def get_article_link(article_dir, article_name):
@@ -319,7 +352,7 @@ def get_fusion_tree_filter_sort_detail_engine(
         verbose=True,
     )
 
-    PrevNext = PrevNextNodePostprocessor(
+    PrevNext = SafePrevNextNodePostprocessor(
                                 docstore=vector_docstore,
                                 num_nodes=2,  # each page now has two nodes, one with next, the other previous
                                 mode="both",
@@ -394,7 +427,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
                                 verbose=True,
                                 )
 
-    PrevNext = PrevNextNodePostprocessor(
+    PrevNext = SafePrevNextNodePostprocessor(
                                     docstore=vector_docstore,
                                     num_nodes=2,  # each page now has two nodes, one with next, the other previous
                                     mode="both",

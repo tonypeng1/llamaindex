@@ -103,7 +103,8 @@ from utils import (
                 )
 from db_operation import (
                 check_if_milvus_database_collection_exist,
-                check_if_mongo_database_namespace_exist
+                check_if_mongo_database_namespace_exist,
+                handle_split_brain_state
                 )
 from langextract_integration import (
                 enrich_nodes_with_langextract,
@@ -615,8 +616,8 @@ chunk_overlap = 64
 # Metadata extraction options:
 # None, "entity", "langextract", and "both"
 
-# metadata = "entity"  # Change this to test different options
-metadata = "langextract"  # Change this to test different options
+metadata = "entity"  # Change this to test different options
+# metadata = "langextract"  # Change this to test different options
 # metadata = None  # Change this to test different options
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
@@ -624,11 +625,8 @@ metadata = "langextract"  # Change this to test different options
 schema_name = "paul_graham_detailed"
 
 # Entity-based filtering configuration
-# When enabled, queries mentioning entities (people, orgs, locations) will be
-# automatically filtered to only retrieve nodes containing those entities
-# This significantly improves precision for entity-focused queries
-# Only works when metadata is "entity", "langextract", or "both"
-use_entity_filtering = True  # Set to False to disable entity filtering
+# use_entity_filtering = True
+use_entity_filtering = False 
 
 # Fusion tree and reranker configuration
 similarity_top_k_fusion = 36
@@ -679,6 +677,24 @@ add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo,
                                                        collection_name_summary
                                                        )
 
+# --- FIX FOR SPLIT-BRAIN ID MISMATCH ---
+# If ANY of the stores (Milvus Vector, Mongo Vector, or Mongo Summary) is missing,
+# we must re-ingest ALL of them to ensure the Node IDs match across the entire system.
+# This is crucial because SentenceSplitter generates non-deterministic IDs (different IDs on each run).
+
+(save_index_vector, 
+ add_document_vector, 
+ add_document_summary) = handle_split_brain_state(
+                        save_index_vector,
+                        add_document_vector,
+                        add_document_summary,
+                        uri_milvus,
+                        uri_mongo,
+                        database_name,
+                        collection_name_vector,
+                        collection_name_summary
+                        )
+
 # Create vector store, vector docstore, and vector storage context
 (vector_store,
  vector_docstore,
@@ -695,10 +711,10 @@ storage_context_summary = get_summary_storage_context(uri_mongo,
                                                     collection_name_summary
                                                     )
 
-# Load documnet nodes if either vector index or docstore not saved.
+# Load documnet nodes if we need to ingest (flags are synchronized now, all True or all False)
 # metadata is an optional parameter, will use another function to parse the document
 # if the metadata is not None.
-if save_index_vector or add_document_vector or add_document_summary: 
+if save_index_vector: 
     extracted_nodes = load_document_nodes_sentence_splitter(
                                                     article_link,
                                                     chunk_size,
@@ -707,26 +723,26 @@ if save_index_vector or add_document_vector or add_document_summary:
                                                     schema_name
                                                     )
 
-if save_index_vector == True:
+    # Create new index (ingests into Milvus and Mongo Vector Store)
     vector_index = VectorStoreIndex(
         nodes=extracted_nodes,
         storage_context=storage_context_vector,
         callback_manager=callback_manager,
         )
+    
+    # Save document nodes to Mongodb docstore at the server
+    storage_context_vector.docstore.add_documents(extracted_nodes)
+    
+    # Save document nodes to Summary Store (separate context)
+    # Note: VectorStoreIndex handles storage_context_vector, but we must manually add to summary store
+    storage_context_summary.docstore.add_documents(extracted_nodes)
 
 else:
     # Load from Milvus database
     vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=vector_store
+        vector_store=vector_store,
+        storage_context=storage_context_vector
         )
-
-if add_document_vector == True:
-    # Save document nodes to Mongodb docstore at the server
-    storage_context_vector.docstore.add_documents(extracted_nodes)
-
-if add_document_summary == True:
-    # Save document nodes to Mongodb docstore at the server
-    storage_context_summary.docstore.add_documents(extracted_nodes)
 
 summary_tool_description = (
             "Useful for a question that requires the full context of the entire document. "

@@ -41,7 +41,7 @@ from llama_index.question_gen.guidance import GuidanceQuestionGenerator
 from llama_index.core.prompts.guidance_utils import convert_to_handlebars
 from guidance.models import OpenAI as GuidanceOpenAI
 
-from utility_simple import (
+from archive.utility_simple_archived import (
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
                 get_fusion_tree_keyphrase_sort_detail_tool_simple,
@@ -50,9 +50,10 @@ from utility_simple import (
                 get_summary_tree_detail_tool,
                 get_vector_store_docstore_and_storage_context,
                 )
-from database_operation import (
+from archive.database_operation_simple_archived import (
                 check_if_milvus_database_collection_exist,
-                check_if_mongo_database_namespace_exist
+                check_if_mongo_database_namespace_exist,
+                handle_split_brain_state
                 )
 
 
@@ -416,8 +417,8 @@ Settings.callback_manager = callback_manager
 
 # Create article link
 article_directory = "paul_graham"
-# article_name = "paul_graham_essay.pdf"
-article_name = "How_to_do_great_work.pdf"
+article_name = "paul_graham_essay.pdf"
+# article_name = "How_to_do_great_work.pdf"
 
 article_link = get_article_link(article_directory,
                                 article_name
@@ -441,7 +442,7 @@ collection_name_summary) = get_database_and_sentence_splitter_collection_name(
                                                             embed_model_name, 
                                                             chunk_size,
                                                             chunk_overlap,
-                                                            metadata
+                                                            # metadata
                                                             )
 
 # Initiate Milvus and MongoDB database
@@ -468,6 +469,24 @@ add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo,
                                                        collection_name_summary
                                                        )
 
+# --- FIX FOR SPLIT-BRAIN ID MISMATCH ---
+# If ANY of the stores (Milvus Vector, Mongo Vector, or Mongo Summary) is missing,
+# we must re-ingest ALL of them to ensure the Node IDs match across the entire system.
+# This is crucial because SentenceSplitter generates non-deterministic IDs (different IDs on each run).
+
+(save_index_vector, 
+ add_document_vector, 
+ add_document_summary) = handle_split_brain_state(
+                                save_index_vector,
+                                add_document_vector,
+                                add_document_summary,
+                                uri_milvus,
+                                uri_mongo,
+                                database_name,
+                                collection_name_vector,
+                                collection_name_summary
+                                )
+
 # Create vector store, vector docstore, and vector storage context
 (vector_store,
  vector_docstore,
@@ -478,43 +497,41 @@ add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo,
                                                                     embed_model_dim
                                                                     )
 
-# Create summary summary storage context
+# Create summary storage context
 storage_context_summary = get_summary_storage_context(uri_mongo,
                                                     database_name,
                                                     collection_name_summary
                                                     )
 
-# Load documnet nodes if either vector index or docstore not saved.
-# metadata is an optional parameter, will use another function to parse the document
-# if the metadata is not None.
-if save_index_vector or add_document_vector or add_document_summary: 
+# Load document nodes if we need to ingest (flags are synchronized now, all True or all False)
+if save_index_vector: 
     extracted_nodes = load_document_nodes_sentence_splitter(
                                                     article_link,
                                                     chunk_size,
                                                     chunk_overlap,
-                                                    metadata
+                                                    # metadata
                                                     )
 
-if save_index_vector == True:
+    # Create new index (ingests into Milvus and Mongo Vector Store)
     vector_index = VectorStoreIndex(
         nodes=extracted_nodes,
         storage_context=storage_context_vector,
         callback_manager=callback_manager,
         )
+    
+    # Save document nodes to Mongodb docstore at the server
+    storage_context_vector.docstore.add_documents(extracted_nodes)
+    
+    # Save document nodes to Summary Store (separate context)
+    # Note: VectorStoreIndex handles storage_context_vector, but we must manually add to summary store
+    storage_context_summary.docstore.add_documents(extracted_nodes)
 
 else:
     # Load from Milvus database
     vector_index = VectorStoreIndex.from_vector_store(
-        vector_store=vector_store
+        vector_store=vector_store,
+        storage_context=storage_context_vector
         )
-
-if add_document_vector == True:
-    # Save document nodes to Mongodb docstore at the server
-    storage_context_vector.docstore.add_documents(extracted_nodes)
-
-if add_document_summary == True:
-    # Save document nodes to Mongodb docstore at the server
-    storage_context_summary.docstore.add_documents(extracted_nodes)
 
 summary_tool_description = (
             "Useful for a question that requires the full context of the entire document. "
@@ -531,7 +548,7 @@ summary_tool = get_summary_tree_detail_tool(
 
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
-# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 
 # query_str = "Create table of contents for this article."
 
@@ -541,9 +558,9 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What are the contents from pages 20 to 24 (one page at a time)?"
 # query_str = ("What are the concise contents from pages 20 to 24 (one page at a time) in the voice of the author?"
 #              )
-query_str = (
-    "Summarize the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
-    )
+# query_str = (
+#     "Summarize the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
+#     )
 # query_str = (
 #     "Summarize the key takeaways from pages 1 to 5 (one page at a time) in a sequential order and in the voice of the author by NOT retrieving the text verbatim."
 #     )

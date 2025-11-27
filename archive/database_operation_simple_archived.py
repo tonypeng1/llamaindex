@@ -1,7 +1,6 @@
-
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
-from pymilvus import connections, db, MilvusClient
+from pymilvus import connections, db, MilvusClient, utility
 
 
 def check_if_milvus_database_exists(
@@ -236,3 +235,76 @@ def check_if_mongo_database_namespace_exist(
         if check_if_mongo_namespace_exists(uri, database_name, collection_name):
             return False  # The database and collection namespace exist (no need to save)
     return True  # The database and collection namespace do not exist (need to save)
+
+
+def handle_split_brain_state(
+    save_index_vector: bool,
+    add_document_vector: bool,
+    add_document_summary: bool,
+    uri_milvus: str,
+    uri_mongo: str,
+    database_name: str,
+    collection_name_vector: str,
+    collection_name_summary: str
+) -> tuple[bool, bool, bool]:
+    """
+    Checks for a "Split-Brain" state where some stores exist and others are missing.
+    If a mismatch is detected, it drops all relevant collections in Milvus and MongoDB
+    and returns flags forcing a full re-ingestion.
+    
+    Returns:
+        tuple[bool, bool, bool]: Updated (save_index_vector, add_document_vector, add_document_summary)
+    """
+    # Check if all stores are already present (All False)
+    all_stores_exist = not (save_index_vector or add_document_vector or add_document_summary)
+
+    # Check if all stores are missing (All True)
+    all_stores_missing = save_index_vector and add_document_vector and add_document_summary
+
+    # If the state is consistent (either all exist or all are missing), we are good.
+    # If it's mixed (some exist, some missing), we have a split-brain and need to reset.
+    if not (all_stores_exist or all_stores_missing):
+        print("State Mismatch detected: One or more stores are missing while others exist.")
+        print("Forcing full re-ingestion to ensure Node ID consistency across Milvus and MongoDB.")
+        save_index_vector = True
+        add_document_vector = True
+        add_document_summary = True
+        
+        # 1. Clean up Milvus
+        try:
+            print(f"Dropping Milvus collection '{collection_name_vector}' to ensure clean state...")
+            connections.connect(alias="default", uri=uri_milvus)
+            
+            # Try to switch to the correct database context
+            try:
+                db.using_database(database_name)
+            except:
+                pass # Might fail if db doesn't exist or using default
+                
+            if utility.has_collection(collection_name_vector):
+                utility.drop_collection(collection_name_vector)
+                print("Milvus collection dropped successfully.")
+            
+            connections.disconnect("default")
+        except Exception as e:
+            print(f"Warning during Milvus cleanup: {e}")
+
+        # 2. Clean up MongoDB
+        try:
+            print(f"Dropping MongoDB collections for '{collection_name_vector}' and '{collection_name_summary}'...")
+            mongo_client = MongoClient(uri_mongo)
+            mongo_db = mongo_client[database_name]
+            
+            # Helper to drop collections with a prefix (namespace)
+            # MongoDocumentStore creates collections like: namespace/data, namespace/metadata, etc.
+            cols = mongo_db.list_collection_names()
+            for c in cols:
+                if c.startswith(collection_name_vector) or c.startswith(collection_name_summary):
+                    print(f"Dropping MongoDB collection: {c}")
+                    mongo_db.drop_collection(c)
+            
+            mongo_client.close()
+        except Exception as e:
+            print(f"Warning during MongoDB cleanup: {e}")
+            
+    return save_index_vector, add_document_vector, add_document_summary
