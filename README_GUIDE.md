@@ -25,6 +25,13 @@ schema_name = "paul_graham_detailed"  # or "paul_graham_simple"
 
 # Entity-based filtering
 use_entity_filtering = True  # Enable/disable entity filtering
+
+# Advanced Configuration
+chunk_size = 256              # Smaller chunks = more precise retrieval
+chunk_overlap = 64            # Overlap to maintain context
+similarity_top_k_fusion = 36  # Initial retrieval count
+fusion_top_n = 32             # Post-fusion count
+rerank_top_n = 24             # Post-reranking count
 ```
 
 ### Decision Tree
@@ -222,6 +229,21 @@ metadata = "entity"  # or "langextract" or "both"
 
 # Enable entity filtering
 use_entity_filtering = True
+```
+
+### Advanced Configuration
+
+You can fine-tune the retrieval pipeline with these parameters in `langextract_simple.py`:
+
+```python
+# 1. Retrieval Parameters
+similarity_top_k_fusion = 36  # Initial retrieval count from vector store
+fusion_top_n = 32             # Number of nodes to keep after fusing BM25 + Vector results
+rerank_top_n = 24             # Final number of nodes after ColBERT reranking
+
+# 2. Chunking Strategy
+chunk_size = 256              # Smaller chunks (256) = more precise retrieval
+chunk_overlap = 64            # Overlap to maintain context across chunks
 ```
 
 ### Supported Entities
@@ -455,14 +477,17 @@ python test_entity_filtering.py
 ```python
 # Step 1: Start with None or EntityExtractor
 metadata = None  # or "entity"
+use_entity_filtering = False # or True
 
 # Step 2: Test LangExtract on small sample (2-3 pages)
 metadata = "langextract"
 schema_name = "paul_graham_simple"
+use_entity_filtering = True
 
 # Step 3: Scale up to full document
 metadata = "langextract"
 schema_name = "paul_graham_detailed"
+use_entity_filtering = True
 
 # Step 4: Choose for production based on requirements
 ```

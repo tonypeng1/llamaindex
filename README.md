@@ -73,6 +73,7 @@ Please use `uv` for installing dependencies and managing your Python environment
   - **Fusion**: Always combines both retrievers with 50/50 weighting for optimal results
 - **KeyBERT Integration**: Reduces BM25 noise by extracting key phrases before retrieval
 - **Advanced Post-processing**: Reranking, context expansion, and page-based sorting
+- **Configurable Pipeline**: Fine-tune chunking, overlap, and retrieval parameters
 
 ## Metadata Extraction Options
 
@@ -110,6 +111,13 @@ The system supports four metadata extraction methods to suit different needs:
 metadata = "entity"  # Options: None, "entity", "langextract", "both"
 schema_name = "paul_graham_detailed"  # For LangExtract
 use_entity_filtering = True  # Enable entity-based filtering (default: True)
+
+# Advanced Configuration
+chunk_size = 256              # Smaller chunks = more precise retrieval
+chunk_overlap = 64            # Overlap to maintain context
+similarity_top_k_fusion = 36  # Initial retrieval count
+fusion_top_n = 32             # Post-fusion count
+rerank_top_n = 24             # Post-reranking count
 ```
 
 **Documentation:**
@@ -150,7 +158,7 @@ See [this Medium article](https://medium.com/@tony3t3t/rag-with-sub-question-and
 
 ### Overview
 
-`llama_bm25_simple.py` is an advanced Retrieval-Augmented Generation (RAG) system that implements a sophisticated multi-tool query engine for question-answering over PDF documents. The script combines vector-based semantic search with BM25 keyword-based retrieval using a sub-question decomposition approach to answer complex user queries about document content.
+`langextract_simple.py` is an advanced Retrieval-Augmented Generation (RAG) system that implements a sophisticated multi-tool query engine for question-answering over PDF documents. The script combines vector-based semantic search with BM25 keyword-based retrieval using a sub-question decomposition approach to answer complex user queries about document content.
 
 ### Core Functionality
 
@@ -181,12 +189,12 @@ The script processes PDF documents through the following workflow:
 #### **Specialized Processors**
 - **EntityExtractor** (`llama_index.extractors.entity`): Extracts named entities (people, organizations, locations) from text using a multilingual BERT model
 - **ColbertRerank** (`llama_index.postprocessor.colbert_rerank`): Neural re-ranking using ColBERT for improved retrieval accuracy
-- **PrevNextNodePostprocessor** (from `utility_simple.py`): Retrieves adjacent context nodes for better answer completeness
-- **PageSortNodePostprocessor** (from `utility_simple.py`): Sorts retrieved nodes by page number and position for coherent responses
+- **PrevNextNodePostprocessor** (from `utils.py`): Retrieves adjacent context nodes for better answer completeness
+- **PageSortNodePostprocessor** (from `utils.py`): Sorts retrieved nodes by page number and position for coherent responses
 
 #### **Retrieval Methods**
 - **BM25Retriever** (`llama_index.retrievers.bm25`): Implements BM25 probabilistic keyword-based retrieval (Okapi BM25 algorithm)
-- **QueryFusionRetriever** (from `utility_simple.py`): Combines vector and BM25 retrieval using reciprocal rank fusion
+- **QueryFusionRetriever** (from `utils.py`): Combines vector and BM25 retrieval using reciprocal rank fusion
 
 #### **Document Readers & Storage**
 - **PyMuPDFReader** (`llama_index.readers.file`): Reads and extracts text from PDF files with page-level metadata
@@ -195,16 +203,16 @@ The script processes PDF documents through the following workflow:
 
 #### **Query Generation**
 - **GuidanceQuestionGenerator** (`llama_index.question_gen.guidance`): Uses structured generation (Guidance library) with GPT-4o to decompose queries into focused sub-questions
-- **KeyBERT** (from `utility_simple.py` via `keybert`): Extracts keyphrases from queries for enhanced BM25 retrieval
+- **KeyBERT** (from `utils.py` via `keybert`): Extracts keyphrases from queries for enhanced BM25 retrieval
 
 #### **Database Operations**
-Custom utility functions (`database_operation_simple.py`) handle database management:
+Custom utility functions (`db_operation.py`) handle database management:
 - Check existence of Milvus collections and MongoDB namespaces
 - Create databases and count collection items
 - Manage data persistence across sessions
 
 #### **Custom Utilities**
-Helper functions (`utility_simple.py`) provide:
+Helper functions (`utils.py`) provide:
 - Prompt template customization for detailed responses
 - Fusion retrieval engine construction
 - Tool creation and configuration
@@ -245,7 +253,7 @@ This section outlines all instances in the codebase where MongoDB and Milvus dat
 
 ### **MongoDB Database Access**
 
-#### **1. Database Existence Checks** (`database_operation_simple.py`)
+#### **1. Database Existence Checks** (`db_operation.py`)
 
 ```python
 def check_if_mongo_database_exists(uri, _database_name) -> bool:
@@ -261,7 +269,7 @@ def check_if_mongo_namespace_exists(uri, db_name, namespace) -> bool:
     collection_names = db.list_collection_names()  # ← MongoDB ACCESS
 ```
 
-#### **2. Document Storage Operations** (`llama_bm25_simple.py`)
+#### **2. Document Storage Operations** (`langextract_simple.py`)
 
 ```python
 # Save document nodes to MongoDB docstore
@@ -272,7 +280,7 @@ if add_document_summary == True:
     storage_context_summary.docstore.add_documents(extracted_nodes)  # ← MongoDB WRITE
 ```
 
-#### **3. Document Retrieval for BM25** (`utility_simple.py`)
+#### **3. Document Retrieval for BM25** (`utils.py`)
 
 ```python
 # Iterate through all documents in MongoDB docstore
@@ -292,7 +300,7 @@ bm25_retriever = BM25Retriever.from_defaults(
 
 **Important**: BM25 retriever always operates on the complete MongoDB docstore without entity filtering. This ensures keyword-relevant results are not missed even when entity filtering is enabled for the vector retriever.
 
-#### **4. Summary Index Creation** (`utility_simple.py`)
+#### **4. Summary Index Creation** (`utils.py`)
 
 ```python
 def get_summary_tree_detail_engine(storage_context_summary):
@@ -300,7 +308,7 @@ def get_summary_tree_detail_engine(storage_context_summary):
     summary_index = SummaryIndex(nodes=extracted_nodes)
 ```
 
-#### **5. PrevNext Node Processing** (`utility_simple.py`)
+#### **5. PrevNext Node Processing** (`utils.py`)
 
 ```python
 PrevNext = PrevNextNodePostprocessor(
@@ -312,7 +320,7 @@ PrevNext = PrevNextNodePostprocessor(
 
 ### **Milvus Database Access**
 
-#### **1. Database Management** (`database_operation_simple.py`)
+#### **1. Database Management** (`db_operation.py`)
 
 ```python
 def check_if_milvus_database_exists(uri, database_name) -> bool:
@@ -326,7 +334,7 @@ def create_database_milvus(uri, db_name):
     db.create_database(db_name)  # ← Milvus WRITE
 ```
 
-#### **2. Collection Operations** (`database_operation_simple.py`)
+#### **2. Collection Operations** (`db_operation.py`)
 
 ```python
 def check_if_milvus_collection_exists(uri, db_name, collect_name) -> bool:
@@ -341,7 +349,7 @@ def milvus_collection_item_count(uri, database_name, collection_name) -> int:
     element_count = client.query(collection_name=collection_name, output_fields=["count(*)"])  # ← Milvus READ
 ```
 
-#### **3. Vector Index Creation** (`llama_bm25_simple.py`)
+#### **3. Vector Index Creation** (`langextract_simple.py`)
 
 ```python
 # Create new vector index (writes embeddings to Milvus)
@@ -352,7 +360,7 @@ if save_index_vector == True:
     )
 ```
 
-#### **4. Vector Index Loading** (`llama_bm25_simple.py`)
+#### **4. Vector Index Loading** (`langextract_simple.py`)
 
 ```python
 # Load existing vector index from Milvus
@@ -362,7 +370,7 @@ else:
     )
 ```
 
-#### **5. Vector Search Operations** (`llama_bm25_simple.py` & `utility_simple.py`)
+#### **5. Vector Search Operations** (`langextract_simple.py` & `utils.py`)
 
 ```python
 # Vector retrieval with metadata filtering
@@ -381,7 +389,7 @@ vector_retriever = vector_index.as_retriever(
 scored_nodes = vector_retriever.retrieve(query_str)  # ← Milvus READ
 ```
 
-#### **6. Collection Management** (`llama_bm25_simple.py`)
+#### **6. Collection Management** (`langextract_simple.py`)
 
 ```python
 # Load collection into memory for search
@@ -394,7 +402,7 @@ vector_store.client.release_collection(collection_name=collection_name_vector)  
 vector_store.client.close()  # ← Milvus CLEANUP
 ```
 
-#### **7. Fusion Retrieval** (`utility_simple.py`)
+#### **7. Fusion Retrieval** (`utils.py`)
 
 ```python
 # QueryFusionRetriever combines vector + BM25 retrieval

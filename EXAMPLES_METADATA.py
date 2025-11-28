@@ -12,6 +12,7 @@ Copy the relevant section to langextract_simple.py for testing.
 
 metadata = None
 schema_name = "paul_graham_detailed"  # Not used
+use_entity_filtering = False          # Not applicable
 
 # Expected output:
 # - Basic chunks with page numbers only
@@ -26,6 +27,7 @@ schema_name = "paul_graham_detailed"  # Not used
 
 metadata = "entity"
 schema_name = "paul_graham_detailed"  # Not used
+use_entity_filtering = True           # Enable filtering by entities
 
 # Expected output:
 # - Named entities: PERSON, ORGANIZATION, LOCATION, etc.
@@ -46,6 +48,7 @@ schema_name = "paul_graham_detailed"  # Not used
 
 metadata = "langextract"
 schema_name = "paul_graham_detailed"  # Options: "paul_graham_detailed" or "paul_graham_simple"
+use_entity_filtering = True           # Enable filtering by extracted concepts/entities
 
 # Expected output:
 # - Concepts, advice, experiences, entities, time references
@@ -69,6 +72,7 @@ schema_name = "paul_graham_detailed"  # Options: "paul_graham_detailed" or "paul
 
 metadata = "both"
 schema_name = "paul_graham_detailed"
+use_entity_filtering = True           # Enable filtering by all metadata types
 
 # Expected output:
 # - All EntityExtractor metadata + All LangExtract metadata
@@ -94,6 +98,7 @@ schema_name = "paul_graham_detailed"
 
 metadata = "langextract"
 schema_name = "paul_graham_simple"  # Simpler schema = less metadata = lower cost
+use_entity_filtering = True
 
 # Expected output:
 # - Basic concepts, advice, entities
@@ -107,15 +112,18 @@ schema_name = "paul_graham_simple"  # Simpler schema = less metadata = lower cos
 
 # Step 1: Start with None or EntityExtractor for quick testing
 metadata = None  # or "entity"
+use_entity_filtering = False # or True
 
 # Step 2: Once your pipeline works, test LangExtract on a small sample
 # Use a short document (2-3 pages) first!
 metadata = "langextract"
 schema_name = "paul_graham_simple"
+use_entity_filtering = True
 
 # Step 3: If results are good, scale up to full document
 metadata = "langextract"
 schema_name = "paul_graham_detailed"
+use_entity_filtering = True
 
 # Step 4: For production, choose based on requirements and budget
 # - Budget-conscious: "entity"
@@ -200,6 +208,23 @@ query_examples_semantic = [
 
 # 5. Monitor progress:
 # Watch for "Processing X/Y nodes..." messages during extraction
+
+
+# =============================================================================
+# Advanced Configuration
+# =============================================================================
+
+# 1. Retrieval Parameters
+similarity_top_k_fusion = 36  # Initial retrieval count
+fusion_top_n = 32             # Post-fusion count
+rerank_top_n = 24             # Post-reranking count
+
+# 2. Chunking Strategy
+chunk_size = 256              # Smaller chunks = more precise retrieval
+chunk_overlap = 64            # Overlap to maintain context
+
+# 3. Entity Filtering
+use_entity_filtering = True   # Toggle metadata-based filtering in retrieval
 
 
 # =============================================================================
