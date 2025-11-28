@@ -22,12 +22,10 @@ pip install uv
 
 Install project dependencies:
 ```bash
-uv pip install -r requirements_arm64.txt  # For Apple Silicon Macs
-# OR
-uv pip install -r requirements.txt        # For x86 systems
+uv pip install -e .
 ```
 
-> **Note:** You can still use regular `pip` if preferred, but `uv` is recommended for speed and reliability.
+> **Note:** You can still use regular `pip install -e .` if preferred, but `uv` is recommended for speed and reliability.
 
 ### Setup
 
@@ -82,28 +80,28 @@ The system supports four metadata extraction methods to suit different needs:
 ### 1. None (Basic) - Fast & Free
 - Basic chunking with page numbers only
 - **Use case**: Quick testing, simple documents
-- **Speed**: ⚡⚡⚡ Very Fast (~10s for 30 pages)
+- **Speed**: ⚡⚡⚡ Very Fast
 - **Cost**: FREE
 
 ### 2. EntityExtractor - Fast & Free
 - Named entity recognition (PERSON, ORGANIZATION, LOCATION, etc.)
 - Uses HuggingFace span-marker model locally
 - **Use case**: Standard entity recognition needs
-- **Speed**: ⚡⚡ Fast (~30s for 30 pages)
+- **Speed**: ⚡⚡ Fast
 - **Cost**: FREE
 
 ### 3. LangExtract - Slow & Paid
 - Rich semantic metadata: concepts, advice, experiences, entities, time references
 - Uses Google's LangExtract with OpenAI GPT-4
 - **Use case**: Deep semantic understanding, complex queries
-- **Speed**: ⚡ Slow (~15 min for 30 pages)
-- **Cost**: ~$2 for 30 pages with GPT-4
+- **Speed**: ⚡ Slow
+- **Cost**: LLM API cost
 
 ### 4. Both - Most Comprehensive
 - Combines EntityExtractor + LangExtract
 - **Use case**: Maximum metadata richness
-- **Speed**: ⚡ Slowest (~16 min for 30 pages)
-- **Cost**: ~$2 for 30 pages
+- **Speed**: ⚡ Slowest
+- **Cost**: LLM API cost
 
 **Quick Configuration:**
 ```python
@@ -183,7 +181,7 @@ The script processes PDF documents through the following workflow:
 - **MetadataFilters**: Enables filtering retrieval results by metadata (e.g., page numbers)
 
 #### **LLM & Embedding Models**
-- **Anthropic**: Claude 3 Sonnet model for natural language understanding and generation
+- **Anthropic**: claude-sonnet-4-0 model for natural language understanding and generation
 - **OpenAIEmbedding**: text-embedding-3-small model for converting text into 1536-dimensional vectors
 
 #### **Specialized Processors**
@@ -230,7 +228,7 @@ The system implements a **hybrid retrieval architecture** that combines:
 
 When `use_entity_filtering = True` and metadata extraction includes entities:
 
-1. **Entity Extraction**: Detects entities (people, orgs, locations) from the user query
+1. **Entity Extraction**: Detects entities (people, orgs, locations) or LangExtract schema category from the user query
 2. **Parallel Retrieval**:
    - **BM25 Retriever**: 
      - Operates on MongoDB docstore
@@ -240,7 +238,7 @@ When `use_entity_filtering = True` and metadata extraction includes entities:
    - **Vector Retriever**:
      - Operates on Milvus vector index  
      - Uses semantic similarity
-     - **WITH entity filtering** (only nodes mentioning entities)
+     - **WITH entity or LangExtract semantic filtering** (only nodes mentioning entities)
      - Improves precision for entity-focused queries
 3. **Fusion**: Always combines both retrievers with equal weighting
 4. **Reranking**: ColBERT final ranking for optimal precision

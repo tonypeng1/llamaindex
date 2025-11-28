@@ -50,6 +50,9 @@ Database Structure:
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import nest_asyncio
 import sys
@@ -621,10 +624,10 @@ chunk_overlap = 64
 # Metadata extraction options:
 # None, "entity", "langextract", and "both"
 
-metadata = "both"  # Change this to test different options
-# metadata = "entity"  # Change this to test different options
-# metadata = "langextract"  # Change this to test different options
-# metadata = None  # Change this to test different options
+# metadata = "both"
+# metadata = "entity"
+metadata = "langextract"
+# metadata = None
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
 # Available schemas: "paul_graham_detailed", "paul_graham_simple"
