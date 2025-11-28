@@ -621,8 +621,9 @@ chunk_overlap = 64
 # Metadata extraction options:
 # None, "entity", "langextract", and "both"
 
+metadata = "both"  # Change this to test different options
 # metadata = "entity"  # Change this to test different options
-metadata = "langextract"  # Change this to test different options
+# metadata = "langextract"  # Change this to test different options
 # metadata = None  # Change this to test different options
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
@@ -630,8 +631,8 @@ metadata = "langextract"  # Change this to test different options
 schema_name = "paul_graham_detailed"
 
 # Entity-based filtering configuration
-# use_entity_filtering = True
-use_entity_filtering = False 
+use_entity_filtering = True
+# use_entity_filtering = False 
 
 # Fusion tree and reranker configuration
 similarity_top_k_fusion = 36
@@ -771,7 +772,8 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "List all people mentioned in the document."
 # query_str = "What experiences from the 1990s are described?"
 # query_str = "What programming concepts are given in the document?"
-query_str = "Who are mentioned as colleagues in the document?"
+# query_str = "Who are mentioned as colleagues in the document?"
+query_str = "Does the author have any advice on relationships?"
 
 # query_str = "Create table of contents for this article."
 

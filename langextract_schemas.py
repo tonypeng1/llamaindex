@@ -11,6 +11,7 @@ import langextract as lx
 
 
 import os
+import json
 from pymongo import MongoClient
 
 # Cache for schema definitions
@@ -85,6 +86,7 @@ def get_paul_graham_schema_definitions():
                 
         client.close()
         print(f"✅ Loaded dynamic schema from MongoDB collection: {collection_name}")
+        print(json.dumps(dynamic_schema, indent=4))
         # Run get_inclusive_schema.py in the test/ folder to get the latest schema values.
         _SCHEMA_CACHE = dynamic_schema
         return dynamic_schema
