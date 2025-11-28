@@ -10,23 +10,89 @@ import textwrap
 import langextract as lx
 
 
+import os
+from pymongo import MongoClient
+
+# Cache for schema definitions
+_SCHEMA_CACHE = None
+
 def get_paul_graham_schema_definitions():
     """
     Return the definitions of attributes for the Paul Graham schema.
     Useful for query analysis and filtering.
+    
+    Attempts to fetch inclusive values from MongoDB. 
+    Falls back to default static list if DB is inaccessible.
     """
-    return {
+    global _SCHEMA_CACHE
+    if _SCHEMA_CACHE is not None:
+        return _SCHEMA_CACHE
+
+    defaults = {
         "concept_categories": ["technology", "business", "startups", "programming", "art", "education", "life", "philosophy", "writing"],
         "concept_importance": ["high", "medium", "low"],
         "advice_types": ["actionable", "cautionary", "philosophical", "tactical"],
         "advice_domains": ["career", "startups", "learning", "creativity", "relationships", "decision_making"],
         "experience_periods": ["childhood", "college", "grad_school", "viaweb", "yc", "post_yc", "general"],
         "experience_sentiments": ["positive", "negative", "neutral", "mixed"],
-        "entity_roles": ["founder", "colleague", "investor", "friend", "company", "institution"],
+        "entity_roles": ["founder", "colleague", "investor", "friend", "company", "institution", "product"],
         "entity_significance": ["major", "minor"],
         "time_decades": ["1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s", "unspecified"],
         "time_specificity": ["exact_year", "approximate", "era"]
     }
+
+    try:
+        # Configuration for MongoDB
+        uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
+        db_name = "paul_graham_paul_graham_essay_sentence_splitter"
+        # Try to find the collection with enriched metadata
+        collection_suffix = "_metadata_langextract/data"
+        
+        client = MongoClient(uri, serverSelectionTimeoutMS=2000)
+        if db_name not in client.list_database_names():
+            _SCHEMA_CACHE = defaults
+            return defaults
+            
+        db = client[db_name]
+        # Find the correct collection
+        collection_name = None
+        for col in db.list_collection_names():
+            if col.endswith(collection_suffix):
+                collection_name = col
+                break
+        
+        if not collection_name:
+            _SCHEMA_CACHE = defaults
+            return defaults
+            
+        collection = db[collection_name]
+        
+        # Query distinct values for each field
+        dynamic_schema = {}
+        for field in defaults.keys():
+            # Try __data__.metadata.field first (LlamaIndex structure)
+            values = collection.distinct(f"__data__.metadata.{field}")
+            if not values:
+                # Try metadata.field (Standard structure)
+                values = collection.distinct(f"metadata.{field}")
+            
+            if values:
+                # Filter out None/Empty and sort
+                clean_values = sorted([v for v in values if v])
+                dynamic_schema[field] = clean_values
+            else:
+                dynamic_schema[field] = defaults[field]
+                
+        client.close()
+        print(f"✅ Loaded dynamic schema from MongoDB collection: {collection_name}")
+        # Run get_inclusive_schema.py in the test/ folder to get the latest schema values.
+        _SCHEMA_CACHE = dynamic_schema
+        return dynamic_schema
+        
+    except Exception as e:
+        print(f"Warning: Failed to fetch schema from MongoDB ({e}). Using defaults.")
+        _SCHEMA_CACHE = defaults
+        return defaults
 
 
 def get_paul_graham_essay_schema():

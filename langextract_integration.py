@@ -80,6 +80,7 @@ def flatten_extraction_result(result) -> Dict[str, Any]:
     entities = []
     entity_roles = set()
     entity_names = []
+    entity_significance = set()
     
     experiences = []
     experience_periods = set()
@@ -87,6 +88,7 @@ def flatten_extraction_result(result) -> Dict[str, Any]:
     
     time_refs = []
     time_decades = set()
+    time_specificity = set()
     
     # Process each extraction
     for extraction in result.extractions:
@@ -111,6 +113,8 @@ def flatten_extraction_result(result) -> Dict[str, Any]:
             entity_names.append(extraction.extraction_text)
             if "role" in attrs:
                 entity_roles.add(attrs["role"])
+            if "significance" in attrs:
+                entity_significance.add(attrs["significance"])
                 
         elif extraction.extraction_class == "experience":
             experiences.append(extraction.extraction_text)
@@ -123,6 +127,8 @@ def flatten_extraction_result(result) -> Dict[str, Any]:
             time_refs.append(extraction.extraction_text)
             if "decade" in attrs:
                 time_decades.add(attrs["decade"])
+            if "specificity" in attrs:
+                time_specificity.add(attrs["specificity"])
     
     # Add to metadata (convert sets to lists for JSON serialization)
     if concepts:
@@ -144,6 +150,8 @@ def flatten_extraction_result(result) -> Dict[str, Any]:
         metadata["entity_names"] = entity_names
     if entity_roles:
         metadata["entity_roles"] = list(entity_roles)
+    if entity_significance:
+        metadata["entity_significance"] = list(entity_significance)
     
     if experiences:
         metadata["langextract_experiences"] = experiences
@@ -156,6 +164,8 @@ def flatten_extraction_result(result) -> Dict[str, Any]:
         metadata["time_references"] = time_refs
     if time_decades:
         metadata["time_decades"] = list(time_decades)
+    if time_specificity:
+        metadata["time_specificity"] = list(time_specificity)
     
     return metadata
 
