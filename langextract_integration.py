@@ -281,6 +281,7 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
     - Experience Periods: {defs['experience_periods']}
     - Experience Sentiments: {defs['experience_sentiments']}
     - Time Decades: {defs['time_decades']}
+    - Entity Roles: {defs['entity_roles']}
     
     Query: "{query_str}"
     
@@ -298,6 +299,10 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
     Example 3:
     Query: "What does he say about Lisp?"
     Output: {{"concept_categories": ["programming"]}}
+    
+    Example 4:
+    Query: "Who were the founders he worked with?"
+    Output: {{"entity_roles": ["founder"]}}
     
     Output JSON:
     """
