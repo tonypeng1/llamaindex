@@ -6,13 +6,16 @@ using Google's LangExtract library with OpenAI GPT-4.
 """
 
 import os
+import json
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 import langextract as lx
 from llama_index.core.schema import TextNode
+from llama_index.core import Settings
+from llama_index.llms.openai import OpenAI
 
-from langextract_schemas import get_schema
+from langextract_schemas import get_schema, get_paul_graham_schema_definitions
 
 # Load environment variables
 load_dotenv()
@@ -249,3 +252,75 @@ def print_sample_metadata(nodes: List[TextNode], num_samples: int = 3):
             for key in langextract_keys:
                 print(f"  {key}: {node.metadata[key]}")
         print("-" * 80)
+
+
+def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_graham_detailed") -> Dict[str, List[str]]:
+    """
+    Uses an LLM to analyze the query and extract metadata filters based on the schema.
+    
+    Parameters:
+    query_str (str): The user query
+    schema_name (str): The schema to use
+    
+    Returns:
+    Dict[str, List[str]]: Dictionary of filters (e.g., {'concept_categories': ['programming']})
+    """
+    # Only support Paul Graham schema for now
+    if "paul_graham" not in schema_name:
+        return {}
+        
+    defs = get_paul_graham_schema_definitions()
+    
+    # Construct prompt
+    prompt = f"""
+    Analyze the following user query and identify if the user is looking for specific categories of information defined in our schema.
+    
+    Schema Definitions:
+    - Concept Categories: {defs['concept_categories']}
+    - Advice Domains: {defs['advice_domains']}
+    - Experience Periods: {defs['experience_periods']}
+    - Experience Sentiments: {defs['experience_sentiments']}
+    - Time Decades: {defs['time_decades']}
+    
+    Query: "{query_str}"
+    
+    If the query implies a filter on any of these attributes, return a JSON object with the attribute name as key and a list of matching values.
+    Only return keys that have matches. If no matches, return an empty JSON object {{}}.
+    
+    Example 1:
+    Query: "What advice does he give about startups?"
+    Output: {{"advice_domains": ["startups"], "concept_categories": ["startups"]}}
+    
+    Example 2:
+    Query: "Tell me about his childhood experiences"
+    Output: {{"experience_periods": ["childhood"]}}
+    
+    Example 3:
+    Query: "What does he say about Lisp?"
+    Output: {{"concept_categories": ["programming"]}}
+    
+    Output JSON:
+    """
+    
+    try:
+        # Use the configured LLM or default to OpenAI
+        llm = Settings.llm or OpenAI(model="gpt-4o")
+        response = llm.complete(prompt)
+        
+        # Parse JSON response
+        response_text = response.text.strip()
+        if response_text.startswith("```json"):
+            response_text = response_text.split("```json")[1].split("```")[0].strip()
+        elif response_text.startswith("```"):
+            response_text = response_text.split("```")[1].split("```")[0].strip()
+            
+        filters = json.loads(response_text)
+        
+        if filters:
+            print(f"\n🔍 Extracted Query Filters: {filters}")
+            
+        return filters
+        
+    except Exception as e:
+        print(f"Warning: Failed to extract query filters: {e}")
+        return {}

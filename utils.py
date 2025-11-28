@@ -28,6 +28,7 @@ from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.vector_stores.milvus import MilvusVectorStore
+from langextract_integration import extract_query_metadata_filters
 
 
 class SafePrevNextNodePostprocessor(PrevNextNodePostprocessor):
@@ -601,73 +602,91 @@ def extract_entities_from_query(
 def create_entity_metadata_filters(
         entities: Dict[str, List[str]],
         metadata_option: str,
+        query_str: Optional[str] = None,
         ) -> Optional[MetadataFilters]:
     """
-    Create MetadataFilters for entity-based filtering.
+    Create MetadataFilters for entity-based and semantic filtering.
     
     Parameters:
     entities (Dict[str, List[str]]): Dictionary of entities by type (PER, ORG, LOC, INST, DIS, etc.)
     metadata_option (str): The metadata extraction option used ('entity', 'langextract', or 'both')
+    query_str (Optional[str]): The original query string (needed for semantic filter extraction)
     
     Returns:
-    Optional[MetadataFilters]: MetadataFilters object or None if no entities
+    Optional[MetadataFilters]: MetadataFilters object or None if no filters
     """
-    if not entities:
-        return None
-    
     filters = []
     
-    # Map standardized keys (PER, ORG, LOC) to actual database keys (persons, organizations, locations)
-    # This mapping should match the output format of the EntityExtractor when label_entities=True
-    key_mapping = {
-        'PER': 'persons',
-        'ORG': 'organizations',
-        'LOC': 'locations',
-        'ANIM': 'animals',
-        'BIO': 'biologicals',
-        'CEL': 'celestial_bodies',
-        'DIS': 'diseases',
-        'EVE': 'events',
-        'FOOD': 'foods',
-        'INST': 'instruments',
-        'MEDIA': 'media',
-        'PLANT': 'plants',
-        'MYTH': 'myths',
-        'TIME': 'times',
-        'VEHI': 'vehicles',
-    }
-    
-    # For EntityExtractor metadata (persons, organizations, locations fields in database)
-    if metadata_option in ["entity", "both"]:
-        for entity_type, entity_list in entities.items():
-            # Convert PER/ORG/LOC to lowercase database keys
-            db_key = key_mapping.get(entity_type, entity_type)
-            for entity in entity_list:
-                # For list fields, checks if value is in list
-                filters.append({
-                    "key": db_key,
-                    "value": entity,
-                    "operator": "=="
-                })
-    
-    # For LangExtract metadata (entity_names field)
-    if metadata_option in ["langextract", "both"]:
-        all_entities = []
-        for entity_list in entities.values():
-            all_entities.extend(entity_list)
+    # 1. Add Entity Filters (from SpanMarker)
+    if entities:
+        # Map standardized keys (PER, ORG, LOC) to actual database keys (persons, organizations, locations)
+        # This mapping should match the output format of the EntityExtractor when label_entities=True
+        key_mapping = {
+            'PER': 'persons',
+            'ORG': 'organizations',
+            'LOC': 'locations',
+            'ANIM': 'animals',
+            'BIO': 'biologicals',
+            'CEL': 'celestial_bodies',
+            'DIS': 'diseases',
+            'EVE': 'events',
+            'FOOD': 'foods',
+            'INST': 'instruments',
+            'MEDIA': 'media',
+            'PLANT': 'plants',
+            'MYTH': 'myths',
+            'TIME': 'times',
+            'VEHI': 'vehicles',
+        }
         
-        if all_entities:
-            for entity in all_entities:
-                filters.append({
-                    "key": "entity_names",
-                    "value": entity,
-                    "operator": "=="
-                })
+        # For EntityExtractor metadata (persons, organizations, locations fields in database)
+        if metadata_option in ["entity", "both"]:
+            for entity_type, entity_list in entities.items():
+                # Convert PER/ORG/LOC to lowercase database keys
+                db_key = key_mapping.get(entity_type, entity_type)
+                for entity in entity_list:
+                    # For list fields, checks if value is in list
+                    filters.append({
+                        "key": db_key,
+                        "value": entity,
+                        "operator": "=="
+                    })
+        
+        # For LangExtract metadata (entity_names field)
+        if metadata_option in ["langextract", "both"]:
+            all_entities = []
+            for entity_list in entities.values():
+                all_entities.extend(entity_list)
+            
+            if all_entities:
+                for entity in all_entities:
+                    filters.append({
+                        "key": "entity_names",
+                        "value": entity,
+                        "operator": "=="
+                    })
+
+    # 2. Add Semantic Filters (from LLM analysis of query)
+    if metadata_option in ["langextract", "both"] and query_str:
+        try:
+            semantic_filters = extract_query_metadata_filters(query_str)
+            if semantic_filters:
+                for key, values in semantic_filters.items():
+                    for value in values:
+                        filters.append({
+                            "key": key,
+                            "value": value,
+                            "operator": "=="
+                        })
+        except Exception as e:
+            print(f"Warning: Semantic filter extraction failed: {e}")
     
     if not filters:
         return None
     
-    # Use OR condition - retrieve nodes that mention ANY of the entities
+    # Use OR condition - retrieve nodes that match ANY of the criteria
+    # Note: Ideally we might want AND for semantic filters and OR for entities, 
+    # but for now OR is safer to avoid over-filtering.
     return MetadataFilters.from_dicts(filters, condition="or")
 
 
@@ -771,7 +790,7 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
         QueryEngineTool: A QueryEngineTool that uses the fusion tree filter sort detail engine.
     """
 
-    # STEP 1: Entity-based filtering (if enabled)
+    # STEP 1: Entity-based and Semantic filtering (if enabled)
     entity_filters = None
     extracted_entities = {}
     
@@ -783,11 +802,16 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
             print(f"\n🔍 Entity Filtering Enabled")
             print(f"   Extracted entities from query: {extracted_entities}")
             
-            # Create metadata filters for entity-based filtering
-            entity_filters = create_entity_metadata_filters(extracted_entities, metadata_option)
-            
-            if entity_filters:
-                print(f"   Applying entity filters to retrieval...\n")
+        # Create metadata filters for entity-based and semantic filtering
+        # Note: We pass query_str to allow semantic extraction even if no entities found
+        entity_filters = create_entity_metadata_filters(
+            extracted_entities, 
+            metadata_option,
+            query_str=query_str
+        )
+        
+        if entity_filters:
+            print(f"   Applying metadata filters to retrieval...\n")
     
     # STEP 2: Keyphrase extraction for BM25
     text_nodes = get_text_nodes_from_query_keyphrase(

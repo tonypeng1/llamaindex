@@ -10,6 +10,25 @@ import textwrap
 import langextract as lx
 
 
+def get_paul_graham_schema_definitions():
+    """
+    Return the definitions of attributes for the Paul Graham schema.
+    Useful for query analysis and filtering.
+    """
+    return {
+        "concept_categories": ["technology", "business", "startups", "programming", "art", "education", "life", "philosophy", "writing"],
+        "concept_importance": ["high", "medium", "low"],
+        "advice_types": ["actionable", "cautionary", "philosophical", "tactical"],
+        "advice_domains": ["career", "startups", "learning", "creativity", "relationships", "decision_making"],
+        "experience_periods": ["childhood", "college", "grad_school", "viaweb", "yc", "post_yc", "general"],
+        "experience_sentiments": ["positive", "negative", "neutral", "mixed"],
+        "entity_roles": ["founder", "colleague", "investor", "friend", "company", "institution"],
+        "entity_significance": ["major", "minor"],
+        "time_decades": ["1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s", "unspecified"],
+        "time_specificity": ["exact_year", "approximate", "era"]
+    }
+
+
 def get_paul_graham_essay_schema():
     """
     Get extraction schema for Paul Graham essays.
@@ -25,8 +44,10 @@ def get_paul_graham_essay_schema():
     dict: Contains 'prompt' and 'examples' for LangExtract
     """
     
+    defs = get_paul_graham_schema_definitions()
+    
     prompt = textwrap.dedent(
-        """\
+        f"""\
         Extract structured information from Paul Graham's essay text.
         Focus on identifying key concepts, advice, personal experiences, and entities.
         Use exact text for extractions. Do not paraphrase or create overlapping entities.
@@ -34,24 +55,24 @@ def get_paul_graham_essay_schema():
         For each extraction, provide attributes from these predefined sets:
         
         Concept attributes:
-        - category: ["technology", "business", "startups", "programming", "art", "education", "life", "philosophy", "writing"]
-        - importance: ["high", "medium", "low"]
+        - category: {defs['concept_categories']}
+        - importance: {defs['concept_importance']}
         
         Advice attributes:
-        - type: ["actionable", "cautionary", "philosophical", "tactical"]
-        - domain: ["career", "startups", "learning", "creativity", "relationships", "decision_making"]
+        - type: {defs['advice_types']}
+        - domain: {defs['advice_domains']}
         
         Experience attributes:
-        - period: ["childhood", "college", "grad_school", "viaweb", "yc", "post_yc", "general"]
-        - sentiment: ["positive", "negative", "neutral", "mixed"]
+        - period: {defs['experience_periods']}
+        - sentiment: {defs['experience_sentiments']}
         
         Entity attributes (people/organizations):
-        - role: ["founder", "colleague", "investor", "friend", "company", "institution"]
-        - significance: ["major", "minor"]
+        - role: {defs['entity_roles']}
+        - significance: {defs['entity_significance']}
         
         Time attributes:
-        - decade: ["1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s", "unspecified"]
-        - specificity: ["exact_year", "approximate", "era"]
+        - decade: {defs['time_decades']}
+        - specificity: {defs['time_specificity']}
         
         Focus on extracting information that would be useful for:
         - Finding specific advice or lessons

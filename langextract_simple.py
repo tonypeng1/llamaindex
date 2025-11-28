@@ -53,6 +53,11 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import json
 import nest_asyncio
 import sys
+import logging
+# Suppress langextract and kor warnings
+logging.getLogger("langextract").setLevel(logging.ERROR)
+logging.getLogger("kor").setLevel(logging.ERROR)
+
 from pathlib import Path
 from typing import List, Optional
 
@@ -616,8 +621,8 @@ chunk_overlap = 64
 # Metadata extraction options:
 # None, "entity", "langextract", and "both"
 
-metadata = "entity"  # Change this to test different options
-# metadata = "langextract"  # Change this to test different options
+# metadata = "entity"  # Change this to test different options
+metadata = "langextract"  # Change this to test different options
 # metadata = None  # Change this to test different options
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
@@ -625,16 +630,16 @@ metadata = "entity"  # Change this to test different options
 schema_name = "paul_graham_detailed"
 
 # Entity-based filtering configuration
-use_entity_filtering = True
-# use_entity_filtering = False 
+# use_entity_filtering = True
+use_entity_filtering = False 
 
 # Fusion tree and reranker configuration
 similarity_top_k_fusion = 36
 num_queries = 1
 fusion_top_n = 32
-# rerank_top_n = 24
-rerank_top_n = 12
-num_nodes = 1 # For PrevNextNodePostprocessor
+rerank_top_n = 24
+# rerank_top_n = 12
+num_nodes = 0 # For PrevNextNodePostprocessor
 
 # print metadata extraction info and fusion tree and reranker configurations
 print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
@@ -763,7 +768,8 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What strategic advice is given about startups?"
 # query_str = "Has the author been to Europe?"
 # query_str = "What was mentioned about Jessica from pages 17 to 19?"
-query_str = "List all people mentioned in the document."
+# query_str = "List all people mentioned in the document."
+query_str = "What experiences from the 1990s are described?"
 
 # query_str = "Create table of contents for this article."
 
