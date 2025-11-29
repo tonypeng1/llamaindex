@@ -12,13 +12,35 @@
 
 ## Quick Start
 
+### Requirements
+
+- Python 3.11.1+ (see `pyproject.toml`)
+- Access to Milvus 2.x at `http://localhost:19530`
+- Access to MongoDB at `mongodb://localhost:27017/`
+- Paul Graham PDF placed at `./data/paul_graham/paul_graham_essay.pdf`
+- `.env` containing `OPENAI_API_KEY` (LangExtract or both) and `ANTHROPIC_API_KEY`
+
+### Setup & Run
+
+1. Install dependencies (`uv pip install -e .` or `pip install -e .`).
+2. Start Milvus and MongoDB (update `uri_milvus` / `uri_mongo` in `langextract_simple.py` if your endpoints differ).
+3. Download the article and place it under `data/paul_graham/` as shown above.
+4. Create/update `.env` with required API keys.
+5. Run the pipeline:
+    ```bash
+    uv run python langextract_simple.py
+    # or
+    python langextract_simple.py
+    ```
+    Adjust the configuration variables below before running if you need a different metadata mode or retrieval profile.
+
 ### Configuration
 
 Edit these variables in `langextract_simple.py`:
 
 ```python
 # Metadata extraction method
-metadata = "entity"  # Options: None, "entity", "langextract", "both"
+metadata = "langextract"  # Options: None, "entity", "langextract", "both"
 
 # LangExtract schema (only for "langextract" or "both")
 schema_name = "paul_graham_detailed"  # or "paul_graham_simple"
@@ -29,9 +51,11 @@ use_entity_filtering = True  # Enable/disable entity filtering
 # Advanced Configuration
 chunk_size = 256              # Smaller chunks = more precise retrieval
 chunk_overlap = 64            # Overlap to maintain context
-similarity_top_k_fusion = 36  # Initial retrieval count
-fusion_top_n = 32             # Post-fusion count
-rerank_top_n = 24             # Post-reranking count
+similarity_top_k_fusion = 48  # Initial retrieval count
+fusion_top_n = 42             # Post-fusion count before reranking
+rerank_top_n = 32             # Post-reranking count
+num_queries = 1               # Fusion query fan-out (1 disables query generation)
+num_nodes = 0                 # SafePrevNext node expansion
 ```
 
 ### Decision Tree
@@ -88,8 +112,7 @@ metadata = "entity"
 **Output:**
 - Named entities: PERSON, ORGANIZATION, LOCATION
 - Uses local HuggingFace model
-- Processing time: ~30 seconds for 30 pages
-- Cost: **FREE**
+- Cost: LLM API calls
 
 **Metadata example:**
 ```python
@@ -115,8 +138,7 @@ schema_name = "paul_graham_detailed"  # or "paul_graham_simple"
 
 **Output:**
 - Concepts, advice, experiences, entities, time references
-- Processing time: ~15 minutes for 30 pages
-- Cost: ~**$2 for 30 pages** (GPT-4)
+- Cost: LLM API calls
 
 **Metadata example:**
 ```python
@@ -149,8 +171,7 @@ schema_name = "paul_graham_detailed"
 
 **Output:**
 - All EntityExtractor + All LangExtract metadata
-- Processing time: ~16 minutes for 30 pages
-- Cost: ~**$2 for 30 pages**
+- Cost: LLM API calls
 
 ---
 
@@ -177,9 +198,9 @@ The system uses **two parallel retrievers** that are always fused together:
    - Purpose: Find semantically relevant results, optionally filtered by entities
 
 3. **Fusion Layer**
-   - ALWAYS combines both retrievers with 50/50 weighting
-   - Uses "relative_score" mode for fair combination
-   - Followed by ColBERT reranking for final precision
+    - Uses `QueryFusionRetriever` in `reciprocal_rerank` mode to merge rankings
+    - Automatically balances BM25 + vector scores (no manual weighting)
+    - Followed by ColBERT reranking for final precision
 
 ### How It Works
 
@@ -190,24 +211,24 @@ Extract entities: ["Paul Graham" (PER), "Y Combinator" (ORG)]
     ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ STEP 1: BM25 Retrieval (Keyword-based)                     │
-│   • Keyphrase extraction (KeyBERT)                         │
+│   • Keyphrase extraction (KeyBERT) for long query          │
 │   • Operates on MongoDB docstore                           │
 │   • NO entity filtering                                    │
-│   • Retrieves nodes matching keyphrases                    │
+│   • Retrieves nodes matching keyphrases or original query  │
 └─────────────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ STEP 2: Vector Retrieval (Semantic)                        │
 │   • Operates on Milvus vector index                        │
-│   • WITH entity filters (only nodes with entities)         │
+│   • Optional entity filters (only nodes with entities)     │
 │   • Retrieves semantically similar nodes                   │
 └─────────────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ STEP 3: Fusion                                              │
-│   • ALWAYS combines both retrievers (50/50 weighting)      │
+│   • QueryFusionRetriever (reciprocal-rank fusion)          │
 │   • BM25 results (unfiltered) + Vector results (filtered)  │
-│   • Uses "relative_score" mode                             │
+│   • Automatic score balancing (no manual weights)          │
 └─────────────────────────────────────────────────────────────┘
     ↓
 ColBERT reranking
@@ -218,7 +239,7 @@ High-precision results! 🎯
 **Key Points:**
 - **BM25**: Always operates on full MongoDB docstore, no entity filtering
 - **Vector**: Can be entity-filtered when `use_entity_filtering = True`
-- **Fusion**: ALWAYS combines both approaches for hybrid retrieval
+- **Fusion**: `QueryFusionRetriever` (reciprocal rank) merges both approaches every time
 - **Result**: Balance between keyword matching (BM25) and semantic relevance (Vector)
 
 ### Configuration
@@ -237,9 +258,11 @@ You can fine-tune the retrieval pipeline with these parameters in `langextract_s
 
 ```python
 # 1. Retrieval Parameters
-similarity_top_k_fusion = 36  # Initial retrieval count from vector store
-fusion_top_n = 32             # Number of nodes to keep after fusing BM25 + Vector results
-rerank_top_n = 24             # Final number of nodes after ColBERT reranking
+similarity_top_k_fusion = 48  # Initial retrieval count from vector store
+fusion_top_n = 42             # Number of nodes to keep after fusing BM25 + Vector results
+rerank_top_n = 32             # Final number of nodes after ColBERT reranking
+num_queries = 1               # Fusion query fan-out (1 disables query generation)
+num_nodes = 0                 # Additional context via SafePrevNext postprocessor
 
 # 2. Chunking Strategy
 chunk_size = 256              # Smaller chunks (256) = more precise retrieval
