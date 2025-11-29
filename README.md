@@ -4,6 +4,11 @@ A Retrieval Augmented Generation (RAG) system that uses sub-question and tool-se
 
 ## Quick Start
 
+### Requirements
+
+- Python 3.11.1+ (matches `pyproject.toml`)
+- Access to Milvus 2.x at `http://localhost:19530` and MongoDB at `mongodb://localhost:27017/` (default URIs hard-coded in `langextract_simple.py`)
+
 ### Clone the Repository
 
 ```bash
@@ -34,13 +39,20 @@ uv pip install -e .
    ./data/paul_graham/paul_graham_essay.pdf
    ```
 
-2. **Database setup**: Ensure Milvus and MongoDB are running locally or accessible via network.
+2. **Database setup**: Ensure Milvus and MongoDB are running locally or accessible via network. By default the script points to `http://localhost:19530` for Milvus and `mongodb://localhost:27017/` for MongoDB—change `uri_milvus` / `uri_mongo` in `langextract_simple.py` if you host them elsewhere.
 
 3. **API Keys**: Create a `.env` file with your API keys:
    ```
    OPENAI_API_KEY=your_openai_api_key
    ANTHROPIC_API_KEY=your_anthropic_api_key
    ```
+
+4. **Run the pipeline**: Execute the main script once the databases and keys are ready:
+    ```bash
+    uv run python langextract_simple.py
+    # or just: python langextract_simple.py
+    ```
+    Customize `metadata`, `schema_name`, and other knobs in the script before running if you want a different extraction mode.
 
 ### Contributing
 
@@ -68,7 +80,7 @@ Please use `uv` for installing dependencies and managing your Python environment
 - **Hybrid Retrieval**: Combines vector similarity search with BM25 keyword matching
   - **BM25 Retriever**: Operates on MongoDB docstore, keyword-based, no entity filtering
   - **Vector Retriever**: Operates on Milvus vector index, semantic search, optional entity filtering
-  - **Fusion**: Always combines both retrievers with 50/50 weighting for optimal results
+    - **Fusion**: Uses `QueryFusionRetriever` in reciprocal rank fusion mode to merge both rankings (no manual weighting required)
 - **KeyBERT Integration**: Reduces BM25 noise by extracting key phrases before retrieval
 - **Advanced Post-processing**: Reranking, context expansion, and page-based sorting
 - **Configurable Pipeline**: Fine-tune chunking, overlap, and retrieval parameters
@@ -106,16 +118,18 @@ The system supports four metadata extraction methods to suit different needs:
 **Quick Configuration:**
 ```python
 # In langextract_simple.py, set:
-metadata = "entity"  # Options: None, "entity", "langextract", "both"
+metadata = "langextract"  # Options: None, "entity", "langextract", "both"
 schema_name = "paul_graham_detailed"  # For LangExtract
 use_entity_filtering = True  # Enable entity-based filtering (default: True)
 
 # Advanced Configuration
 chunk_size = 256              # Smaller chunks = more precise retrieval
 chunk_overlap = 64            # Overlap to maintain context
-similarity_top_k_fusion = 36  # Initial retrieval count
-fusion_top_n = 32             # Post-fusion count
-rerank_top_n = 24             # Post-reranking count
+similarity_top_k_fusion = 48  # Initial retrieval count (matches current script)
+fusion_top_n = 42             # Post-fusion count before reranking
+rerank_top_n = 32             # Nodes kept after ColBERT re-ranking
+num_queries = 1               # Fusion query fan-out (1 = disable query generation)
+num_nodes = 0                 # Neighbor nodes to add via SafePrevNextNodePostprocessor
 ```
 
 **Documentation:**
