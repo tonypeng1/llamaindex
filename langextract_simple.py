@@ -634,8 +634,8 @@ metadata = "langextract"
 schema_name = "paul_graham_detailed"
 
 # Entity-based filtering configuration
-use_entity_filtering = True
-# use_entity_filtering = False 
+# use_entity_filtering = True
+use_entity_filtering = False 
 
 # Fusion tree and reranker configuration
 similarity_top_k_fusion = 36

@@ -30,6 +30,9 @@ from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from llama_index.vector_stores.milvus import MilvusVectorStore
 from langextract_integration import extract_query_metadata_filters
 
+# Instantiate once to avoid repeatedly loading the embedding model
+kw_model = KeyBERT()
+
 
 class SafePrevNextNodePostprocessor(PrevNextNodePostprocessor):
     """
@@ -321,24 +324,48 @@ def get_keyphrase_from_query_str(query_str: str) -> str:
     str: A string containing the extracted keyphrases.
     """
 
-    # Initialize KeyBERT model
-    kw_model = KeyBERT()
-
     # Extract keywords (keyphrases) from the query string
+    # use_mmr=True adds diversity to reduce overlapping/redundant phrases
     keywords = kw_model.extract_keywords(
         docs=query_str,
         keyphrase_ngram_range=(1, 3),  # Allow 1-3 word phrases for flexibility
+        stop_words="english",          # Filter stopwords (explicit, same as default)
         top_n=5,
+        use_mmr=True,                  # Maximal Marginal Relevance for diversity
+        diversity=0.7,                 # Higher = more diverse keyphrases (0-1)
     )
 
-    # Create a set to store unique keywords
-    keywords_set = set()
-    for k in keywords:
-        if k[0]:  # Check if keyphrase is not empty
-            keywords_set.update(k[0].split())
-
-    # Concatenate the keywords into a single string
-    final_keywords = " ".join(keywords_set)
+    # Common stopwords to filter out (not useful for BM25 retrieval). There were instances that
+    # KeyBERT returned SOME stopwords as keyphrases, so we filter them out here.
+    stopwords = {
+        'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'must', 'can', 'to', 'of', 'in', 'for',
+        'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+        'before', 'after', 'above', 'below', 'between', 'under', 'again',
+        'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
+        'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+        'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+        'just', 'and', 'but', 'if', 'or', 'because', 'until', 'while', 'about',
+        'any', 'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those',
+        'am', 'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves',
+        'you', 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his',
+        'himself', 'she', 'her', 'hers', 'herself', 'it', 'its', 'itself',
+        'they', 'them', 'their', 'theirs', 'themselves'
+    }
+    
+    # Deduplicate and filter stopwords: keep unique meaningful words while preserving order
+    seen_words = set()
+    unique_words = []
+    for keyphrase, score in keywords:
+        if keyphrase:
+            for word in keyphrase.split(): # Split keyphrase into words since BM25 does not support PHRASES
+                word_lower = word.lower()
+                if word_lower not in seen_words and word_lower not in stopwords:
+                    seen_words.add(word_lower)
+                    unique_words.append(word)
+    
+    final_keywords = " ".join(unique_words)
 
     # Fallback to original query if no keywords extracted
     if not final_keywords or final_keywords.strip() == ".":
@@ -696,9 +723,11 @@ def get_text_nodes_from_query_keyphrase(
         query_str: str
         ) -> List[int]:
     """
-    This function takes a vectorized document store, a similarity top-k value, and a query string.
-    It creates a BM25 retriever, extracts a keyphrase from the query string, and uses the BM25 retriever
-    and the keyphrase to get a list of page numbers containing the keyphrase, sorted in ascending order.
+    Retrieve text nodes relevant to a query using BM25, optionally aided by KeyBERT keyphrases.
+
+    The query length determines whether KeyBERT extracts a keyphrase (>=30 words, or >=20 words with
+    two+ sentences). Shorter queries skip KeyBERT and use the raw text, ensuring lightweight execution
+    while still returning BM25-matched nodes from the docstore.
 
     :param vector_docstore: A vectorized document store.
     :param similarity_top_k: An integer value representing the number of results to return.
@@ -711,11 +740,21 @@ def get_text_nodes_from_query_keyphrase(
         docstore=vector_docstore,
     )
 
-    # Get keyphrase from the query string using the keyBURT model
-    query_keyphrase = get_keyphrase_from_query_str(query_str)
+    # Decide whether KeyBERT is warranted based on query length/complexity
+    num_words = len(query_str.split())
+    num_sentences = len(re.findall(r"[\.!?]", query_str))
+    should_use_keybert = num_words >= 30 or (num_words >= 20 and num_sentences >= 2)
+
+    if should_use_keybert:
+        query_keyphrase = get_keyphrase_from_query_str(query_str)
+    else:
+        query_keyphrase = query_str
 
     print(f"\nThe query in keyphrase tool is: {query_str}")
-    print(f"\n📌The keyphrase is: {query_keyphrase}\n")
+    if should_use_keybert:
+        print(f"\n📌The keyphrase is: {query_keyphrase} (KeyBERT)\n")
+    else:
+        print("\n📌Keyphrase extraction skipped; using raw query for BM25.\n")
 
     # Get page numbers containing the keyphrase using bm25 model, sorted in ascending order
     bm25_score_nodes = bm25_retriever.retrieve(query_keyphrase)
