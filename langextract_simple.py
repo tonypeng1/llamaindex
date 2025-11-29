@@ -483,36 +483,6 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
     return _fusion_tree_page_filter_sort_detail_tool
 
 
-class LazyQueryEngine:
-    """Instantiate the underlying query engine only when first queried."""
-
-    # This wrapper defers tool creation until the sub-question engine actually calls
-    # the query, preventing eager page-filter initialization (and its logging) when
-    # the tool is merely registered but not used.
-
-    def __init__(self, factory):
-        self._factory = factory
-        self._engine = None
-
-    def _ensure_engine(self):
-        if self._engine is None:
-            self._engine = self._factory()
-
-    def query(self, *args, **kwargs):
-        self._ensure_engine()
-        return self._engine.query(*args, **kwargs)
-
-    async def aquery(self, *args, **kwargs):
-        self._ensure_engine()
-        if hasattr(self._engine, "aquery"):
-            return await self._engine.aquery(*args, **kwargs)
-        raise NotImplementedError("Underlying query engine does not support async queries.")
-
-    def __getattr__(self, item):
-        self._ensure_engine()
-        return getattr(self._engine, item)
-
-
 def create_custom_guidance_prompt() -> str:
     """
     Create a custom prompt template for GuidanceQuestionGenerator.
@@ -616,6 +586,36 @@ def create_custom_guidance_prompt() -> str:
     # custom_guidance_prompt = convert_to_handlebars(PREFIX + EXAMPLE_1 + SUFFIX)
     
     return custom_guidance_prompt
+
+
+class LazyQueryEngine:
+    """Instantiate the underlying query engine only when first queried."""
+
+    # This wrapper defers tool creation until the sub-question engine actually calls
+    # the query, preventing eager page-filter initialization (and its logging) when
+    # the tool is merely registered but not used.
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._engine = None
+
+    def _ensure_engine(self):
+        if self._engine is None:
+            self._engine = self._factory()
+
+    def query(self, *args, **kwargs):
+        self._ensure_engine()
+        return self._engine.query(*args, **kwargs)
+
+    async def aquery(self, *args, **kwargs):
+        self._ensure_engine()
+        if hasattr(self._engine, "aquery"):
+            return await self._engine.aquery(*args, **kwargs)
+        raise NotImplementedError("Underlying query engine does not support async queries.")
+
+    def __getattr__(self, item):
+        self._ensure_engine()
+        return getattr(self._engine, item)
 
 
 def build_page_filter_query_engine():
