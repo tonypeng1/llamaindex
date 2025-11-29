@@ -668,8 +668,8 @@ chunk_overlap = 64
 # None, "entity", "langextract", and "both"
 
 # metadata = "both"
-metadata = "entity"
-# metadata = "langextract"
+# metadata = "entity"
+metadata = "langextract"
 # metadata = None
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
@@ -814,7 +814,7 @@ summary_tool = get_summary_tree_detail_tool(
 
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
-# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "What strategic advice is given about startups?"
 # query_str = "Has the author been to Europe?"
 # query_str = "What was mentioned about Jessica from pages 17 to 19?"
@@ -822,7 +822,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What experiences from the 1990s are described?"
 # query_str = "What programming concepts are given in the document?"
 # query_str = "Who are mentioned as colleagues in the document?"
-query_str = "Does the author have any advice on relationships?"
+# query_str = "Does the author have any advice on relationships?"
 
 # query_str = "Create table of contents for this article."
 
@@ -890,7 +890,7 @@ page_tool_description = (
                 "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
                 )
 
-# Use LazyQueryEngine to defer initialization until first use
+# Use LazyQueryEngine to defer initialization until first use (to avoid eager logging)
 lazy_page_filter_engine = LazyQueryEngine(build_page_filter_query_engine)
 
 page_filter_tool = QueryEngineTool.from_defaults(

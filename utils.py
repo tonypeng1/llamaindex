@@ -412,7 +412,7 @@ def get_fusion_tree_filter_sort_detail_engine(
         similarity_top_k=fusion_top_n,
         num_queries=num_queries,
         mode="reciprocal_rerank",
-        retriever_weights=[0.5, 0.5],
+        # retriever_weights=[0.5, 0.5], # not used in reciprocal_rerank mode
         use_async=True,
         verbose=True,
     )
@@ -488,8 +488,8 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
                                         ],
                                 similarity_top_k=fusion_top_n,
                                 num_queries=num_queries,  # set this to 1 to disable query generation
-                                mode="relative_score",
-                                retriever_weights=[0.5, 0.5],
+                                mode="reciprocal_rerank",
+                                # retriever_weights=[0.5, 0.5], # not used in reciprocal_rerank mode
                                 use_async=True,
                                 verbose=True,
                                 )
