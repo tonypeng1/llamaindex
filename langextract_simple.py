@@ -684,12 +684,16 @@ use_entity_filtering = True
 page_filter_verbose = True  # Set to False when you want quieter runs
 
 # Fusion tree and reranker configuration
-similarity_top_k_fusion = 36
-num_queries = 1
-fusion_top_n = 32
-rerank_top_n = 24
-# rerank_top_n = 12
-num_nodes = 0 # For PrevNextNodePostprocessor
+# similarity_top_k_fusion = 36
+# num_queries = 1
+# fusion_top_n = 32
+# rerank_top_n = 24
+
+similarity_top_k_fusion = 48
+num_queries = 1  # number of queries for fusion engine
+fusion_top_n = 42
+rerank_top_n = 32
+num_nodes = 0 # For SafePrevNextNodePostprocessor
 
 # print metadata extraction info and fusion tree and reranker configurations
 print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
