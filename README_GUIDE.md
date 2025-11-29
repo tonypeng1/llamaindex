@@ -2,11 +2,29 @@
 
 ## Table of Contents
 - [Quick Start](#quick-start)
+    - [Requirements](#requirements)
+    - [Setup & Run](#setup--run)
+    - [Configuration](#configuration)
+    - [Decision Tree](#decision-tree)
 - [Metadata Extraction Options](#metadata-extraction-options)
+    - [Option 1: None (Basic)](#option-1-none-basic)
+    - [Option 2: EntityExtractor](#option-2-entityextractor)
+    - [Option 3: LangExtract](#option-3-langextract)
+    - [Option 4: Both](#option-4-both-entityextractor--langextract)
 - [Entity-Based Filtering](#entity-based-filtering)
-- [Visual Guides](#visual-guides)
-- [Performance & Cost](#performance--cost)
-- [Troubleshooting](#troubleshooting)
+    - [Overview](#overview)
+    - [Architecture](#architecture)
+    - [How It Works](#how-it-works)
+    - [Configuration](#configuration-1)
+    - [Advanced Configuration](#advanced-configuration)
+    - [Supported Entities](#supported-entities)
+    - [Query Examples](#query-examples)
+    - [Processing Pipeline](#processing-pipeline)
+- [Testing](#testing)
+    - [Test Entity Filtering](#test-entity-filtering)
+    - [Test Workflow](#test-workflow)
+    - [Query Examples by Type](#query-examples-by-type)
+- [Files in This Implementation](#files-in-this-implementation)
 
 ---
 
