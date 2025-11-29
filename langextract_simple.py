@@ -380,6 +380,8 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
     _query_str: str, 
     _reranker: ColbertRerank,
     _vector_docstore: MongoDocumentStore,
+    *,
+    verbose: bool = False,
     ) -> QueryEngineTool:
     """
     This function generates a QueryEngineTool that extracts specific pages from a document store,
@@ -431,7 +433,8 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
     prompt = PromptTemplate(query_text)
     _page_numbers = llm.predict(prompt=prompt, query_str=_query_str)
     _page_numbers = json.loads(_page_numbers)  # Convert the string to a list of string
-    print(f"Page_numbers in page filter: {_page_numbers}")
+    if verbose:
+        print(f"Page_numbers in page filter: {_page_numbers}")
 
     # Get text nodes from the vector docstore that match the page numbers
     _text_nodes = []
@@ -440,11 +443,11 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
             _text_nodes.append(node) 
 
     node_length = len(vector_docstore.docs)
-    print(f"Node length in docstore: {node_length}")
-
-    print(f"Text nodes retrieved from docstore length is: {len(_text_nodes)}")
-    for i, n in enumerate(_text_nodes):
-        print(f"Item {i+1} of the text nodes retrieved from docstore is page: {n.metadata['source']}")
+    if verbose:
+        print(f"Node length in docstore: {node_length}")
+        print(f"Text nodes retrieved from docstore length is: {len(_text_nodes)}")
+        for i, n in enumerate(_text_nodes):
+            print(f"Item {i+1} of the text nodes retrieved from docstore is page: {n.metadata['source']}")
     
     _vector_filter_retriever = vector_index.as_retriever(
                                     similarity_top_k=node_length,
@@ -478,6 +481,36 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
                                                         )
 
     return _fusion_tree_page_filter_sort_detail_tool
+
+
+class LazyQueryEngine:
+    """Instantiate the underlying query engine only when first queried."""
+
+    # This wrapper defers tool creation until the sub-question engine actually calls
+    # the query, preventing eager page-filter initialization (and its logging) when
+    # the tool is merely registered but not used.
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._engine = None
+
+    def _ensure_engine(self):
+        if self._engine is None:
+            self._engine = self._factory()
+
+    def query(self, *args, **kwargs):
+        self._ensure_engine()
+        return self._engine.query(*args, **kwargs)
+
+    async def aquery(self, *args, **kwargs):
+        self._ensure_engine()
+        if hasattr(self._engine, "aquery"):
+            return await self._engine.aquery(*args, **kwargs)
+        raise NotImplementedError("Underlying query engine does not support async queries.")
+
+    def __getattr__(self, item):
+        self._ensure_engine()
+        return getattr(self._engine, item)
 
 
 def create_custom_guidance_prompt() -> str:
@@ -585,6 +618,16 @@ def create_custom_guidance_prompt() -> str:
     return custom_guidance_prompt
 
 
+def build_page_filter_query_engine():
+    tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
+        query_str,
+        colbert_reranker,
+        vector_docstore,
+        verbose=page_filter_verbose,
+    )
+    return tool.query_engine
+
+
 # Set LLM and embedding models
 ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
 llm = Anthropic(
@@ -625,8 +668,8 @@ chunk_overlap = 64
 # None, "entity", "langextract", and "both"
 
 # metadata = "both"
-# metadata = "entity"
-metadata = "langextract"
+metadata = "entity"
+# metadata = "langextract"
 # metadata = None
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
@@ -634,8 +677,11 @@ metadata = "langextract"
 schema_name = "paul_graham_detailed"
 
 # Entity-based filtering configuration
-# use_entity_filtering = True
-use_entity_filtering = False 
+use_entity_filtering = True
+# use_entity_filtering = False 
+
+# Page filter debug logging
+page_filter_verbose = True  # Set to False when you want quieter runs
 
 # Fusion tree and reranker configuration
 similarity_top_k_fusion = 36
@@ -844,11 +890,14 @@ page_tool_description = (
                 "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
                 )
 
-page_filter_tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
-                                                    query_str,
-                                                    colbert_reranker,
-                                                    vector_docstore,
-                                                    )
+# Use LazyQueryEngine to defer initialization until first use
+lazy_page_filter_engine = LazyQueryEngine(build_page_filter_query_engine)
+
+page_filter_tool = QueryEngineTool.from_defaults(
+    name="page_filter_tool",
+    query_engine=lazy_page_filter_engine,
+    description=page_tool_description,
+    )
 
 CUSTOM_GUIDANCE_PROMPT = create_custom_guidance_prompt()
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
