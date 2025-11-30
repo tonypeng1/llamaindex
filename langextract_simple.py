@@ -648,7 +648,7 @@ similarity_top_k_fusion = 48
 num_queries = 1  # number of queries for fusion engine
 fusion_top_n = 42
 rerank_top_n = 32
-num_nodes = 1 # For SafePrevNextNodePostprocessor
+num_nodes = 0 # For SafePrevNextNodePostprocessor
 
 # print metadata extraction info and fusion tree and reranker configurations
 print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
@@ -772,8 +772,9 @@ summary_tool = get_summary_tree_detail_tool(
                                         )
 
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
-# query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
-query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
+# query_str = "What was mentioned about Jessica from pages 17 to 22? Please cite page numbers in your answer."
+query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
+# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "What strategic advice is given about startups?"
 # query_str = "Has the author been to Europe?"
 # query_str = "What was mentioned about Jessica from pages 17 to 19?"

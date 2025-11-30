@@ -322,12 +322,32 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
         llm = Settings.llm or OpenAI(model="gpt-4o")
         response = llm.complete(prompt)
         
-        # Parse JSON response
+        # Parse JSON response - handle various formats LLMs might return
         response_text = response.text.strip()
-        if response_text.startswith("```json"):
+        
+        # Try to extract JSON from markdown code blocks
+        if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
-        elif response_text.startswith("```"):
-            response_text = response_text.split("```")[1].split("```")[0].strip()
+        elif "```" in response_text:
+            # Handle plain code blocks - extract content between first pair of ```
+            parts = response_text.split("```")
+            if len(parts) >= 3:
+                response_text = parts[1].strip()
+            elif len(parts) == 2:
+                # Possibly just opening ``` with content after
+                response_text = parts[1].strip() if parts[1].strip() else parts[0].strip()
+        
+        # Try to find JSON object in the response if not already clean JSON
+        if not response_text.startswith("{"):
+            # Look for a JSON object anywhere in the response
+            import re
+            json_match = re.search(r'\{[^{}]*\}', response_text)
+            if json_match:
+                response_text = json_match.group()
+        
+        # Handle empty or whitespace-only response
+        if not response_text or response_text.isspace():
+            return {}
             
         filters = json.loads(response_text)
         
@@ -336,6 +356,11 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
             
         return filters
         
+    except json.JSONDecodeError as e:
+        # Log the actual response for debugging
+        print(f"Warning: Failed to extract query filters (JSON parse error): {e}")
+        print(f"   LLM response was: '{response.text[:200]}...' " if len(response.text) > 200 else f"   LLM response was: '{response.text}'")
+        return {}
     except Exception as e:
         print(f"Warning: Failed to extract query filters: {e}")
         return {}
