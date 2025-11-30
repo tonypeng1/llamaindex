@@ -115,7 +115,7 @@ The system supports four metadata extraction methods to suit different needs:
 - **Speed**: ⚡ Slowest
 - **Cost**: LLM API cost
 
-**Quick Configuration:**
+## Quick Configuration:
 ```python
 # In langextract_simple.py, set:
 metadata = "langextract"  # Options: None, "entity", "langextract", "both"
@@ -132,24 +132,24 @@ num_queries = 1               # Fusion query fan-out (1 = disable query generati
 num_nodes = 0                 # Neighbor nodes to add via SafePrevNextNodePostprocessor
 ```
 
-### Schema Definitions and Dynamic Loading
+## Schema Definitions and Dynamic Loading
 
 The LangExtract metadata extraction uses schema definitions that specify allowed attribute values (e.g., `concept_categories`, `advice_domains`, `experience_periods`). These definitions are managed by `get_paul_graham_schema_definitions()` in `langextract_schemas.py`.
 
-#### Two Operating Modes
+### Two Operating Modes
 
 | Mode | When Used | Source | Purpose |
 |------|-----------|--------|---------|
 | **Static** (`use_dynamic_loading=False`) | During ingestion | Hardcoded defaults | Guides LLM on what attributes to extract |
 | **Dynamic** (`use_dynamic_loading=True`) | During query filtering | MongoDB collection | Tells LLM what filter values actually exist |
 
-#### Why Two Modes?
+### Why Two Modes?
 
 1. **Ingestion Time**: When processing documents for the first time, the MongoDB collection doesn't exist yet. The schema uses static defaults to tell the extraction LLM what attribute categories are valid (e.g., "classify this concept as one of: technology, business, startups...").
 
 2. **Query Time**: When filtering queries (e.g., "What advice about startups?"), the function loads actual distinct values from MongoDB. This ensures the LLM only suggests filters that match stored metadata.
 
-#### Key Functions
+### Key Functions
 
 ```python
 # langextract_schemas.py
@@ -175,7 +175,7 @@ extract_query_metadata_filters(query_str, schema_name)
 # Uses dynamic loading (use_dynamic_loading=True) to get actual stored values
 ```
 
-#### Schema Attributes
+### Schema Attributes
 
 The Paul Graham detailed schema extracts these attribute categories:
 
@@ -226,113 +226,54 @@ See [this Medium article](https://medium.com/@tony3t3t/rag-with-sub-question-and
 
 ### Overview
 
-`langextract_simple.py` is an advanced Retrieval-Augmented Generation (RAG) system that implements a sophisticated multi-tool query engine for question-answering over PDF documents. The script combines vector-based semantic search with BM25 keyword-based retrieval using a sub-question decomposition approach to answer complex user queries about document content.
+`langextract_simple.py` is a RAG system combining vector-based semantic search with BM25 keyword retrieval using sub-question decomposition for PDF document Q&A.
 
-### Core Functionality
+### Core Workflow
 
-The script processes PDF documents through the following workflow:
+1. **Document Processing**: Loads PDFs and splits into sentence-based chunks
+2. **Dual Storage**: Embeddings in Milvus, metadata in MongoDB
+3. **Multi-Tool Routing**: Routes queries to specialized tools via sub-question decomposition
+4. **Re-ranking**: ColBERT neural re-ranking for improved retrieval quality
 
-1. **Document Loading & Parsing**: Loads PDF documents and splits them into manageable chunks using sentence-based splitting with configurable chunk sizes and overlaps
-2. **Dual Storage Architecture**: Stores document embeddings in Milvus (vector database) and document metadata in MongoDB for efficient hybrid retrieval
-3. **Multi-Tool Query System**: Routes queries to specialized tools based on query characteristics
-4. **Sub-Question Decomposition**: Breaks down complex queries into simpler sub-questions that are routed to appropriate tools
-5. **Advanced Re-ranking**: Uses ColBERT neural re-ranking to improve retrieval quality
+### Key Libraries
 
-### Key Imported Libraries
+| Category | Components |
+|----------|------------|
+| **LlamaIndex Core** | `VectorStoreIndex`, `Settings`, `IngestionPipeline`, `SentenceSplitter`, `SubQuestionQueryEngine`, `QueryEngineTool`, `MetadataFilters` |
+| **LLM & Embeddings** | Anthropic (claude-sonnet-4-0), OpenAI (text-embedding-3-small) |
+| **Processors** | `EntityExtractor`, `ColbertRerank`, `PrevNextNodePostprocessor`, `PageSortNodePostprocessor` |
+| **Retrieval** | `BM25Retriever`, `QueryFusionRetriever` |
+| **Storage** | `PyMuPDFReader`, `MilvusVectorStore`, `MongoDocumentStore` |
+| **Query Generation** | `GuidanceQuestionGenerator`, `KeyBERT` |
 
-#### **LlamaIndex Core Components** (`llama_index.core`)
-- **VectorStoreIndex**: Creates and manages vector-based document indexes for semantic search
-- **Settings**: Configures global LLM and embedding model settings
-- **CallbackManager & LlamaDebugHandler**: Provides debugging and tracing capabilities
-- **IngestionPipeline**: Orchestrates document processing transformations
-- **SentenceSplitter**: Splits documents into chunks at sentence boundaries
-- **SubQuestionQueryEngine**: Decomposes complex queries into simpler sub-questions
-- **QueryEngineTool**: Wraps query engines as tools for the sub-question engine
-- **MetadataFilters**: Enables filtering retrieval results by metadata (e.g., page numbers)
+### Custom Modules
 
-#### **LLM & Embedding Models**
-- **Anthropic**: claude-sonnet-4-0 model for natural language understanding and generation
-- **OpenAIEmbedding**: text-embedding-3-small model for converting text into 1536-dimensional vectors
+- **`db_operation.py`**: Database existence checks, creation, and persistence management
+- **`utils.py`**: Prompt templates, fusion retrieval, tool configuration, keyphrase extraction
 
-#### **Specialized Processors**
-- **EntityExtractor** (`llama_index.extractors.entity`): Extracts named entities (people, organizations, locations) from text using a multilingual BERT model
-- **ColbertRerank** (`llama_index.postprocessor.colbert_rerank`): Neural re-ranking using ColBERT for improved retrieval accuracy
-- **PrevNextNodePostprocessor** (from `utils.py`): Retrieves adjacent context nodes for better answer completeness
-- **PageSortNodePostprocessor** (from `utils.py`): Sorts retrieved nodes by page number and position for coherent responses
+## Technical Architecture
 
-#### **Retrieval Methods**
-- **BM25Retriever** (`llama_index.retrievers.bm25`): Implements BM25 probabilistic keyword-based retrieval (Okapi BM25 algorithm)
-- **QueryFusionRetriever** (from `utils.py`): Combines vector and BM25 retrieval using reciprocal rank fusion
+**Hybrid Retrieval Pipeline:**
+- **Semantic Search** (Milvus): Dense vector embeddings for conceptual similarity
+- **Keyword Search** (MongoDB): BM25 for precise keyword matching
+- **Fusion**: Reciprocal rank fusion (50/50 weighting)
+- **Re-ranking**: ColBERT for fine-grained relevance scoring
 
-#### **Document Readers & Storage**
-- **PyMuPDFReader** (`llama_index.readers.file`): Reads and extracts text from PDF files with page-level metadata
-- **MilvusVectorStore** (`llama_index.vector_stores.milvus`): Interfaces with Milvus for vector similarity search
-- **MongoDocumentStore** (`llama_index.storage.docstore.mongodb`): Stores document text and metadata in MongoDB
+### Entity Filtering (when enabled)
 
-#### **Query Generation**
-- **GuidanceQuestionGenerator** (`llama_index.question_gen.guidance`): Uses structured generation (Guidance library) with GPT-4o to decompose queries into focused sub-questions
-- **KeyBERT** (from `utils.py` via `keybert`): Extracts keyphrases from queries for enhanced BM25 retrieval
+| Retriever | Database | Entity Filtering | Purpose |
+|-----------|----------|------------------|---------|
+| BM25 | MongoDB | None | Ensures keyword matches aren't missed |
+| Vector | Milvus | Applied | Improves precision for entity-focused queries |
 
-#### **Database Operations**
-Custom utility functions (`db_operation.py`) handle database management:
-- Check existence of Milvus collections and MongoDB namespaces
-- Create databases and count collection items
-- Manage data persistence across sessions
+Results are fused with equal weighting, then re-ranked with ColBERT.
 
-#### **Custom Utilities**
-Helper functions (`utils.py`) provide:
-- Prompt template customization for detailed responses
-- Fusion retrieval engine construction
-- Tool creation and configuration
-- Page-based filtering and keyphrase extraction
+### Database Access Patterns
 
-### Technical Architecture
+| Database | Operations |
+|----------|------------|
+| **MongoDB** | Document storage, BM25 text retrieval, node relationships, config checks |
+| **Milvus** | Vector storage, semantic search, metadata filtering, collection management |
+| **Fusion** | `QueryFusionRetriever` combines both via reciprocal rank fusion |
 
-The system implements a **hybrid retrieval architecture** that combines:
-- **Semantic Search**: Dense vector embeddings capture conceptual similarity (Milvus)
-- **Keyword Search**: BM25 algorithm ensures precise keyword matching (MongoDB)
-- **Fusion Ranking**: Reciprocal rank fusion merges results from both approaches (50/50 weighting)
-- **Neural Re-ranking**: ColBERT provides fine-grained relevance scoring
-
-#### Entity Filtering Architecture
-
-When `use_entity_filtering = True` and metadata extraction includes entities:
-
-1. **Entity Extraction**: Detects entities (people, orgs, locations) or LangExtract schema category from the user query
-2. **Parallel Retrieval**:
-   - **BM25 Retriever**: 
-     - Operates on MongoDB docstore
-     - Uses KeyBERT keyphrase extraction
-     - **NO entity filtering** (searches full docstore)
-     - Ensures keyword-relevant results aren't missed
-   - **Vector Retriever**:
-     - Operates on Milvus vector index  
-     - Uses semantic similarity
-     - **WITH entity or LangExtract semantic filtering** (only nodes mentioning entities)
-     - Improves precision for entity-focused queries
-3. **Fusion**: Always combines both retrievers with equal weighting
-4. **Reranking**: ColBERT final ranking for optimal precision
-
-This multi-stage retrieval pipeline ensures both broad conceptual understanding and precise factual accuracy, making it suitable for complex document Q&A tasks where users may ask questions ranging from high-level summaries to specific detail extraction.
-
-### **Summary of Access Patterns**
-
-#### **MongoDB Usage**:
-- **Configuration checks**: Database/namespace existence
-- **Document storage**: Saving processed nodes
-- **Text retrieval**: Full document content for BM25, context windows
-- **Node relationships**: Adjacent node retrieval for context
-
-#### **Milvus Usage**:
-- **Configuration checks**: Database/collection existence  
-- **Vector storage**: Saving embeddings during index creation
-- **Semantic search**: Vector similarity retrieval
-- **Metadata filtering**: Page-based and entity-based filtering
-- **Collection management**: Load/release for memory optimization
-
-#### **Dual Access (Fusion)**:
-- **QueryFusionRetriever**: Simultaneously queries both databases
-- **Hybrid retrieval**: Combines semantic (Milvus) + keyword (MongoDB) search
-- **Results merging**: Uses reciprocal rank fusion to combine results
-
-The architecture maintains **separation of concerns**: Milvus handles vector operations while MongoDB manages document text and metadata, with fusion mechanisms bridging both systems for comprehensive retrieval.
+The architecture maintains separation of concerns: Milvus handles vector operations, MongoDB manages document text/metadata, with fusion bridging both systems.
