@@ -14,20 +14,49 @@ import os
 import json
 from pymongo import MongoClient
 
-# Cache for schema definitions
-_SCHEMA_CACHE = None
+# Cache for schema definitions (separate caches for static and dynamic)
+_SCHEMA_CACHE_STATIC = None
+_SCHEMA_CACHE_DYNAMIC = None
 
-def get_paul_graham_schema_definitions():
+def get_paul_graham_schema_definitions(use_dynamic_loading: bool = True):
     """
     Return the definitions of attributes for the Paul Graham schema.
-    Useful for query analysis and filtering.
     
-    Attempts to fetch inclusive values from MongoDB. 
-    Falls back to default static list if DB is inaccessible.
+    This function provides the allowed values for each metadata attribute category
+    (e.g., concept_categories, advice_domains, experience_periods, etc.) that are
+    used in two contexts:
+    
+    1. **Ingestion (use_dynamic_loading=False)**: During document processing, these
+       values are embedded in the LangExtract prompt to guide the LLM on what
+       attribute values to assign when extracting metadata from text chunks.
+       Static defaults are used since the MongoDB collection doesn't exist yet.
+    
+    2. **Query Filtering (use_dynamic_loading=True)**: At query time, the function
+       loads actual distinct values from MongoDB to tell the LLM what filter values
+       are available. This ensures the LLM only suggests filters that actually
+       exist in the stored metadata.
+    
+    Parameters:
+    use_dynamic_loading (bool): If True, attempts to fetch inclusive values from MongoDB.
+        If False, returns static defaults immediately. Use False during ingestion
+        (when MongoDB collection doesn't exist yet). Use True for query filtering
+        (when collection exists and we want actual stored values).
+        Defaults to True for backward compatibility.
+    
+    Returns:
+    dict: Schema definitions with attribute categories and their allowed values.
+        Example: {"concept_categories": ["technology", "startups", ...], ...}
     """
-    global _SCHEMA_CACHE
-    if _SCHEMA_CACHE is not None:
-        return _SCHEMA_CACHE
+    global _SCHEMA_CACHE_STATIC, _SCHEMA_CACHE_DYNAMIC
+    
+    # Return cached static schema if not using dynamic loading
+    if not use_dynamic_loading:
+        if _SCHEMA_CACHE_STATIC is not None:
+            return _SCHEMA_CACHE_STATIC
+    else:
+        # Return cached dynamic schema if available
+        if _SCHEMA_CACHE_DYNAMIC is not None:
+            return _SCHEMA_CACHE_DYNAMIC
 
     defaults = {
         "concept_categories": ["technology", "business", "startups", "programming", "art", "education", "life", "philosophy", "writing"],
@@ -42,6 +71,11 @@ def get_paul_graham_schema_definitions():
         "time_specificity": ["exact_year", "approximate", "era"]
     }
 
+    # If not using dynamic loading, return static defaults immediately
+    if not use_dynamic_loading:
+        _SCHEMA_CACHE_STATIC = defaults
+        return defaults
+
     try:
         # Configuration for MongoDB
         uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
@@ -51,7 +85,7 @@ def get_paul_graham_schema_definitions():
         
         client = MongoClient(uri, serverSelectionTimeoutMS=2000)
         if db_name not in client.list_database_names():
-            _SCHEMA_CACHE = defaults
+            _SCHEMA_CACHE_DYNAMIC = defaults
             return defaults
             
         db = client[db_name]
@@ -63,7 +97,7 @@ def get_paul_graham_schema_definitions():
                 break
         
         if not collection_name:
-            _SCHEMA_CACHE = defaults
+            _SCHEMA_CACHE_DYNAMIC = defaults
             return defaults
             
         collection = db[collection_name]
@@ -88,12 +122,12 @@ def get_paul_graham_schema_definitions():
         print(f"✅ Loaded dynamic schema from MongoDB collection: {collection_name}")
         print(json.dumps(dynamic_schema, indent=4))
         # Run get_inclusive_schema.py in the test/ folder to get the latest schema values.
-        _SCHEMA_CACHE = dynamic_schema
+        _SCHEMA_CACHE_DYNAMIC = dynamic_schema
         return dynamic_schema
         
     except Exception as e:
         print(f"Warning: Failed to fetch schema from MongoDB ({e}). Using defaults.")
-        _SCHEMA_CACHE = defaults
+        _SCHEMA_CACHE_DYNAMIC = defaults
         return defaults
 
 
@@ -112,7 +146,9 @@ def get_paul_graham_essay_schema():
     dict: Contains 'prompt' and 'examples' for LangExtract
     """
     
-    defs = get_paul_graham_schema_definitions()
+    # Use static defaults during schema creation (ingestion time)
+    # Dynamic loading is not useful here since MongoDB collection doesn't exist yet
+    defs = get_paul_graham_schema_definitions(use_dynamic_loading=False)
     
     prompt = textwrap.dedent(
         f"""\

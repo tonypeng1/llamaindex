@@ -21,7 +21,9 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.schema import (
                         NodeWithScore, 
+                        RelatedNodeInfo,
                         TextNode,
+                        NodeRelationship,
                         )
 from llama_index.core.tools import QueryEngineTool
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
@@ -48,18 +50,72 @@ class SafePrevNextNodePostprocessor(PrevNextNodePostprocessor):
             if self.mode in ["next", "both"]:
                 try:
                     forward_nodes = get_forward_nodes(node, self.num_nodes, self.docstore)
-                    all_nodes.update(forward_nodes)
+                    _merge_node_dict(all_nodes, forward_nodes)
                 except Exception as e:
                     print(f"Warning: Failed to get next nodes for {node.node.node_id}: {e}")
 
             if self.mode in ["prev", "both"]:
                 try:
                     backward_nodes = get_backward_nodes(node, self.num_nodes, self.docstore)
-                    all_nodes.update(backward_nodes)
+                    _merge_node_dict(all_nodes, backward_nodes)
                 except Exception as e:
                     print(f"Warning: Failed to get prev nodes for {node.node.node_id}: {e}")
         
         return list(all_nodes.values())
+
+
+def stitch_prev_next_relationships(nodes: List[TextNode]) -> List[TextNode]:
+    """Ensure prev/next relationships span sequential nodes, even across pages."""
+
+    if not nodes:
+        return nodes
+
+    sortable_nodes = []
+    for node in nodes:
+        # Best-effort ordering: fall back to start_char_idx when page metadata is missing
+        source = node.metadata.get("source") if node.metadata else None
+        try:
+            page_num = int(source)
+        except (TypeError, ValueError):
+            page_num = float("inf")
+
+        start_idx = node.start_char_idx if node.start_char_idx is not None else 0
+        sortable_nodes.append((page_num, start_idx, node))
+
+    sortable_nodes.sort(key=lambda item: (item[0], item[1]))
+
+    total = len(sortable_nodes)
+    for idx, (_, _, node) in enumerate(sortable_nodes):
+        prev_node = sortable_nodes[idx - 1][2] if idx > 0 else None
+        next_node = sortable_nodes[idx + 1][2] if idx + 1 < total else None
+
+        if prev_node is not None:
+            node.relationships[NodeRelationship.PREVIOUS] = prev_node.as_related_node_info()
+        else:
+            node.relationships.pop(NodeRelationship.PREVIOUS, None)
+
+        if next_node is not None:
+            node.relationships[NodeRelationship.NEXT] = next_node.as_related_node_info()
+        else:
+            node.relationships.pop(NodeRelationship.NEXT, None)
+
+    return nodes
+
+
+def _merge_node_dict(
+    base: Dict[str, NodeWithScore],
+    incoming: Dict[str, NodeWithScore],
+) -> None:
+    """Merge NodeWithScore mappings while preserving existing scores when present."""
+
+    for node_id, candidate in incoming.items():
+        current = base.get(node_id)
+        if current is None:
+            base[node_id] = candidate
+            continue
+
+        if current.score is None and candidate.score is not None:
+            base[node_id] = candidate
 
 
 class PageSortNodePostprocessor(BaseNodePostprocessor):

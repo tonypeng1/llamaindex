@@ -132,6 +132,62 @@ num_queries = 1               # Fusion query fan-out (1 = disable query generati
 num_nodes = 0                 # Neighbor nodes to add via SafePrevNextNodePostprocessor
 ```
 
+### Schema Definitions and Dynamic Loading
+
+The LangExtract metadata extraction uses schema definitions that specify allowed attribute values (e.g., `concept_categories`, `advice_domains`, `experience_periods`). These definitions are managed by `get_paul_graham_schema_definitions()` in `langextract_schemas.py`.
+
+#### Two Operating Modes
+
+| Mode | When Used | Source | Purpose |
+|------|-----------|--------|---------|
+| **Static** (`use_dynamic_loading=False`) | During ingestion | Hardcoded defaults | Guides LLM on what attributes to extract |
+| **Dynamic** (`use_dynamic_loading=True`) | During query filtering | MongoDB collection | Tells LLM what filter values actually exist |
+
+#### Why Two Modes?
+
+1. **Ingestion Time**: When processing documents for the first time, the MongoDB collection doesn't exist yet. The schema uses static defaults to tell the extraction LLM what attribute categories are valid (e.g., "classify this concept as one of: technology, business, startups...").
+
+2. **Query Time**: When filtering queries (e.g., "What advice about startups?"), the function loads actual distinct values from MongoDB. This ensures the LLM only suggests filters that match stored metadata.
+
+#### Key Functions
+
+```python
+# langextract_schemas.py
+
+get_paul_graham_schema_definitions(use_dynamic_loading=True)
+# Returns dict of allowed attribute values
+# Example: {"concept_categories": ["technology", "startups", ...], ...}
+
+get_paul_graham_essay_schema()
+# Builds the extraction prompt + examples for LangExtract
+# Uses static defaults (use_dynamic_loading=False)
+
+get_schema(schema_name)
+# Factory function to get schema by name
+# Available: "paul_graham_detailed", "paul_graham_simple"
+```
+
+```python
+# langextract_integration.py
+
+extract_query_metadata_filters(query_str, schema_name)
+# Analyzes user query to extract metadata filters
+# Uses dynamic loading (use_dynamic_loading=True) to get actual stored values
+```
+
+#### Schema Attributes
+
+The Paul Graham detailed schema extracts these attribute categories:
+
+| Category | Example Values | Used For |
+|----------|---------------|----------|
+| `concept_categories` | technology, startups, programming, life | Classifying key concepts |
+| `advice_domains` | career, startups, creativity, relationships | Categorizing advice |
+| `experience_periods` | childhood, college, viaweb, yc, post_yc | Timeline of experiences |
+| `experience_sentiments` | positive, negative, neutral, mixed | Emotional tone |
+| `entity_roles` | founder, colleague, investor, company | People/org classification |
+| `time_decades` | 1970s, 1980s, 1990s, 2000s | Time period references |
+
 **Documentation:**
 - See `README_GUIDE.md` for comprehensive guide (metadata extraction, entity filtering, troubleshooting)
 - See `EXAMPLES_METADATA.py` for quick-start examples and code snippets

@@ -107,6 +107,7 @@ from utils import (
                 get_fusion_tree_page_filter_sort_detail_engine,
                 get_summary_storage_context,
                 get_summary_tree_detail_tool,
+                stitch_prev_next_relationships,
                 get_vector_store_docstore_and_storage_context,
                 )
 from db_operation import (
@@ -118,54 +119,6 @@ from langextract_integration import (
                 enrich_nodes_with_langextract,
                 print_sample_metadata
                 )
-
-
-def print_metadata_extraction_info():
-    """
-    Print information about available metadata extraction options.
-    Helps users understand which option to choose.
-    """
-    info = """
-    ╔════════════════════════════════════════════════════════════════════════════╗
-    ║                    METADATA EXTRACTION OPTIONS                             ║
-    ╠════════════════════════════════════════════════════════════════════════════╣
-    ║                                                                            ║
-    ║  Option: None (Basic)                                                      ║
-    ║  ├─ Speed: ⚡⚡⚡ Very Fast                                                 ║
-    ║  ├─ Cost: FREE                                                             ║
-    ║  ├─ Metadata: Basic (page numbers, file info only)                         ║
-    ║  └─ Best for: Quick testing, simple documents                              ║
-    ║                                                                            ║
-    ║  Option: "entity" (EntityExtractor)                                        ║
-    ║  ├─ Speed: ⚡⚡ Fast                                                       ║
-    ║  ├─ Cost: FREE (local model)                                               ║
-    ║  ├─ Metadata: Named entities (PER, ORG, LOC, etc.)                         ║
-    ║  ├─ Model: span-marker-bert-base-multilingual-cased-multinerd             ║
-    ║  ├─ Device: MPS (Apple Silicon) or CPU                                     ║
-    ║  └─ Best for: Standard entity recognition                                  ║
-    ║                                                                            ║
-    ║  Option: "langextract" (LangExtract)                                       ║
-    ║  ├─ Speed: ⚡ Slow (API calls)                                             ║
-    ║  ├─ Cost: PAID (OpenAI API usage)                                          ║
-    ║  ├─ Metadata: Rich structured metadata                                     ║
-    ║  │   • Concepts (programming, philosophy, business, etc.)                  ║
-    ║  │   • Advice (strategic, tactical, practical, etc.)                       ║
-    ║  │   • Experiences (early career, success, challenges, etc.)               ║
-    ║  │   • Entities (people, organizations, products)                          ║
-    ║  │   • Time references (years, decades, periods)                           ║
-    ║  ├─ Requirements: OPENAI_API_KEY in environment                            ║
-    ║  └─ Best for: Deep semantic understanding, complex queries                 ║
-    ║                                                                            ║
-    ║  Option: "both" (EntityExtractor + LangExtract)                            ║
-    ║  ├─ Speed: ⚡ Slowest (both extractors)                                    ║
-    ║  ├─ Cost: PAID (OpenAI API usage)                                          ║
-    ║  ├─ Metadata: Most comprehensive (entities + semantic metadata)            ║
-    ║  └─ Best for: Maximum metadata richness                                    ║
-    ║                                                                            ║
-    ╚════════════════════════════════════════════════════════════════════════════╝
-    """
-    print(info)
-
 
 def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering, 
                                similarity_top_k_fusion, num_queries, fusion_top_n, rerank_top_n, num_nodes):
@@ -373,6 +326,8 @@ def load_document_nodes_sentence_splitter(
             _chunk_overlap
             )
     
+    _nodes = stitch_prev_next_relationships(_nodes)
+
     return _nodes
 
 
@@ -693,7 +648,7 @@ similarity_top_k_fusion = 48
 num_queries = 1  # number of queries for fusion engine
 fusion_top_n = 42
 rerank_top_n = 32
-num_nodes = 0 # For SafePrevNextNodePostprocessor
+num_nodes = 1 # For SafePrevNextNodePostprocessor
 
 # print metadata extraction info and fusion tree and reranker configurations
 print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
@@ -944,7 +899,8 @@ if response is not None:
             document_nodes.append({
                 'page': n.metadata['source'],
                 'text': n.text,
-                'score': n.score
+                'score': n.score,
+                'node_id': n.node_id,
             })
         else:
             print(f"Item {i+1} question and response:\n{n.text}\n ")
@@ -955,7 +911,11 @@ if response is not None:
         print("SEQUENTIAL NODES WITH PAGE NUMBERS (sent to LLM for final answer):")
         print("="*80)
         for i, node_info in enumerate(document_nodes, 1):
-            print(f"--- Node {i} | Page {node_info['page']} | Score: {round(node_info['score'], 3) if node_info['score'] is not None else 'N/A'} ---")
+            node_id_prefix = node_info['node_id'][:8] if node_info.get('node_id') else 'UNKNOWN'
+            print(
+                f"--- Node {i} | ID {node_id_prefix} | Page {node_info['page']} | "
+                f"Score: {round(node_info['score'], 3) if node_info['score'] is not None else 'N/A'} ---"
+            )
             # print(f"{node_info['text']}")
             # print("-" * 80)
         print("="*80 + "\n")
