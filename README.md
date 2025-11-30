@@ -60,7 +60,7 @@ pip install uv && uv pip install -e .
 | `"langextract"` | ⚡ | API | Rich semantic metadata (concepts, advice, experiences) |
 | `"both"` | ⚡ | API | Maximum metadata richness |
 
-### Metadata Settings
+### Metadata Settings Example
 
 ```python
 # langextract_simple.py
@@ -69,7 +69,7 @@ schema_name = "paul_graham_detailed"
 use_entity_filtering = True
 ```
 
-### RAG Pipeline Settings
+### RAG Pipeline Settings Example
 
 ```python
 chunk_size = 256                   # Chunk size for splitting
