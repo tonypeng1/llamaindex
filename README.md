@@ -138,13 +138,13 @@ Query → [BM25 (MongoDB)] ─┬─→ Reciprocal Rank Fusion → ColBERT Re-ra
 
 When entity filtering is enabled, `DynamicFilterQueryEngine` wraps the retrieval pipeline to extract fresh metadata filters for **each sub-question** rather than using filters from the original query.
 
-**Why it matters**: For multi-part questions like *"What did Paul Graham do in 1980, 1996, and 2019?"*, the SubQuestionQueryEngine decomposes this into separate sub-questions. Each sub-question gets its own entity/time filters, ensuring accurate retrieval for each time period.
+**Why it matters**: For multi-part questions, the SubQuestionQueryEngine decomposes this into separate sub-questions. Each sub-question gets its own entity/time filters, ensuring accurate retrieval for each time period.
 
-**Flow**:
+**Flow** (example query: *"What did Paul Graham do in 1980, in 1996 and in 2019?"*):
 ```
-Original Query → SubQuestionQueryEngine → Sub-question 1 ("...1980...")
-                                        → Sub-question 2 ("...1996...")
-                                        → Sub-question 3 ("...2019...")
+Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Graham do in 1980?")
+                                        → Sub-question 2 ("What did Paul Graham do in 1996?")
+                                        → Sub-question 3 ("What did Paul Graham do in 2019?")
                                               ↓
                            DynamicFilterQueryEngine extracts filters per sub-question
                                               ↓
@@ -171,7 +171,7 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("...1980...")
 |----------|-------|
 | **Core** | `langextract_simple.py`, `langextract_integration.py`, `langextract_schemas.py`, `utils.py`, `db_operation.py` |
 | **Docs** | `README_GUIDE.md`, `EXAMPLES_METADATA.py` |
-| **Tests** | `test/test_entity_filtering.py`, `test/test_langextract_*.py`, `test/demo_metadata_comparison.py` |
+| **Tests** | `test/test_entity_filtering.py`, `test/test_langextract_install.py`, `test/test_langextract_schema.py`, `test/test_mongo_entity_metadata.py`, `test/demo_metadata_comparison.py`, `test/check_node_in_milvus.py`, `test/check_node_in_mongo.py`, `test/get_inclusive_schema.py` |
 
 ---
 
