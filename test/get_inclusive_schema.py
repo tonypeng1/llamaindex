@@ -3,6 +3,17 @@ from pymongo import MongoClient
 import json
 
 def get_inclusive_schema_values():
+    """
+    Query MongoDB to extract all unique values for metadata schema fields.
+    
+    Connects to a MongoDB instance and retrieves distinct values for various
+    metadata fields (concept_categories, advice_types, entity_roles, etc.)
+    from documents enriched with LlamaIndex metadata.
+    
+    Returns:
+        dict: A dictionary mapping field names to sorted lists of unique values,
+              or None if an error occurs.
+    """
     uri_mongo = "mongodb://localhost:27017/"
     # Based on check_node_in_mongo.py
     db_name = "paul_graham_paul_graham_essay_sentence_splitter"
