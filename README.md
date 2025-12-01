@@ -134,6 +134,28 @@ Query → [BM25 (MongoDB)] ─┬─→ Reciprocal Rank Fusion → ColBERT Re-ra
 | BM25 | MongoDB | ❌ | Preserve keyword matches |
 | Vector | Milvus | ✅ | Improve entity precision |
 
+### Dynamic Filter Query Engine
+
+When entity filtering is enabled, `DynamicFilterQueryEngine` wraps the retrieval pipeline to extract fresh metadata filters for **each sub-question** rather than using filters from the original query.
+
+**Why it matters**: For multi-part questions like *"What did Paul Graham do in 1980, 1996, and 2019?"*, the SubQuestionQueryEngine decomposes this into separate sub-questions. Each sub-question gets its own entity/time filters, ensuring accurate retrieval for each time period.
+
+**Flow**:
+```
+Original Query → SubQuestionQueryEngine → Sub-question 1 ("...1980...")
+                                        → Sub-question 2 ("...1996...")
+                                        → Sub-question 3 ("...2019...")
+                                              ↓
+                           DynamicFilterQueryEngine extracts filters per sub-question
+                                              ↓
+                           Vector retriever uses sub-question-specific filters
+```
+
+**Key behavior**:
+- Filters are extracted dynamically at query time (not pre-computed)
+- Each sub-question gets independent entity recognition and filter creation
+- BM25 retriever remains unfiltered; only vector retriever applies filters
+
 ### Database Responsibilities
 
 | Database | Role |
