@@ -144,7 +144,7 @@ def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap
     print(f"   Chunk Size: {chunk_size}")
     print(f"   Chunk Overlap: {chunk_overlap}")
     if metadata in ["entity", "langextract", "both"]:
-        print(f"   Entity Filtering: {'✓ Enabled' if use_entity_filtering else '✗ Disabled'}")
+        print(f"   Entity Filtering: {'✓ Enabled (dynamic per query)' if use_entity_filtering else '✗ Disabled'}")
     print(f"\n   Fusion Tree & Reranker:")
     print(f"   ├─ Similarity Top K: {similarity_top_k_fusion}")
     print(f"   ├─ Number of Queries: {num_queries}")
@@ -624,16 +624,20 @@ chunk_overlap = 64
 
 # metadata = "both"
 # metadata = "entity"
-metadata = "langextract"
-# metadata = None
+# metadata = "langextract"
+metadata = None
 
 # LangExtract schema (only used when metadata is "langextract" or "both")
 # Available schemas: "paul_graham_detailed", "paul_graham_simple"
 schema_name = "paul_graham_detailed"
 
 # Entity-based filtering configuration
-use_entity_filtering = True
-# use_entity_filtering = False 
+# use_entity_filtering = True
+use_entity_filtering = False 
+
+# Note: Dynamic filtering (extracting filters per sub-question) is always used when
+# entity filtering is enabled. This is more accurate for multi-part questions like
+# "What did X do in 1980, 1996, and 2019?"
 
 # Page filter debug logging
 page_filter_verbose = True  # Set to False when you want quieter runs
@@ -648,7 +652,7 @@ similarity_top_k_fusion = 48
 num_queries = 1  # number of queries for fusion engine
 fusion_top_n = 42
 rerank_top_n = 32
-num_nodes = 0 # For SafePrevNextNodePostprocessor
+num_nodes = 1 # For SafePrevNextNodePostprocessor
 
 # print metadata extraction info and fusion tree and reranker configurations
 print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
@@ -773,7 +777,7 @@ summary_tool = get_summary_tree_detail_tool(
 
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What was mentioned about Jessica from pages 17 to 22? Please cite page numbers in your answer."
-query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
+# query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "What strategic advice is given about startups?"
 # query_str = "Has the author been to Europe?"
@@ -783,8 +787,7 @@ query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 # query_str = "What programming concepts are given in the document?"
 # query_str = "Who are mentioned as colleagues in the document?"
 # query_str = "Does the author have any advice on relationships?"
-
-# query_str = "Create table of contents for this article."
+query_str = "Create table of contents for this article."
 
 # query_str = "What did the author advice on choosing what to work on?"
 # query_str = "Why morale needs to be nurtured and protected?" 
@@ -881,6 +884,10 @@ sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         query_engine_tools=tools,
                                         verbose=True,
                                         )
+
+print(f"\n{'='*80}")
+print(f"📝 ORIGINAL QUERY: {query_str}")
+print(f"{'='*80}\n")
 
 response = None
 try:

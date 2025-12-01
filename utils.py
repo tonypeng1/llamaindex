@@ -819,6 +819,109 @@ def get_text_nodes_from_query_keyphrase(
     return bm25_text_nodes
 
 
+class DynamicFilterQueryEngine:
+    """
+    A query engine wrapper that dynamically extracts entity and semantic filters
+    for each sub-question, ensuring more targeted retrieval.
+    
+    This is especially useful when used with SubQuestionQueryEngine, where each
+    sub-question may have different filtering requirements than the original query.
+    """
+    
+    def __init__(
+        self,
+        vector_index: VectorStoreIndex,
+        vector_docstore: MongoDocumentStore,
+        similarity_top_k_fusion: int,
+        fusion_top_n: int,
+        num_queries: int,
+        rerank: BaseNodePostprocessor,
+        metadata_option: str,
+        num_nodes: int = 0,
+    ):
+        from llama_index.core.callbacks import CallbackManager
+        
+        self.vector_index = vector_index
+        self.vector_docstore = vector_docstore
+        self.similarity_top_k_fusion = similarity_top_k_fusion
+        self.fusion_top_n = fusion_top_n
+        self.num_queries = num_queries
+        self.rerank = rerank
+        self.metadata_option = metadata_option
+        self.num_nodes = num_nodes
+        # Required by SubQuestionQueryEngine
+        self.callback_manager = CallbackManager([])
+        
+    def _build_engine_for_query(self, query_str: str):
+        """Build a fresh query engine with filters specific to this query."""
+        
+        print(f"\n🔄 Dynamic Filter: Building engine for sub-question...")
+        print(f"   Query: {query_str[:80]}..." if len(query_str) > 80 else f"   Query: {query_str}")
+        
+        # Extract entities from this specific query
+        extracted_entities = extract_entities_from_query(query_str)
+        
+        # Create filters specific to this query
+        entity_filters = None
+        if self.metadata_option in ["entity", "langextract", "both"]:
+            entity_filters = create_entity_metadata_filters(
+                extracted_entities,
+                self.metadata_option,
+                query_str=query_str
+            )
+            
+            if entity_filters:
+                print(f"   ✓ Created {len(entity_filters.filters)} filters for this sub-question")
+        
+        # Build BM25 retriever for this query
+        text_nodes = get_text_nodes_from_query_keyphrase(
+            self.vector_docstore,
+            self.similarity_top_k_fusion,
+            query_str,
+        )
+        
+        bm25_keyphrase_retriever = BM25Retriever.from_defaults(
+            similarity_top_k=self.similarity_top_k_fusion,
+            nodes=text_nodes,
+        )
+        
+        # Create vector retriever with query-specific filters
+        if entity_filters:
+            vector_retriever = self.vector_index.as_retriever(
+                similarity_top_k=self.similarity_top_k_fusion,
+                filters=entity_filters
+            )
+        else:
+            vector_retriever = self.vector_index.as_retriever(
+                similarity_top_k=self.similarity_top_k_fusion,
+            )
+        
+        # Build the fusion engine
+        engine = get_fusion_tree_keyphrase_filter_sort_detail_engine(
+            vector_retriever,
+            self.vector_docstore,
+            bm25_keyphrase_retriever,
+            self.fusion_top_n,
+            self.num_queries,
+            self.rerank,
+            self.num_nodes,
+        )
+        
+        return engine
+    
+    def query(self, query_str: str):
+        """Process a query with dynamically extracted filters."""
+        engine = self._build_engine_for_query(query_str)
+        return engine.query(query_str)
+    
+    async def aquery(self, query_str: str):
+        """Async version of query."""
+        engine = self._build_engine_for_query(query_str)
+        if hasattr(engine, 'aquery'):
+            return await engine.aquery(query_str)
+        return engine.query(query_str)
+
+
 def get_summary_tree_detail_tool(
         summary_description: str, 
         storage_context_summary: StorageContext
@@ -867,48 +970,56 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
     Create a QueryEngineTool that uses a fusion tree filter sort detail engine.
     The engine is built using a vector retriever and a BM25 filter retriever,
     with optional entity-based metadata filtering.
+    
+    When entity filtering is enabled, filters are extracted dynamically for each 
+    query/sub-question to ensure accurate, targeted retrieval.
 
     Args:
         vector_index (VectorStoreIndex): The vector store index.
         vector_docstore (MongoDocumentStore): The vector document store.
         similarity_top_k_fusion (int): Number of similar nodes to retrieve for fusion.
         fusion_top_n (int): Number of nodes to return from the fusion engine.
-        query_str (str): The query string to use for the BM25 filter retriever.
+        query_str (str): The query string (used for description, not pre-filtering).
         num_queries (int): Number of queries to use for the fusion engine.
         rerank (BaseNodePostprocessor): The rerank object to use for the fusion engine.
         tool_description (str): Description for the QueryEngineTool.
         enable_entity_filtering (bool): Whether to enable entity-based filtering (default: False)
         metadata_option (str): Metadata extraction option used ('entity', 'langextract', or 'both')
-        llm: The LLM instance for entity extraction (optional)
+        llm: The LLM instance (kept for API compatibility, not used)
+        num_nodes (int): Number of neighboring nodes to retrieve (default: 0)
 
     Returns:
         QueryEngineTool: A QueryEngineTool that uses the fusion tree filter sort detail engine.
     """
 
-    # STEP 1: Entity-based and Semantic filtering (if enabled)
-    entity_filters = None
-    extracted_entities = {}
-    
+    # When entity filtering is enabled, use DynamicFilterQueryEngine
+    # This extracts fresh filters for each query/sub-question for accurate retrieval
     if enable_entity_filtering and metadata_option in ["entity", "langextract", "both"]:
-        # Extract entities from the query
-        extracted_entities = extract_entities_from_query(query_str, llm)
+        print("\n🔄 Dynamic Entity Filtering: Filters will be extracted per query")
         
-        if extracted_entities:
-            print(f"\n🔍 Entity Filtering Enabled")
-            print(f"   Extracted entities from query: {extracted_entities}")
-            
-        # Create metadata filters for entity-based and semantic filtering
-        # Note: We pass query_str to allow semantic extraction even if no entities found
-        entity_filters = create_entity_metadata_filters(
-            extracted_entities, 
-            metadata_option,
-            query_str=query_str
+        dynamic_engine = DynamicFilterQueryEngine(
+            vector_index=vector_index,
+            vector_docstore=vector_docstore,
+            similarity_top_k_fusion=similarity_top_k_fusion,
+            fusion_top_n=fusion_top_n,
+            num_queries=num_queries,
+            rerank=rerank,
+            metadata_option=metadata_option,
+            num_nodes=num_nodes,
         )
         
-        if entity_filters:
-            print(f"   Applying metadata filters to retrieval...\n")
+        fusion_tree_keyphrase_sort_detail_tool = QueryEngineTool.from_defaults(
+            name="fusion_keyphrase_tool",
+            query_engine=dynamic_engine,
+            description=tool_description,
+        )
+        
+        return fusion_tree_keyphrase_sort_detail_tool
+
+    # No entity filtering - use standard retrieval without metadata filters
+    print("\n📋 Standard Retrieval Mode (no entity filtering)")
     
-    # STEP 2: Keyphrase extraction for BM25
+    # Keyphrase extraction for BM25
     text_nodes = get_text_nodes_from_query_keyphrase(
         vector_docstore,
         similarity_top_k_fusion,
@@ -916,60 +1027,17 @@ def get_fusion_tree_keyphrase_sort_detail_tool_simple(
     )
 
     # Get BM25 keyphrase retriever to build a fusion engine
-    bm25_keyphrase_retriever= BM25Retriever.from_defaults(
+    bm25_keyphrase_retriever = BM25Retriever.from_defaults(
         similarity_top_k=similarity_top_k_fusion,
         nodes=text_nodes,
-        )
+    )
 
-    # STEP 3: Create vector retriever (with entity filter if applicable)
-    # DEBUG: print entity_filters for troubleshooting before creating retriever
-    print("\nDEBUG: entity_filters (raw):", entity_filters)
-    if entity_filters:
-        try:
-            print("DEBUG: entity_filters details:")
-            # MetadataFilters typically exposes `.filters` and `.condition`
-            if hasattr(entity_filters, 'filters'):
-                print(f"  num_filters: {len(entity_filters.filters)}")
-                for f in entity_filters.filters:
-                    try:
-                        print(f"    key={f.key}, value={f.value}, operator={f.operator}")
-                    except Exception:
-                        print(f"    filter item: {f}")
-            else:
-                print(f"  entity_filters has no .filters attribute: {entity_filters}")
-            if hasattr(entity_filters, 'condition'):
-                print(f"  condition: {entity_filters.condition}")
-        except Exception as e:
-            print(f"DEBUG: failed to introspect entity_filters: {e}")
-    if entity_filters:
-        # Entity-filtered vector retriever
-        vector_retriever = vector_index.as_retriever(
-            similarity_top_k=similarity_top_k_fusion,
-            filters=entity_filters
-        )
-        print(f"✓ Vector retriever created WITH entity filtering")
-    else:
-        # Standard vector retriever without entity filter
-        vector_retriever = vector_index.as_retriever(
-            similarity_top_k=similarity_top_k_fusion,
-        )
-        if enable_entity_filtering:
-            print(f"\n⚠️  Entity filtering enabled but no entities found in query")
-            print(f"   Using standard retrieval without entity filters\n")
+    # Standard vector retriever without entity filter
+    vector_retriever = vector_index.as_retriever(
+        similarity_top_k=similarity_top_k_fusion,
+    )
 
-    # Retrieve nodes using the vector retriever and the query
-    scored_nodes = vector_retriever.retrieve(query_str)
-
-    # Extract TextNodes from NodeWithScore objects
-    text_nodes = [scored_node.node for scored_node in scored_nodes]
-
-    print(f"\nText nodes in keyphrase vector index length is: {len(text_nodes)}")
-    if entity_filters and extracted_entities:
-        print(f"   (Filtered by entities: {', '.join([e for elist in extracted_entities.values() for e in elist])})")
-    # for i, n in enumerate(text_nodes):
-    #     print(f"Item {i+1} of the text nodes in keyphrase vector index is page: {n.metadata['source']}")
-
-    # Get fusion tree filter sort detail engine using vector_retriever and bm25_filter_retriever
+    # Get fusion tree filter sort detail engine
     fusion_tree_filter_sort_detail_engine = get_fusion_tree_keyphrase_filter_sort_detail_engine(
         vector_retriever,
         vector_docstore,

@@ -120,7 +120,7 @@ def get_paul_graham_schema_definitions(use_dynamic_loading: bool = True):
                 
         client.close()
         print(f"✅ Loaded dynamic schema from MongoDB collection: {collection_name}")
-        print(json.dumps(dynamic_schema, indent=4))
+        # print(json.dumps(dynamic_schema, indent=4))
         # Run get_inclusive_schema.py in the test/ folder to get the latest schema values.
         _SCHEMA_CACHE_DYNAMIC = dynamic_schema
         return dynamic_schema
