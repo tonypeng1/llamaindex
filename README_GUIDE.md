@@ -41,39 +41,55 @@
 ### Setup & Run
 
 1. Install dependencies (`uv pip install -e .` or `pip install -e .`).
-2. Start Milvus and MongoDB (update `uri_milvus` / `uri_mongo` in `langextract_simple.py` if your endpoints differ).
+2. Start Milvus and MongoDB (update URIs in `config.py` → `DATABASE_CONFIG` if your endpoints differ).
 3. Download the article and place it under `data/paul_graham/` as shown above.
 4. Create/update `.env` with required API keys.
-5. Run the pipeline:
+5. (Optional) Select article in `config.py`:
+    ```python
+    ACTIVE_ARTICLE = "paul_graham_essay"  # Change to switch articles
+    ```
+6. Run the pipeline:
     ```bash
-    uv run python langextract_simple.py
-    # or
     python langextract_simple.py
     ```
-    Adjust the configuration variables below before running if you need a different metadata mode or retrieval profile.
 
 ### Configuration
 
-Edit these variables in `langextract_simple.py`:
+All configuration is centralized in `config.py`:
 
 ```python
-# Metadata extraction method
-metadata = "langextract"  # Options: None, "entity", "langextract", "both"
+# Select active article
+ACTIVE_ARTICLE = "paul_graham_essay"
 
-# LangExtract schema (only for "langextract" or "both")
-schema_name = "paul_graham_detailed"  # or "paul_graham_simple"
+# Available articles (pre-configured):
+# - paul_graham_essay, how_to_do_great_work (Paul Graham essays)
+# - attention_paper, metagpt, uber_10q, andrew_ng_career
 
-# Entity-based filtering
-use_entity_filtering = True  # Enable/disable entity filtering
+# Default RAG settings (applied to all articles)
+DEFAULT_RAG_SETTINGS = {
+    "metadata": "langextract",      # None, "entity", "langextract", "both"
+    "use_entity_filtering": True,
+    "chunk_size": 256,
+    "chunk_overlap": 64,
+    "similarity_top_k_fusion": 48,
+    "rerank_top_n": 32,
+}
 
-# Advanced Configuration
-chunk_size = 256              # Smaller chunks = more precise retrieval
-chunk_overlap = 64            # Overlap to maintain context
-similarity_top_k_fusion = 48  # Initial retrieval count
-fusion_top_n = 42             # Post-fusion count before reranking
-rerank_top_n = 32             # Post-reranking count
-num_queries = 1               # Fusion query fan-out (1 disables query generation)
-num_nodes = 0                 # SafePrevNext node expansion
+# Per-article overrides (optional)
+ARTICLE_RAG_OVERRIDES = {
+    "attention_paper": {"metadata": "entity", "chunk_size": 512},
+}
+
+# Database endpoints
+DATABASE_CONFIG = {
+    "milvus_uri": "http://localhost:19530",
+    "mongo_uri": "mongodb://localhost:27017/",
+}
+```
+
+**Helper functions:**
+```python
+from config import get_active_config, get_rag_settings, print_article_summary
 ```
 
 ### Decision Tree

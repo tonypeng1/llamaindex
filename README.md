@@ -29,7 +29,12 @@ pip install uv && uv pip install -e .
    ANTHROPIC_API_KEY=your_key
    ```
 
-3. **Run**:
+3. **Configure** (optional): Edit `config.py` to select article:
+   ```python
+   ACTIVE_ARTICLE = "paul_graham_essay"  # or other configured articles
+   ```
+
+4. **Run**:
    ```bash
    python langextract_simple.py
    ```
@@ -60,25 +65,36 @@ pip install uv && uv pip install -e .
 | `"langextract"` | ⚡ | API | Rich semantic metadata (concepts, advice, experiences) |
 | `"both"` | ⚡ | API | Maximum metadata richness |
 
-### Metadata Settings Example
+### Article Configuration (`config.py`)
+
+Switch articles by changing `ACTIVE_ARTICLE`:
 
 ```python
-# langextract_simple.py
-metadata = "langextract"           # None, "entity", "langextract", "both"
-schema_name = "paul_graham_detailed"
-use_entity_filtering = True
+# config.py
+ACTIVE_ARTICLE = "paul_graham_essay"  # Active article selection
+
+# Pre-configured articles:
+# - paul_graham_essay, how_to_do_great_work
+# - attention_paper, metagpt, uber_10q, andrew_ng_career
 ```
 
-### RAG Pipeline Settings Example
+### RAG Settings (`config.py`)
 
 ```python
-chunk_size = 256                   # Chunk size for splitting
-chunk_overlap = 64                 # Overlap between chunks
-similarity_top_k_fusion = 48       # Initial retrieval count
-fusion_top_n = 42                  # Post-fusion count
-rerank_top_n = 32                  # Final count after ColBERT
-num_queries = 1                    # Query fan-out (1 = disabled)
-num_nodes = 0                      # Neighbor nodes for context
+# Default settings (can be overridden per-article)
+DEFAULT_RAG_SETTINGS = {
+    "chunk_size": 256,
+    "chunk_overlap": 64,
+    "metadata": "langextract",      # None, "entity", "langextract", "both"
+    "use_entity_filtering": True,
+    "similarity_top_k_fusion": 48,
+    "rerank_top_n": 32,
+}
+
+# Per-article overrides (optional)
+ARTICLE_RAG_OVERRIDES = {
+    "attention_paper": {"metadata": "entity", "chunk_size": 512},
+}
 ```
 
 ---
@@ -169,7 +185,7 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Gra
 
 | Category | Files |
 |----------|-------|
-| **Core** | `langextract_simple.py`, `langextract_integration.py`, `langextract_schemas.py`, `utils.py`, `db_operation.py` |
+| **Core** | `langextract_simple.py`, `config.py`, `langextract_integration.py`, `langextract_schemas.py`, `utils.py`, `db_operation.py` |
 | **Docs** | `README_GUIDE.md`, `EXAMPLES_METADATA.py` |
 | **Tests** | `test/test_entity_filtering.py`, `test/test_langextract_install.py`, `test/test_langextract_schema.py`, `test/test_mongo_entity_metadata.py`, `test/demo_metadata_comparison.py`, `test/check_node_in_milvus.py`, `test/check_node_in_mongo.py`, `test/get_inclusive_schema.py` |
 

@@ -119,6 +119,14 @@ from langextract_integration import (
                 enrich_nodes_with_langextract,
                 print_sample_metadata
                 )
+from config import (
+                get_active_config,
+                get_rag_settings,
+                print_article_summary,
+                ACTIVE_ARTICLE,
+                EMBEDDING_CONFIG,
+                DATABASE_CONFIG,
+                )
 
 def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering, 
                                similarity_top_k_fusion, num_queries, fusion_top_n, rerank_top_n, num_nodes):
@@ -593,66 +601,65 @@ llm = Anthropic(
     )
 Settings.llm = llm
 
-embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
+embed_model = OpenAIEmbedding(model_name=EMBEDDING_CONFIG["model_name"])
 Settings.embed_model = embed_model
-embed_model_dim = 1536  # for text-embedding-3-small
-embed_model_name = "openai_embedding_3_small"
+embed_model_dim = EMBEDDING_CONFIG["dimension"]
+embed_model_name = EMBEDDING_CONFIG["short_name"]
 
 # Create debug handler
 llama_debug = LlamaDebugHandler(print_trace_on_end=False)
 callback_manager = CallbackManager([llama_debug])
 Settings.callback_manager = callback_manager
 
-# Create article link
-article_directory = "paul_graham"
-article_name = "paul_graham_essay.pdf"
-# article_name = "How_to_do_great_work.pdf"
+# =============================================================================
+# ARTICLE CONFIGURATION (from config.py)
+# =============================================================================
+# To switch articles, change ACTIVE_ARTICLE in config.py
+# Available articles: paul_graham_essay, how_to_do_great_work, attention_paper, etc.
+
+# Get article configuration from config.py
+article_config = get_active_config()
+article_directory = article_config["directory"]
+article_name = article_config["filename"]
 
 article_link = get_article_link(article_directory,
                                 article_name
                                 )
 
+# Get RAG settings (with any article-specific overrides)
+rag_settings = get_rag_settings()
+
 # Create database and collection names
-chunk_method = "sentence_splitter"
-# chunk_size = 512
-# chunk_overlap = 128
-chunk_size = 256
-chunk_overlap = 64
+chunk_method = rag_settings["chunk_method"]
+chunk_size = rag_settings["chunk_size"]
+chunk_overlap = rag_settings["chunk_overlap"]
 
 # Metadata extraction options:
 # None, "entity", "langextract", and "both"
+metadata = rag_settings["metadata"]
 
-# metadata = "both"
-# metadata = "entity"
-# metadata = "langextract"
-metadata = None
-
-# LangExtract schema (only used when metadata is "langextract" or "both")
-# Available schemas: "paul_graham_detailed", "paul_graham_simple"
-schema_name = "paul_graham_detailed"
+# LangExtract schema (from article config, only used when metadata is "langextract" or "both")
+schema_name = article_config["schema"]
 
 # Entity-based filtering configuration
-# use_entity_filtering = True
-use_entity_filtering = False 
+use_entity_filtering = rag_settings["use_entity_filtering"]
 
 # Note: Dynamic filtering (extracting filters per sub-question) is always used when
 # entity filtering is enabled. This is more accurate for multi-part questions like
 # "What did X do in 1980, 1996, and 2019?"
 
 # Page filter debug logging
-page_filter_verbose = True  # Set to False when you want quieter runs
+page_filter_verbose = rag_settings["page_filter_verbose"]
 
 # Fusion tree and reranker configuration
-# similarity_top_k_fusion = 36
-# num_queries = 1
-# fusion_top_n = 32
-# rerank_top_n = 24
+similarity_top_k_fusion = rag_settings["similarity_top_k_fusion"]
+num_queries = rag_settings["num_queries"]
+fusion_top_n = rag_settings["fusion_top_n"]
+rerank_top_n = rag_settings["rerank_top_n"]
+num_nodes = rag_settings["num_nodes"]
 
-similarity_top_k_fusion = 48
-num_queries = 1  # number of queries for fusion engine
-fusion_top_n = 42
-rerank_top_n = 32
-num_nodes = 1 # For SafePrevNextNodePostprocessor
+# Print article configuration summary
+print_article_summary()
 
 # print metadata extraction info and fusion tree and reranker configurations
 print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
@@ -672,8 +679,8 @@ collection_name_summary) = get_database_and_sentence_splitter_collection_name(
                                                             )
 
 # Initiate Milvus and MongoDB database
-uri_milvus = "http://localhost:19530"
-uri_mongo = "mongodb://localhost:27017/"
+uri_milvus = DATABASE_CONFIG["milvus_uri"]
+uri_mongo = DATABASE_CONFIG["mongo_uri"]
 
 # Check if the vector index has already been saved to Milvus database. 
 # If not, set save_index_vector to True.
@@ -787,7 +794,8 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "What programming concepts are given in the document?"
 # query_str = "Who are mentioned as colleagues in the document?"
 # query_str = "Does the author have any advice on relationships?"
-query_str = "Create table of contents for this article."
+# query_str = "Create table of contents for this article."
+query_str = "How did rejecting prestigious conventional paths lead to the most influential creative projects?"
 
 # query_str = "What did the author advice on choosing what to work on?"
 # query_str = "Why morale needs to be nurtured and protected?" 
