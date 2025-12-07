@@ -210,7 +210,7 @@ DATABASE_CONFIG: Dict[str, str] = {
 
 def get_active_config() -> Dict[str, Any]:
     """
-    Get the configuration for the currently active article.
+    Get the name, directory, LangExtract schema, and other details for the currently ACTIVE article.
     
     Returns:
         Dict containing: directory, filename, schema, description, sample_queries
@@ -229,10 +229,13 @@ def get_active_config() -> Dict[str, Any]:
 
 def get_rag_settings(article_key: Optional[str] = None) -> Dict[str, Any]:
     """
-    Get RAG pipeline settings for an article, with any article-specific overrides applied.
+    Get RAG pipeline settings such as chunk size, chunk overlap, metadata extraction method, 
+    fusion retrieval and reranking top N, Prev/Next Postprocessor node number, etc. with any 
+    article-specific overrides applied.
     
     Parameters:
-        article_key: Article key to get settings for. If None, uses ACTIVE_ARTICLE.
+        article_key: Optional article key (a key from ARTICLE_CONFIGS that denotes the article) 
+        to get settings for. If None, uses ACTIVE_ARTICLE.
     
     Returns:
         Dict containing all RAG settings with any overrides applied.
@@ -254,7 +257,8 @@ def get_article_info(article_key: Optional[str] = None) -> Dict[str, Any]:
     Get complete configuration for an article including RAG settings.
     
     Parameters:
-        article_key: Article key to get info for. If None, uses ACTIVE_ARTICLE.
+        article_key: Optional article key (a key from ARTICLE_CONFIGS that denotes the article) 
+        to get settings for. If None, uses ACTIVE_ARTICLE.
     
     Returns:
         Dict with article config merged with RAG settings.
@@ -294,6 +298,7 @@ def print_article_summary(article_key: Optional[str] = None) -> None:
     key = article_key or ACTIVE_ARTICLE
     config = get_article_info(key)
     rag = config["rag_settings"]
+    metadata = rag['metadata']
     
     print(f"\n{'='*60}")
     print(f"📄 Article Configuration: {key}")
@@ -302,18 +307,26 @@ def print_article_summary(article_key: Optional[str] = None) -> None:
     print(f"   Filename:  {config['filename']}")
     print(f"   Schema:    {config['schema']}")
     print(f"   Description: {config['description']}")
-    print(f"\n   RAG Settings:")
-    print(f"   ├─ Chunk Size: {rag['chunk_size']}")
-    print(f"   ├─ Chunk Overlap: {rag['chunk_overlap']}")
-    print(f"   ├─ Metadata: {rag['metadata'] or 'None'}")
-    print(f"   ├─ Entity Filtering: {rag['use_entity_filtering']}")
-    print(f"   └─ Rerank Top N: {rag['rerank_top_n']}")
+    print(f"\n📊 RAG Settings:")
+    print(f"   Metadata Extraction: {metadata if metadata else 'None (Basic)'}")
+    if metadata in ["langextract", "both"]:
+        print(f"   LangExtract Schema: {config['schema']}")
+    print(f"   Chunk Size: {rag['chunk_size']}")
+    print(f"   Chunk Overlap: {rag['chunk_overlap']}")
+    if metadata in ["entity", "langextract", "both"]:
+        print(f"   Entity Filtering: {'✓ Enabled (dynamic per query)' if rag['use_entity_filtering'] else '✗ Disabled'}")
+    print(f"\n   Fusion Tree & Reranker:")
+    print(f"   ├─ Similarity Top K: {rag['similarity_top_k_fusion']}")
+    print(f"   ├─ Number of Queries: {rag['num_queries']}")
+    print(f"   ├─ Fusion Top N: {rag['fusion_top_n']}")
+    print(f"   ├─ Rerank Top N: {rag['rerank_top_n']}")
+    print(f"   └─ Prev/Next Nodes: {rag['num_nodes']}")
     
-    if config.get("sample_queries"):
-        print(f"\n   Sample Queries:")
-        for i, q in enumerate(config["sample_queries"][:3], 1):
-            print(f"   {i}. {q[:60]}{'...' if len(q) > 60 else ''}")
-    print(f"{'='*60}\n")
+    # if config.get("sample_queries"):
+    #     print(f"\n   Sample Queries:")
+    #     for i, q in enumerate(config["sample_queries"][:3], 1):
+    #         print(f"   {i}. {q[:60]}{'...' if len(q) > 60 else ''}")
+    print(f"\n{'='*80}\n")
 
 
 # =============================================================================

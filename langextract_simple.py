@@ -123,43 +123,9 @@ from config import (
                 get_active_config,
                 get_rag_settings,
                 print_article_summary,
-                ACTIVE_ARTICLE,
                 EMBEDDING_CONFIG,
                 DATABASE_CONFIG,
                 )
-
-def print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering, 
-                               similarity_top_k_fusion, num_queries, fusion_top_n, rerank_top_n, num_nodes):
-    """
-    Print the current configuration settings for the RAG system.
-    
-    Parameters:
-    metadata (Optional[str]): The metadata extraction method being used
-    schema_name (str): The LangExtract schema name
-    chunk_size (int): The chunk size for text splitting
-    chunk_overlap (int): The chunk overlap for text splitting
-    use_entity_filtering (bool): Whether entity filtering is enabled
-    similarity_top_k_fusion (int): Number of nodes to retrieve in fusion retrieval
-    num_queries (int): Number of queries for fusion retrieval
-    fusion_top_n (int): Top N nodes after fusion
-    rerank_top_n (int): Top N nodes after reranking
-    num_nodes (int): Number of nodes for PrevNextNodePostprocessor
-    """
-    print(f"\n📊 Current Configuration:")
-    print(f"   Metadata Extraction: {metadata if metadata else 'None (Basic)'}")
-    if metadata in ["langextract", "both"]:
-        print(f"   LangExtract Schema: {schema_name}")
-    print(f"   Chunk Size: {chunk_size}")
-    print(f"   Chunk Overlap: {chunk_overlap}")
-    if metadata in ["entity", "langextract", "both"]:
-        print(f"   Entity Filtering: {'✓ Enabled (dynamic per query)' if use_entity_filtering else '✗ Disabled'}")
-    print(f"\n   Fusion Tree & Reranker:")
-    print(f"   ├─ Similarity Top K: {similarity_top_k_fusion}")
-    print(f"   ├─ Number of Queries: {num_queries}")
-    print(f"   ├─ Fusion Top N: {fusion_top_n}")
-    print(f"   ├─ Rerank Top N: {rerank_top_n}")
-    print(f"   └─ Prev/Next Nodes: {num_nodes}")
-    print(f"\n{'='*80}\n")
 
 
 def load_document_pdf(doc_link) -> List:
@@ -612,12 +578,11 @@ callback_manager = CallbackManager([llama_debug])
 Settings.callback_manager = callback_manager
 
 # =============================================================================
-# ARTICLE CONFIGURATION (from config.py)
+# Get ALL settings from config.py and set up variables
+# NOTE: Set ACTIVE_ARTICLE in config.py to choose which document is processed
 # =============================================================================
-# To switch articles, change ACTIVE_ARTICLE in config.py
-# Available articles: paul_graham_essay, how_to_do_great_work, attention_paper, etc.
 
-# Get article configuration from config.py
+# Get ACTIVE_ARTICLE file name, directory, and other settings from config.py
 article_config = get_active_config()
 article_directory = article_config["directory"]
 article_name = article_config["filename"]
@@ -626,8 +591,8 @@ article_link = get_article_link(article_directory,
                                 article_name
                                 )
 
-# Get RAG settings (with any article-specific overrides)
-rag_settings = get_rag_settings()
+# Get ALL RAG settings with any article-specific overrides
+rag_settings = get_rag_settings()  # no parameter, uses ACTIVE_ARTICLE internally
 
 # Create database and collection names
 chunk_method = rag_settings["chunk_method"]
@@ -658,12 +623,8 @@ fusion_top_n = rag_settings["fusion_top_n"]
 rerank_top_n = rag_settings["rerank_top_n"]
 num_nodes = rag_settings["num_nodes"]
 
-# Print article configuration summary
+# Print article configuration summary (ALL settings)
 print_article_summary()
-
-# print metadata extraction info and fusion tree and reranker configurations
-print_current_configuration(metadata, schema_name, chunk_size, chunk_overlap, use_entity_filtering,
-                           similarity_top_k_fusion, num_queries, fusion_top_n, rerank_top_n, num_nodes)
 
 # metadata is an optional parameter, will include it if it is not None                                              )
 (database_name, 
