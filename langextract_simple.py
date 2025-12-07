@@ -854,9 +854,7 @@ sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         verbose=True,
                                         )
 
-print(f"\n{'='*80}")
-print(f"📝 ORIGINAL QUERY: {query_str}")
-print(f"{'='*80}\n")
+print(f"\n📝 ORIGINAL QUERY: {query_str}\n")
 
 response = None
 try:

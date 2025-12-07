@@ -24,6 +24,20 @@ Example:
 from typing import Dict, Any, Optional, List
 
 # =============================================================================
+# ACTIVE ARTICLE SELECTION
+# =============================================================================
+# Change this to switch which article is being processed
+# Must be a key from ARTICLE_CONFIGS
+
+ACTIVE_ARTICLE = "paul_graham_essay"
+# ACTIVE_ARTICLE = "how_to_do_great_work"
+# ACTIVE_ARTICLE = "attention_paper"
+# ACTIVE_ARTICLE = "metagpt"
+# ACTIVE_ARTICLE = "uber_10q"
+# ACTIVE_ARTICLE = "andrew_ng_career"
+
+
+# =============================================================================
 # ARTICLE CONFIGURATIONS
 # =============================================================================
 # Add new articles here. Each article needs:
@@ -62,12 +76,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
     
     # -------------------------------------------------------------------------
-    # Academic Papers (placeholder - requires new schema)
+    # Academic Papers (uses academic schema)
     # -------------------------------------------------------------------------
     "attention_paper": {
         "directory": "attention",
         "filename": "attention_all.pdf",
-        "schema": "general",  # TODO: Create academic_paper schema
+        "schema": "academic",  # Uses academic paper schema
         "description": "Attention Is All You Need - Transformer architecture paper",
         "sample_queries": [
             "What is the main contribution of the paper?",
@@ -77,12 +91,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
     
     # -------------------------------------------------------------------------
-    # Technical Documents (placeholder - requires new schema)
+    # Technical Documents (uses technical schema)
     # -------------------------------------------------------------------------
     "metagpt": {
         "directory": "metagpt",
         "filename": "metagpt.pdf",
-        "schema": "general",  # TODO: Create technical_doc schema
+        "schema": "technical",  # Uses technical documentation schema
         "description": "MetaGPT technical documentation",
         "sample_queries": [
             "What is MetaGPT?",
@@ -91,12 +105,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
     
     # -------------------------------------------------------------------------
-    # Financial Documents (placeholder)
+    # Financial Documents (uses financial schema)
     # -------------------------------------------------------------------------
     "uber_10q": {
         "directory": "uber",
         "filename": "uber_10q_march_2022.pdf",
-        "schema": "general",  # TODO: Create financial_doc schema
+        "schema": "financial",  # Uses financial document schema
         "description": "Uber 10-Q financial report for Q1 2022",
         "sample_queries": [
             "What was Uber's revenue in Q1 2022?",
@@ -105,12 +119,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
     
     # -------------------------------------------------------------------------
-    # Career/Education Documents
+    # Career/Education Documents (uses career schema)
     # -------------------------------------------------------------------------
     "andrew_ng_career": {
         "directory": "andrew",
         "filename": "eBook-How-to-Build-a-Career-in-AI.pdf",
-        "schema": "general",  # Could use paul_graham schema or create career_advice schema
+        "schema": "career",  # Uses career advice schema
         "description": "Andrew Ng's guide on building a career in AI",
         "sample_queries": [
             "What skills are needed for an AI career?",
@@ -118,19 +132,6 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         ],
     },
 }
-
-# =============================================================================
-# ACTIVE ARTICLE SELECTION
-# =============================================================================
-# Change this to switch which article is being processed
-# Must be a key from ARTICLE_CONFIGS
-
-ACTIVE_ARTICLE = "paul_graham_essay"
-# ACTIVE_ARTICLE = "how_to_do_great_work"
-# ACTIVE_ARTICLE = "attention_paper"
-# ACTIVE_ARTICLE = "metagpt"
-# ACTIVE_ARTICLE = "uber_10q"
-# ACTIVE_ARTICLE = "andrew_ng_career"
 
 
 # =============================================================================
@@ -145,10 +146,10 @@ DEFAULT_RAG_SETTINGS: Dict[str, Any] = {
     "chunk_method": "sentence_splitter",
     
     # Metadata extraction: None, "entity", "langextract", "both"
-    "metadata": "langextract",
+    "metadata": "None",
     
     # Entity filtering
-    "use_entity_filtering": True,
+    "use_entity_filtering": False,
     
     # Fusion retrieval settings
     "similarity_top_k_fusion": 48,
@@ -163,22 +164,30 @@ DEFAULT_RAG_SETTINGS: Dict[str, Any] = {
 
 # Per-article RAG settings overrides (optional)
 ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "paul_graham_essay": {
+        "metadata": "langextract",  # Use LangExtract schema
+        "use_entity_filtering": True,
+    },
     # Example: Use different settings for academic papers
     "attention_paper": {
         "chunk_size": 512,  # Larger chunks for academic papers
         "chunk_overlap": 128,
         "metadata": "entity",  # Use entity extraction only (no PG-specific schema)
+        "use_entity_filtering": True,
     },
     "uber_10q": {
         "chunk_size": 512,
         "chunk_overlap": 128,
         "metadata": "entity",
+        "use_entity_filtering": True,
     },
     "metagpt": {
         "metadata": "entity",
+        "use_entity_filtering": True,
     },
     "andrew_ng_career": {
         "metadata": "entity",
+        "use_entity_filtering": True,
     },
 }
 
@@ -326,7 +335,7 @@ def print_article_summary(article_key: Optional[str] = None) -> None:
     #     print(f"\n   Sample Queries:")
     #     for i, q in enumerate(config["sample_queries"][:3], 1):
     #         print(f"   {i}. {q[:60]}{'...' if len(q) > 60 else ''}")
-    print(f"\n{'='*80}\n")
+    # print(f"\n{'='*80}\n")
 
 
 # =============================================================================

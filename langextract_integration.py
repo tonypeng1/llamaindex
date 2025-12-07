@@ -15,7 +15,13 @@ from llama_index.core.schema import TextNode
 from llama_index.core import Settings
 from llama_index.llms.openai import OpenAI
 
-from langextract_schemas import get_schema, get_paul_graham_schema_definitions
+from langextract_schemas import (
+    get_schema, 
+    get_paul_graham_schema_definitions,
+    get_schema_definitions,
+    get_schema_type_from_name,
+    SCHEMA_DEFINITIONS,
+)
 
 # Load environment variables
 load_dotenv()
@@ -270,33 +276,48 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
     
     Parameters:
     query_str (str): The user query
-    schema_name (str): The schema to use
+    schema_name (str): The schema to use (supports all schema types in SCHEMA_DEFINITIONS)
     
     Returns:
     Dict[str, List[str]]: Dictionary of filters (e.g., {'concept_categories': ['programming']})
     """
-    # Only support Paul Graham schema for now
-    if "paul_graham" not in schema_name:
-        return {}
-        
-    defs = get_paul_graham_schema_definitions()
+    # Get the schema type from the schema name
+    schema_type = get_schema_type_from_name(schema_name)
     
-    # Construct prompt
+    # Check if schema type is supported
+    if schema_type not in SCHEMA_DEFINITIONS:
+        print(f"Warning: Schema type '{schema_type}' not found. Skipping filter extraction.")
+        return {}
+    
+    # Get schema definitions (use dynamic loading if available)
+    try:
+        defs = get_schema_definitions(schema_type, use_dynamic_loading=True)
+    except Exception:
+        defs = SCHEMA_DEFINITIONS.get(schema_type, {})
+    
+    if not defs:
+        return {}
+    
+    # Build dynamic prompt based on available schema attributes
+    schema_lines = []
+    for attr_name, attr_values in defs.items():
+        # Format attribute name for display (e.g., "concept_categories" -> "Concept Categories")
+        display_name = attr_name.replace("_", " ").title()
+        schema_lines.append(f"    - {display_name}: {attr_values}")
+    
+    schema_definitions_text = "\n".join(schema_lines)
+    
+    # Construct prompt dynamically based on schema type
     prompt = f"""
     Analyze the following user query and identify if the user is looking for specific categories of information defined in our schema.
     
-    Schema Definitions:
-    - Concept Categories: {defs['concept_categories']}
-    - Advice Domains: {defs['advice_domains']}
-    - Experience Periods: {defs['experience_periods']}
-    - Experience Sentiments: {defs['experience_sentiments']}
-    - Time Decades: {defs['time_decades']}
-    - Entity Roles: {defs['entity_roles']}
+    Schema Definitions: {schema_definitions_text}
     
     Query: "{query_str}"
     
     If the query implies a filter on any of these attributes, return a JSON object with the attribute name as key and a list of matching values.
     Only return keys that have matches. If no matches, return an empty JSON object {{}}.
+    Use the exact attribute names from the schema (e.g., "concept_categories", not "Concept Categories").
     
     Example 1:
     Query: "What advice does he give about startups?"
@@ -307,12 +328,12 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
     Output: {{"experience_periods": ["childhood"]}}
     
     Example 3:
-    Query: "What does he say about Lisp?"
-    Output: {{"concept_categories": ["programming"]}}
+    Query: "What does the methodology section say?"
+    Output: {{"section_types": ["methodology"]}}
     
     Example 4:
-    Query: "Who were the founders he worked with?"
-    Output: {{"entity_roles": ["founder"]}}
+    Query: "What are the key findings?"
+    Output: {{"claim_types": ["finding"]}}
     
     Output JSON:
     """

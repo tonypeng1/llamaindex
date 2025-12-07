@@ -29,7 +29,7 @@ pip install uv && uv pip install -e .
    ANTHROPIC_API_KEY=your_key
    ```
 
-3. **Configure** (optional): Edit `config.py` to select article:
+3. **Configure**: Edit `config.py` to select article:
    ```python
    ACTIVE_ARTICLE = "paul_graham_essay"  # or other configured articles
    ```
