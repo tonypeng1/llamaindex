@@ -148,13 +148,20 @@ class PageSortNodePostprocessor(BaseNodePostprocessor):
 
         try:
             # Create new node dictionary
-            _nodes_dic = [{"source": node.node.metadata["source"], \
-                        "start_char_idx": node.node.start_char_idx, \
-                            "node": node} for node in nodes]
+            # Support both 'page' (LlamaParse) and 'source' (PyMuPDF) metadata keys
+            _nodes_dic = []
+            for node in nodes:
+                # Try 'page' first (LlamaParse), then 'source' (PyMuPDF)
+                page_num = node.node.metadata.get("page", node.node.metadata.get("source"))
+                _nodes_dic.append({
+                    "source": page_num,
+                    "start_char_idx": node.node.start_char_idx,
+                    "node": node
+                })
 
             # Sort based on page_label and then start_char_idx
             sorted_nodes_dic = sorted(_nodes_dic, \
-                                        key=lambda x: (int(x["source"]), x["start_char_idx"]))
+                                        key=lambda x: (int(x["source"]) if x["source"] is not None else 0, x["start_char_idx"] or 0))
 
             # Get the new nodes from the sorted node dic
             sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
@@ -1179,3 +1186,150 @@ def change_summary_engine_prompt_to_in_detail(engine):
                                             new_summary_tmpl}
                                             )
     return engine
+
+
+# =============================================================================
+# LLAMAPARSE-SPECIFIC FUNCTIONS
+# =============================================================================
+
+def get_database_and_llamaparse_collection_name(
+        article_directory: str, 
+        chunk_method: str, 
+        embed_model_name: str,
+        parse_method: str,
+        ) -> tuple:
+    """
+    Generate database and collection names for LlamaParse-based document processing.
+
+    Parameters:
+    article_directory (str): The directory where the article is stored.
+    chunk_method (str): The method used for chunking (e.g., "llamaparse").
+    embed_model_name (str): The name of the embedding model.
+    parse_method (str): The parsing method used (e.g., "jason", "markdown").
+
+    Returns:
+    tuple: A tuple containing (database_name, collection_name, collection_name_summary).
+    """
+    database_name = f"{article_directory}_{chunk_method}"
+    collection_name = f"{embed_model_name}_parse_method_{parse_method}"
+    collection_name_summary = f"{embed_model_name}_parse_method_{parse_method}_summary"
+
+    return database_name, collection_name, collection_name_summary
+
+
+def get_llamaparse_vector_store_docstore_and_storage_context(
+        uri_milvus: str,
+        uri_mongo: str,
+        database_name: str,
+        collection_name_vector: str,
+        embed_model_dim: int
+        ):
+    """
+    Initialize vector store, document store, and storage context for LlamaParse documents.
+
+    Parameters:
+    uri_milvus (str): The URI for the Milvus server.
+    uri_mongo (str): The URI for the MongoDB server.
+    database_name (str): The name of the database.
+    collection_name_vector (str): The name of the collection for vector data.
+    embed_model_dim (int): The dimension of the embedding model.
+
+    Returns:
+    tuple: A tuple containing (vector_store, vector_docstore, storage_context_vector).
+    """
+    # Initialize vector store (a new empty collection will be created in Milvus server)
+    vector_store = MilvusVectorStore(
+        uri=uri_milvus,
+        db_name=database_name,
+        collection_name=collection_name_vector,
+        dim=embed_model_dim,
+        enable_dynamic_field=False,
+    )
+
+    # Initialize MongoDB vector document store
+    vector_docstore = MongoDocumentStore.from_uri(
+        uri=uri_mongo,
+        db_name=database_name,
+        namespace=collection_name_vector
+    )
+
+    # Initialize vector storage context: use Milvus as vector store and Mongo as docstore 
+    storage_context_vector = StorageContext.from_defaults(
+        vector_store=vector_store,
+        docstore=vector_docstore
+    )
+    
+    return vector_store, vector_docstore, storage_context_vector
+
+
+def change_default_engine_prompt_to_in_detail(engine):
+    """
+    Modify the default query engine prompts to request more detailed responses.
+
+    Parameters:
+    engine (object): The query engine object to modify.
+
+    Returns:
+    engine (object): The modified engine with updated prompts.
+    """
+    new_text_qa_tmpl_str = (
+    "Context information is below.\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "Given the context information and not prior knowledge, answer the query. \n"
+    "Try to include as many key details as possible.\n"
+    "Query: {query_str}\n"
+    "Answer: "
+    )
+
+    new_refine_tmpl_str = (
+    "The original query is as follows:\n"
+    "---------------------\n"
+    "{query_str}\n"
+    "---------------------\n"
+    "We have provided an existing answer:\n"
+    "---------------------\n"
+    "{existing_answer}\n"
+    "---------------------\n"
+    "We have the opportunity to refine the existing answer (only if needed) \n"
+    "with some more context below.\n"
+    "---------------------\n"
+    "{context_msg}\n"
+    "---------------------\n"
+    "Given the new context, refine the original answer to better answer the query. \n"
+    "Try to include as many key details as possible. \n"
+    "If the context isn't useful, return the original answer.\n"
+    "Refined Answer: "
+    )
+
+    new_text_qa_tmpl = PromptTemplate(new_text_qa_tmpl_str)
+    engine.update_prompts(
+                    {"response_synthesizer:text_qa_template": 
+                                            new_text_qa_tmpl}
+                                            )
+    
+    new_refine_tmpl = PromptTemplate(new_refine_tmpl_str)
+    engine.update_prompts(
+                    {"response_synthesizer:refine_template": 
+                                            new_refine_tmpl}
+                                            )
+    return engine
+
+
+def display_prompt_dict(prompt_type: str, prompts_dict: dict):
+    """
+    Display prompts from a query engine's prompt dictionary.
+
+    Parameters:
+    prompt_type (str): A label for the type of prompts being displayed.
+    prompts_dict (dict): Dictionary of prompts from a query engine.
+    """
+    print(f"\n{'='*60}")
+    print(f"{prompt_type}")
+    print(f"{'='*60}")
+    for k, p in prompts_dict.items():
+        print(f"\nPrompt Key: {k}")
+        print("-" * 40)
+        print(p.get_template())
+        print()

@@ -18,16 +18,19 @@ from llama_index.llms.anthropic import Anthropic
 # from llama_index.llms.mistralai import MistralAI
 from llama_index.llms.openai import OpenAI
 from llama_index.multi_modal_llms.anthropic import AnthropicMultiModal
-from llama_index.postprocessor.flag_embedding_reranker import FlagEmbeddingReranker
+from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_parse import LlamaParse
 
-from database_operation import (
+import sys
+sys.path.insert(0, '/Users/tony3/Documents/llamaindex')
+
+from db_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
 import openai
 
-from utility import (
+from utils import (
                 change_default_engine_prompt_to_in_detail,
                 display_prompt_dict,
                 get_article_link,
@@ -308,9 +311,9 @@ if add_document_summary == True:
     # Save document nodes to Mongodb docstore at the server
     storage_context_summary.docstore.add_documents(base_nodes + objects + image_text_nodes)
 
-reranker = FlagEmbeddingReranker(
+reranker = ColbertRerank(
     top_n=10,
-    model="BAAI/bge-reranker-large",
+    model="colbert-ir/colbertv2.0",
 )
 
 recursive_query_engine = recursive_index.as_query_engine(
