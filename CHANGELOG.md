@@ -2,7 +2,41 @@
 
 ## Changes Since Last Commit (December 14, 2025)
 
-### 1. Major Rewrite of `llamaparse.py`
+### 1. Fixed Critical Token Overflow Issue
+
+**Problem**: Queries were failing with `prompt is too long: 215512 tokens > 200000 maximum` error despite node content being only ~7K tokens.
+
+**Root Cause**: LlamaParse nodes contained massive hidden metadata (OCR coordinates, bounding boxes, table structures) that got serialized when sent to the LLM, causing a **36x token blowup** (6,920 content tokens → 253,372 serialized tokens).
+
+**Solution**: Added `MetadataStripperPostprocessor` in `utils.py` that creates clean `TextNode` objects with only text content and minimal metadata, reducing serialized tokens by **96%** (253K → 11K).
+
+#### Token Analysis (25 nodes, original parameters)
+
+| Metric | Before Fix | After Fix | Improvement |
+|--------|------------|-----------|-------------|
+| Content Tokens | 6,920 | 6,920 | Same |
+| Serialized Tokens | 253,372 | 10,787 | **96% reduction** |
+| Worst Node (Page 13) | 75,944 | 1,698 | **98% reduction** |
+
+---
+
+### 2. New Classes in `utils.py`
+
+#### `MetadataStripperPostprocessor`
+A postprocessor that strips large metadata from nodes before LLM synthesis:
+- Extracts only essential metadata (page number, type)
+- Creates clean `TextNode` objects to avoid serialization bloat
+- Fixes LlamaParse nodes that contain huge OCR coordinate arrays
+
+#### `PrintNodesPostprocessor` (Enhanced)
+Updated to show both content tokens and serialized tokens for debugging:
+- Shows token breakdown sorted by size
+- Displays content vs serialized token comparison
+- Warns when approaching Claude's 200K token limit
+
+---
+
+### 3. Major Rewrite of `llamaparse.py`
 
 The main script was significantly restructured from a simple 2-tool architecture to a more sophisticated 3-tool RAG system.
 

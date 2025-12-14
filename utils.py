@@ -174,26 +174,101 @@ class PageSortNodePostprocessor(BaseNodePostprocessor):
 
 class PrintNodesPostprocessor(BaseNodePostprocessor):
     """
-    A custom node postprocessor that prints the content of the nodes.
+    A custom node postprocessor that prints the content of the nodes with token counts.
     """
     def _postprocess_nodes(
         self, nodes: List[NodeWithScore], query_bundle: Optional[QueryBundle]
     ) -> List[NodeWithScore]:
+        import tiktoken
+        import json
+        enc = tiktoken.encoding_for_model("gpt-4")  # cl100k_base encoding (similar to Claude)
+        
         print("\n" + "="*80)
-        print(f"🔍 INSPECTING {len(nodes)} NODES BEFORE LLM SYNTHESIS")
+        print(f"🔍 INSPECTING {len(nodes)} NODES BEFORE LLM SYNTHESIS (tree_summarize)")
         print("="*80)
         
+        total_tokens = 0
+        total_serialized_tokens = 0
+        node_sizes = []
+        
         for i, node in enumerate(nodes):
-            print(f"\n📄 NODE {i+1}/{len(nodes)} (Score: {node.score})")
-            print(f"   ID: {node.node.node_id}")
-            print(f"   Metadata: {node.node.metadata}")
-            print("-" * 40)
-            print("   CONTENT:")
-            print(node.node.get_content())
-            print("-" * 40)
+            content = node.node.get_content()
+            node_tokens = len(enc.encode(content))
+            total_tokens += node_tokens
+            
+            # Check serialized size (what actually gets sent to LLM in some modes)
+            try:
+                # This is what LlamaIndex may serialize for context
+                serialized = json.dumps(node.node.to_dict())
+                serialized_tokens = len(enc.encode(serialized))
+            except:
+                serialized_tokens = node_tokens
+            total_serialized_tokens += serialized_tokens
+            
+            node_sizes.append((i+1, node_tokens, serialized_tokens, len(content), node.score, node.node.metadata.get('page', 'unknown')))
+        
+        # Sort by serialized token count descending to show largest nodes first
+        node_sizes_sorted = sorted(node_sizes, key=lambda x: x[2], reverse=True)
+        
+        print(f"\n📊 TOKEN SUMMARY (sorted by serialized size, largest first):")
+        print(f"   {'Node':<6} {'Page':<8} {'Content':>10} {'Serialized':>12} {'Chars':>10} {'Score':>8}")
+        print(f"   {'-'*6} {'-'*8} {'-'*10} {'-'*12} {'-'*10} {'-'*8}")
+        for node_num, tokens, ser_tokens, chars, score, page in node_sizes_sorted:
+            score_str = f"{score:.3f}" if score else "N/A"
+            print(f"   {node_num:<6} {str(page):<8} {tokens:>10,} {ser_tokens:>12,} {chars:>10,} {score_str:>8}")
+        
+        print(f"\n   🔥 CONTENT TOTAL: {len(nodes)} nodes, {total_tokens:,} tokens")
+        print(f"   📦 SERIALIZED TOTAL: {total_serialized_tokens:,} tokens (includes metadata, node_id, etc.)")
+        print(f"   ⚠️  Claude limit: 200,000 tokens (prompt includes system message + query)")
+        if total_serialized_tokens > 180000:
+            print(f"   ❌ DANGER: Serialized tokens ({total_serialized_tokens:,}) likely to exceed limit!")
+        elif total_serialized_tokens > 150000:
+            print(f"   ⚠️  WARNING: Serialized tokens ({total_serialized_tokens:,}) approaching limit!")
+        else:
+            print(f"   ✅ Context size OK")
             
         print("\n" + "="*80 + "\n")
         return nodes
+
+
+class MetadataStripperPostprocessor(BaseNodePostprocessor):
+    """
+    A postprocessor that strips large metadata from nodes before LLM synthesis.
+    
+    LlamaParse nodes often contain huge metadata (OCR coordinates, bounding boxes, etc.)
+    that gets serialized and sent to the LLM, causing token limit explosions.
+    This postprocessor keeps only essential metadata (page number) and discards the rest.
+    Also clears any large internal attributes like _node_content that may contain serialized data.
+    """
+    def _postprocess_nodes(
+        self, nodes: List[NodeWithScore], query_bundle: Optional[QueryBundle]
+    ) -> List[NodeWithScore]:
+        from llama_index.core.schema import TextNode
+        
+        stripped_nodes = []
+        for node_with_score in nodes:
+            original_node = node_with_score.node
+            
+            # Preserve only essential metadata
+            page = original_node.metadata.get('page', original_node.metadata.get('source', 'unknown'))
+            node_type = original_node.metadata.get('type', 'text')
+            
+            # Create a clean TextNode with only the text content
+            # This avoids any large serialized attributes from the original node
+            clean_node = TextNode(
+                text=original_node.get_content(),
+                id_=original_node.node_id,
+                metadata={
+                    'page': page,
+                    'type': node_type,
+                }
+            )
+            
+            # Create new NodeWithScore with the clean node
+            from llama_index.core.schema import NodeWithScore as NWS
+            stripped_nodes.append(NWS(node=clean_node, score=node_with_score.score))
+        
+        return stripped_nodes
 
 
 def get_article_link(article_dir, article_name):
@@ -567,7 +642,8 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
     node_postprocessors = [
                         PrevNext,
                         PageSortNodePostprocessor(),
-                        # PrintNodesPostprocessor(),
+                        MetadataStripperPostprocessor(),  # Strip large metadata to avoid token overflow
+                        # PrintNodesPostprocessor(),  # Uncomment for token counting debug output
                         ]
     
     if rerank is not None:

@@ -1174,6 +1174,8 @@ if add_document_summary == True:
 # 4. ColBERT reranking for final ranking
 
 # Fusion retrieval parameters
+# NOTE: Large values are now safe thanks to MetadataStripperPostprocessor in utils.py
+# which removes bloated LlamaParse metadata before LLM synthesis (reduced 253K -> 11K tokens)
 similarity_top_k_fusion = 48  # Number of similar nodes to retrieve for fusion
 fusion_top_n = 42  # Number of nodes to return from fusion (before reranking)
 num_queries_fusion = 1  # Set to 1 to disable query generation (use original query)
@@ -1314,7 +1316,8 @@ page_tool_description = (
 # query = "What are in equation (3) and (4)?"
 # query = "What are in equation (4)?"
 # query = "What are in the equations (1), (2), (3), and (4)? What are they trying to represent collectively?"
-query = "What are in the equations (2) and (3)?"
+# query = "What are in the equations (2) and (3)?"
+query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 
 # =============================================================================
 # Build tools with lazy initialization
@@ -1415,12 +1418,19 @@ if response is not None:
     
     # Output sequential nodes with page numbers in a list
     if document_nodes:
+        import tiktoken
+        enc = tiktoken.encoding_for_model("gpt-4")  # cl100k_base encoding (similar to Claude)
+        
         print("\n" + "="*80)
-        print("SEQUENTIAL NODES WITH PAGE NUMBERS (sent to LLM for final answer):")
+        print("SEQUENTIAL NODES WITH PAGE NUMBERS AND TOKEN COUNTS (sent to LLM for final answer):")
         print("="*80)
+        total_tokens = 0
         for i, node_info in enumerate(document_nodes, 1):
             node_id_prefix = node_info['node_id'][:8] if node_info.get('node_id') else 'UNKNOWN'
-            print(f"  Node {i}: Page {node_info['page']} (ID: {node_id_prefix}..., Score: {round(node_info['score'], 3) if node_info['score'] else 'N/A'})")
+            node_tokens = len(enc.encode(node_info['text']))
+            total_tokens += node_tokens
+            print(f"  Node {i}: Page {node_info['page']} | {node_tokens:,} tokens | {len(node_info['text']):,} chars (ID: {node_id_prefix}..., Score: {round(node_info['score'], 3) if node_info['score'] else 'N/A'})")
+        print(f"\n  📊 TOTAL: {len(document_nodes)} nodes, {total_tokens:,} tokens (context only, excludes system prompt)")
         
         # # Print the contents of each page sent to LLM
         # print("\n" + "="*80)
