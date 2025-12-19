@@ -53,9 +53,15 @@ The main script was significantly restructured from a simple 2-tool architecture
 
 - **Custom Guidance Prompt** - `create_custom_guidance_prompt()` for SubQuestionQueryEngine with page-based examples
 
-- **Image Processing with Caching** - `load_image_text_nodes_llamaparse()` now uses raw Anthropic SDK (avoiding package conflicts) with image description caching
+- **Image Processing with Caching** - `load_image_text_nodes_llamaparse()` extracts images and generates detailed descriptions via Anthropic's vision API (raw `anthropic` SDK to avoid package conflicts). Descriptions are cached to `{article_name}_image_descriptions.json` (in the article data folder) to avoid repeated expensive API calls. Images exceeding Claude's dimension limits are resized (max dimension ~8000 px), saved in an appropriate format (PNG/JPEG), and base64-encoded before sending, reducing payload size and improving reliability; trade-off: initial cache generation cost and possible minor fidelity loss from resizing.
 
-- **Node Size Management** - Added `SentenceSplitter` to handle oversized nodes that exceed embedding model limits (8192 tokens)
+- **Node Size Management** - Added `SentenceSplitter` to handle oversized nodes that exceed embedding model limits (8192 tokens). Uses a conservative splitting threshold (~8000 characters ≈ 2000 tokens) with overlapping chunks (chunk_size=2000, chunk_overlap=100) to avoid embedding failures; trade-off: more chunks → more embeddings and retrieval candidates.
+
+- **Metadata stripping before vector writes** - Large metadata (OCR coordinates, bounding boxes, table structures) is stripped from nodes before saving to Milvus to avoid exceeding Milvus dynamic-field size and serialization/token blowups; full metadata remains available in MongoDB docstores.
+
+- **Prev/Next stitching** - `stitch_prev_next_relationships()` is applied before saving nodes to both vector and summary MongoDB docstores so the PrevNextNodePostprocessor can retrieve neighboring nodes (enabled when `add_document_vector`/`add_document_summary` are true).
+
+- **Response synthesis mode** - Added `RESPONSE_MODE` environment variable to select the response synthesizer. When set to `TREE_SUMMARIZE`, a more detailed summary prompt template is used to produce verbose, structured answers (improves answer quality but increases token usage and latency).
 
 - **LLM Model Update** - Changed from `claude-3-5-sonnet-20240620` to `claude-sonnet-4-0`
 
@@ -72,7 +78,7 @@ The main script was significantly restructured from a simple 2-tool architecture
 ### 2. Updates to `utils.py`
 
 - **PageSortNodePostprocessor** - Now supports both `'page'` (LlamaParse) and `'source'` (PyMuPDF) metadata keys
-
+- Added `stitch_prev_next_relationships()` helper and use it to stitch prev/next relationships before saving nodes to MongoDB docstores (improves neighbor retrieval in post-processing).
 - **New LlamaParse-specific Functions**:
   - `get_database_and_llamaparse_collection_name()`
   - `get_llamaparse_vector_store_docstore_and_storage_context()`
@@ -119,7 +125,7 @@ similarity_top_k_fusion = 48  # Nodes for fusion
 fusion_top_n = 42             # Nodes after fusion
 num_queries_fusion = 1        # Query generation (1 = disabled)
 rerank_top_n = 32             # Nodes after ColBERT reranking
-num_nodes_prev_next = 0       # Neighboring nodes (0 = disabled)
+num_nodes_prev_next = 1       # Neighboring nodes (1 = enabled by default)
 ```
 
 ### LlamaParse Configuration
@@ -137,5 +143,6 @@ parser = LlamaParse(
 ### Image Processing
 
 - Uses raw `anthropic` SDK instead of `AnthropicMultiModal` to avoid package conflicts
-- Caches image descriptions to `{article_name}_image_descriptions.json`
-- Handles image resizing for Claude's 8000px dimension limit
+- Extracts images and generates detailed descriptions using Claude Vision; descriptions cached to `{article_name}_image_descriptions.json` (stored in the article data folder) to prevent repeated API calls and lower runtime cost
+- Resizes images that exceed Claude's max pixel dimension (~8000 px), selects an appropriate format (PNG/JPEG), and base64-encodes payloads before sending to the API—this reduces payload size and API errors; caching + resizing lower costs and improve reliability but may slightly reduce fidelity for very large images
+- Graceful error handling and cache lookups are used to skip API calls when descriptions exist

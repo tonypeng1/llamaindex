@@ -5,9 +5,12 @@ from io import BytesIO
 import json
 import nest_asyncio
 import os
+from dotenv import load_dotenv
+
 from pathlib import Path
 from PIL import Image
 import time
+from dotenv import load_dotenv
 
 from llama_index.core import (
                         Document,
@@ -53,12 +56,23 @@ from utils import (
                 get_summary_storage_context,
                 get_summary_tree_detail_tool,
                 get_text_nodes_from_query_keyphrase,
-                get_llamaparse_vector_store_docstore_and_storage_context, 
+                get_llamaparse_vector_store_docstore_and_storage_context,
+                stitch_prev_next_relationships,
                 )                
+from llama_index.core.response_synthesizers.factory import get_response_synthesizer
+from llama_index.core.response_synthesizers.type import ResponseMode
+from llama_index.core.prompts.base import PromptTemplate
+from llama_index.core.prompts.prompt_type import PromptType
+
+# Load environment variables from .env if available
+try:
+    load_dotenv()
+except Exception:
+    # Don't hard-fail if python-dotenv is not installed; print a hint for devs
+    print("⚠️ python-dotenv not installed or failed to load; .env not loaded (pip install python-dotenv to enable)")
 
 
 def load_document_llamaparse_jason(_json_objs):
-
     json_list = _json_objs[0]["pages"]
 
     documents = []
@@ -1015,12 +1029,12 @@ json_cache_path = Path(f"./data/{article_dictory}/{article_name.replace('.pdf', 
 section_index = None  # Initialize section index
 
 if json_cache_path.exists():
-    print(f"📂 Loading cached JSON from {json_cache_path} for section index...")
+    print(f"\n📂 Loading cached JSON from {json_cache_path} for section index...")
     with open(json_cache_path, "r") as f:
         json_objs_for_index = json.load(f)
     # Build section index from the JSON
     section_index = build_section_index(json_objs_for_index)
-    print(f"📑 Built section index with {len(set(id(v) for v in section_index.values()))} unique sections")
+    print(f"\n📑 Built section index with {len(set(id(v) for v in section_index.values()))} unique sections")
     # Print available sections for debugging
     # print("   Available sections:")
     # print(format_section_list_for_prompt(section_index))
@@ -1040,56 +1054,56 @@ if save_index_vector or add_document_vector or add_document_summary:
     # Aggressive parsing instruction for better equation recognition
     # This helps LlamaParse correctly handle subscripts/superscripts that appear on separate lines in PDFs
     parsing_instruction_equations = """
-This is an academic paper containing mathematical equations with complex notation.
+    This is an academic paper containing mathematical equations with complex notation.
 
-=== LATEX DELIMITER REQUIREMENTS ===
-1. Display equations (standalone, centered): Use $$ ... $$ delimiters
-2. Inline math (within text): Use $ ... $ delimiters (NOT \\( \\) notation)
-3. Equation numbers in the right margin MUST be preserved using \\tag{n} notation
+    === LATEX DELIMITER REQUIREMENTS ===
+    1. Display equations (standalone, centered): Use $$ ... $$ delimiters
+    2. Inline math (within text): Use $ ... $ delimiters (NOT \\( \\) notation)
+    3. Equation numbers in the right margin MUST be preserved using \\tag{n} notation
 
-=== CRITICAL: COMPLEX MATH SYMBOL HANDLING ===
-When parsing equations from this PDF, pay careful attention to these special notations:
+    === CRITICAL: COMPLEX MATH SYMBOL HANDLING ===
+    When parsing equations from this PDF, pay careful attention to these special notations:
 
-TILDE/ACCENT MARKS:
-- A variable with a tilde above it (like Ẽ) must be written as \\tilde{E}
-- Do NOT drop the tilde - it indicates a different variable
+    TILDE/ACCENT MARKS:
+    - A variable with a tilde above it (like Ẽ) must be written as \\tilde{E}
+    - Do NOT drop the tilde - it indicates a different variable
 
-BIG OPERATORS WITH LIMITS:
-- Large union symbol with subscript j underneath: \\bigcup_j (NOT just \\cup)
-- Large intersection with subscript: \\bigcap_j
-- Large summation: \\sum_j
+    BIG OPERATORS WITH LIMITS:
+    - Large union symbol with subscript j underneath: \\bigcup_j (NOT just \\cup)
+    - Large intersection with subscript: \\bigcap_j
+    - Large summation: \\sum_j
 
-CALLIGRAPHIC/SCRIPT LETTERS:
-- Fancy/script letters (like a curly E or V) must use \\mathcal{}: 
-  - Script E → \\mathcal{E}
-  - Script V → \\mathcal{V}
-- These are DIFFERENT from regular E and V
+    CALLIGRAPHIC/SCRIPT LETTERS:
+    - Fancy/script letters (like a curly E or V) must use \\mathcal{}: 
+    - Script E → \\mathcal{E}
+    - Script V → \\mathcal{V}
+    - These are DIFFERENT from regular E and V
 
-LABELED ARROWS:
-- Arrows with text labels above them: \\xrightarrow{\\text{label}}
-- Example: an arrow labeled "belongs_to" → \\xrightarrow{\\text{belongs\\_to}}
+    LABELED ARROWS:
+    - Arrows with text labels above them: \\xrightarrow{\\text{label}}
+    - Example: an arrow labeled "belongs_to" → \\xrightarrow{\\text{belongs\\_to}}
 
-SUBSCRIPTS AND SUPERSCRIPTS:
-- Subscripts: V_j, E_j, d_j
-- Superscripts: v^{mm} or v^{\\text{mm}}
-- Combined: v_j^{\\text{mm}} means v with subscript j AND superscript mm
-- In PDFs, subscripts/superscripts may appear on SEPARATE LINES - combine them correctly
+    SUBSCRIPTS AND SUPERSCRIPTS:
+    - Subscripts: V_j, E_j, d_j
+    - Superscripts: v^{mm} or v^{\\text{mm}}
+    - Combined: v_j^{\\text{mm}} means v with subscript j AND superscript mm
+    - In PDFs, subscripts/superscripts may appear on SEPARATE LINES - combine them correctly
 
-=== EXAMPLE EQUATION ===
-If you see an equation that looks like:
-"E-tilde equals big-union of script-E sub j, union big-union of (u arrow-with-belongs_to v sub j superscript mm)"
+    === EXAMPLE EQUATION ===
+    If you see an equation that looks like:
+    "E-tilde equals big-union of script-E sub j, union big-union of (u arrow-with-belongs_to v sub j superscript mm)"
 
-It should be parsed as:
-$$\\tilde{E} = \\bigcup_j \\mathcal{E}_j \\cup \\bigcup_j \\{(u \\xrightarrow{\\text{belongs\\_to}} v_j^{\\text{mm}}) : u \\in \\mathcal{V}_j\\} \\tag{4}$$
+    It should be parsed as:
+    $$\\tilde{E} = \\bigcup_j \\mathcal{E}_j \\cup \\bigcup_j \\{(u \\xrightarrow{\\text{belongs\\_to}} v_j^{\\text{mm}}) : u \\in \\mathcal{V}_j\\} \\tag{4}$$
 
-=== VISUAL CONTEXT ===
-Look at the VISUAL appearance in the PDF to correctly identify:
-- Tildes and other accent marks above variables
-- Big vs small operators (large ∪ vs small ∪)
-- Script/calligraphic vs regular letters
-- Text labels on arrows
-- Disconnected subscripts/superscripts that belong to nearby variables
-"""
+    === VISUAL CONTEXT ===
+    Look at the VISUAL appearance in the PDF to correctly identify:
+    - Tildes and other accent marks above variables
+    - Big vs small operators (large ∪ vs small ∪)
+    - Script/calligraphic vs regular letters
+    - Text labels on arrows
+    - Disconnected subscripts/superscripts that belong to nearby variables
+    """
     
     if parse_method == "jason":
         parser = LlamaParse(
@@ -1108,7 +1122,7 @@ Look at the VISUAL appearance in the PDF to correctly identify:
         json_cache_path = Path(f"./data/{article_dictory}/{article_name.replace('.pdf', '_llamaparse.json')}")
         
         if json_cache_path.exists():
-            print(f"📂 Loading cached JSON from {json_cache_path}...")
+            print(f"\n📂 Loading cached JSON from {json_cache_path}...")
             with open(json_cache_path, "r") as f:
                 json_objs = json.load(f)
         else:
@@ -1157,12 +1171,17 @@ else:
         )
 
 if add_document_vector == True:
+    # Stitch prev/next relationships so PrevNextNodePostprocessor can retrieve neighbors
+    all_nodes_vector = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
     # Save document nodes to Mongodb docstore at the server
-    storage_context_vector.docstore.add_documents(base_nodes + objects + image_text_nodes)
+    storage_context_vector.docstore.add_documents(all_nodes_vector)
+    print(f"✅ Stitched prev/next relationships for {len(all_nodes_vector)} nodes")
 
 if add_document_summary == True:
+    # Stitch prev/next relationships so PrevNextNodePostprocessor can retrieve neighbors
+    all_nodes_summary = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
     # Save document nodes to Mongodb docstore at the server
-    storage_context_summary.docstore.add_documents(base_nodes + objects + image_text_nodes)
+    storage_context_summary.docstore.add_documents(all_nodes_summary)
 
 # =============================================================================
 # Fusion BM25 + Vector Retrieval Configuration for keyphrase_tool
@@ -1180,7 +1199,7 @@ similarity_top_k_fusion = 48  # Number of similar nodes to retrieve for fusion
 fusion_top_n = 42  # Number of nodes to return from fusion (before reranking)
 num_queries_fusion = 1  # Set to 1 to disable query generation (use original query)
 rerank_top_n = 32  # Number of nodes after ColBERT reranking
-num_nodes_prev_next = 0  # Number of neighboring nodes to retrieve (0 = disabled)
+num_nodes_prev_next = 1  # Number of neighboring nodes to retrieve (0 = disabled)
 
 reranker = ColbertRerank(
     top_n=rerank_top_n,
@@ -1207,7 +1226,6 @@ specific_tool_description = (
 # recursive_query_engine_prompts_dict = recursive_query_engine.get_prompts()
 # type = "recursive_query_engine:"
 # display_prompt_dict(type.upper(), recursive_query_engine_prompts_dict)
-
 
 summary_tool_description = (
     "Useful for summarization or full context questions related to the ENTIRE document. "
@@ -1316,8 +1334,8 @@ page_tool_description = (
 # query = "What are in equation (3) and (4)?"
 # query = "What are in equation (4)?"
 # query = "What are in the equations (1), (2), (3), and (4)? What are they trying to represent collectively?"
-# query = "What are in the equations (2) and (3)?"
-query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
+query = "What are in the equations (2) and (3)?"
+# query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 
 # =============================================================================
 # Build tools with lazy initialization
@@ -1365,10 +1383,41 @@ tools = [
     page_filter_tool
 ]
 
-# Create SubQuestionQueryEngine with the 3 tools
+# Use TREE_SUMMARIZE response synthesizer (default behavior)
+# Allow overriding response mode with environment variable for testing
+response_mode_env = os.environ.get("RESPONSE_MODE", "TREE_SUMMARIZE").upper()
+if response_mode_env not in {m.name for m in ResponseMode}:
+    print(f"⚠️ Invalid RESPONSE_MODE={response_mode_env}; falling back to COMPACT")
+    response_mode_env = "TREE_SUMMARIZE"
+
+# If TREE_SUMMARIZE, use a more detailed summary prompt for verbosity
+summary_template = None
+if response_mode_env == "TREE_SUMMARIZE":
+    detailed_tree_tmpl = (
+        "Context information from multiple sources is below.\n"
+        "---------------------\n"
+        "{context_str}\n"
+        "---------------------\n"
+        "You are an expert assistant. Provide a detailed, structured, and thorough answer "
+        "to the query below. Include key points, important details, any equations or "
+        "examples present in the context, and list steps or components when applicable. "
+        "Be explicit and avoid omitting technical specifics.\n"
+        "Query: {query_str}\n"
+        "Detailed Answer: "
+    )
+    summary_template = PromptTemplate(detailed_tree_tmpl, prompt_type=PromptType.SUMMARY)
+
+synth = get_response_synthesizer(
+    response_mode=ResponseMode[response_mode_env],
+    summary_template=summary_template,
+)
+print(f"\n🔧 Using {response_mode_env} response synthesizer for final answers")
+
+# Create SubQuestionQueryEngine with the 3 tools and the specified synthesizer
 sub_question_engine = SubQuestionQueryEngine.from_defaults(
                                         question_gen=question_gen, 
                                         query_engine_tools=tools,
+                                        response_synthesizer=synth,
                                         verbose=True,
                                         )
 
