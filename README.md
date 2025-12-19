@@ -52,6 +52,14 @@ pip install uv && uv pip install -e .
 | **Neural Re-ranking** | ColBERT for fine-grained relevance scoring |
 | **KeyBERT** | Keyphrase extraction reduces BM25 noise |
 
+## Performance & Robustness
+
+- **Metadata stripping** — strips large LlamaParse metadata before saving to Milvus to avoid dynamic-field size and token-serialization blowups; full metadata is retained in MongoDB docstores.
+- **Conservative node splitting** — splits oversized nodes (≈8000 chars / ~2000 tokens) with overlap to prevent embedding and token-limit failures.
+- **Image processing & caching** — resizes large images, chooses appropriate format, base64-encodes payloads, and caches generated descriptions to avoid repeated vision API calls.
+- **Safer embedding & lazy init** — reduced embedding batch sizes and deferred query-engine initialization to lower failure rates and startup cost.
+- **Optional detailed responses** — set `RESPONSE_MODE=TREE_SUMMARIZE` for verbose structured answers (higher token use).
+
 ---
 
 ## Configuration
