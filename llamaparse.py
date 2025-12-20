@@ -433,26 +433,100 @@ def build_section_index(json_objs) -> Dict[str, Dict]:
             ...
         }
     """
-    # Pattern to match numbered sections like '# 1  INTRODUCTION', '# 2.1 PRELIMINARY', '# A.1 ...'
-    numbered_pattern = re.compile(r'^#\s+(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)\s+(.+)$')
-    
-    # First pass: collect all numbered section headings with their start pages
+    # Patterns to match headings in a variety of formats:
+    # - Markdown headings with or without leading '#'
+    # - Plain numbered headings like '5  CONCLUSION' or '2.1 Methodology'
+    # - LaTeX \section{...} or \section*{...}
+    md_num_pattern = re.compile(r'^(?:#\s*)?(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)\s+(.+)$')
+    plain_num_pattern = re.compile(r'^(?:\s*)(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)(?:\s{1,}|\.)+(.+)$')
+    latex_section_pattern = re.compile(r'\\section\*?\{([^}]+)\}', re.IGNORECASE)
+
+    # First pass: collect candidate section headings from multiple fields
     section_headings = []
+    seen_titles = set()
     for page in json_objs[0]['pages']:
-        page_num = page['page']
+        page_num = page.get('page')
+
+        # Check page-level md/text first (sometimes full heading stored here)
+        page_level_sources = [page.get('md', ''), page.get('text', '')]
+        for src in page_level_sources:
+            if not src:
+                continue
+            # Try LaTeX \section
+            lm = latex_section_pattern.search(src)
+            if lm:
+                title = lm.group(1).strip()
+                key = (title.lower(), page_num)
+                if key not in seen_titles:
+                    section_headings.append({'start_page': page_num, 'section_num': '', 'title': title, 'level': 1})
+                    seen_titles.add(key)
+                    continue
+
+            # Try numbered patterns
+            for line in src.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                m = md_num_pattern.match(line) or plain_num_pattern.match(line)
+                if m:
+                    section_num = m.group(1)
+                    section_title = m.group(2).strip()
+                    key = (section_title.lower(), page_num)
+                    if key not in seen_titles:
+                        section_headings.append({
+                            'start_page': page_num,
+                            'section_num': section_num,
+                            'title': section_title,
+                            'level': section_num.count('.') + 1 if section_num else 1,
+                        })
+                        seen_titles.add(key)
+
+        # Also inspect individual items (heading or text) which may contain OCR/plain headings
         for item in page.get('items', []):
-            if item.get('type') == 'heading':
-                md = item.get('md', '').strip()
-                match = numbered_pattern.match(md)
-                if match:
-                    section_num = match.group(1)
-                    section_title = match.group(2).strip()
-                    section_headings.append({
-                        'start_page': page_num,
-                        'section_num': section_num,
-                        'title': section_title,
-                        'level': section_num.count('.') + 1,  # 1 -> level 1, 1.1 -> level 2
-                    })
+            if item.get('type') in ('heading', 'text'):
+                # item may have 'md', 'value', or 'text' fields depending on parser
+                candidates = [item.get('md', ''), item.get('value', ''), item.get('text', '')]
+                for src in candidates:
+                    if not src:
+                        continue
+                    # LaTeX \section
+                    lm = latex_section_pattern.search(src)
+                    if lm:
+                        title = lm.group(1).strip()
+                        key = (title.lower(), page_num)
+                        if key not in seen_titles:
+                            section_headings.append({'start_page': page_num, 'section_num': '', 'title': title, 'level': 1})
+                            seen_titles.add(key)
+                            continue
+
+                    # Plain numbered heading like '5  CONCLUSION' or '2.1 Methodology'
+                    for line in src.splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        m = md_num_pattern.match(line) or plain_num_pattern.match(line)
+                        if m:
+                            section_num = m.group(1)
+                            section_title = m.group(2).strip()
+                            key = (section_title.lower(), page_num)
+                            if key not in seen_titles:
+                                section_headings.append({
+                                    'start_page': page_num,
+                                    'section_num': section_num,
+                                    'title': section_title,
+                                    'level': section_num.count('.') + 1 if section_num else 1,
+                                })
+                                seen_titles.add(key)
+                                break
+                        else:
+                            # Fallback: uppercase titles like 'CONCLUSION' or 'ACKNOWLEDGEMENTS'
+                            if len(line) <= 60 and line.upper() == line and any(c.isalpha() for c in line):
+                                title = line.strip()
+                                key = (title.lower(), page_num)
+                                if key not in seen_titles and len(title) > 3:
+                                    section_headings.append({'start_page': page_num, 'section_num': '', 'title': title, 'level': 1})
+                                    seen_titles.add(key)
+                                    break
     
     # Second pass: calculate end pages
     # A section ends when the next same-level or higher-level section starts, or at document end
@@ -684,63 +758,100 @@ def get_fusion_tree_page_filter_sort_detail_tool_llamaparse(
     
     # Use section-aware prompt if section_index is available
     if _section_index and section_list_str:
-        query_text = (
-        '## Instruction:\n'
-        'Analyze the user query and determine which pages to retrieve.\n\n'
-        'If the query mentions SPECIFIC PAGE NUMBERS (e.g., "page 1", "pages 5-10"), extract those pages.\n'
-        'If the query mentions a SECTION NAME or NUMBER, look up the exact pages from the section list below.\n\n'
-        '## Available Sections in This Document:\n'
-        '{section_list}\n\n'
-        '## Output Format:\n'
-        'Return a JSON object with either:\n'
-        '- For explicit page numbers: {{"type": "pages", "pages": [1, 2, 3]}}\n'
-        '- For section references: {{"type": "section", "section": "introduction"}}\n\n'
-        '## Examples:\n'
-        '**Query:** "Summarize pages 10-15"\n'
-        '**Output:** {{"type": "pages", "pages": [10, 11, 12, 13, 14, 15]}}\n\n'
-        '**Query:** "What does the Introduction say?"\n'
-        '**Output:** {{"type": "section", "section": "introduction"}}\n\n'
-        '**Query:** "Describe Section 2.1"\n'
-        '**Output:** {{"type": "section", "section": "2.1"}}\n\n'
-        '**Query:** "What is in the Evaluation section?"\n'
-        '**Output:** {{"type": "section", "section": "evaluation"}}\n\n'
-        '**Query:** "Summarize the content from page 1 to page 3"\n'
-        '**Output:** {{"type": "pages", "pages": [1, 2, 3]}}\n\n'
-        '## Now analyze the following query:\n'
-        '**Query:** {query_str}\n'
-        )
-        
-        prompt = PromptTemplate(query_text)
-        _result_str = _llm.predict(prompt=prompt, query_str=_query_str, section_list=section_list_str)
-        
-        try:
-            _result = json.loads(_result_str)
-            
-            if _result.get('type') == 'section':
-                # Look up section in the index
-                section_key = _result.get('section', '').lower().strip()
-                section_info = _section_index.get(section_key)
-                
-                if section_info:
-                    _page_numbers = list(range(section_info['start_page'], section_info['end_page'] + 1))
-                    if verbose:
-                        print(f"Section '{section_key}' resolved to pages {_page_numbers}")
-                else:
-                    # Fallback: try fuzzy matching
-                    for key, info in _section_index.items():
-                        if section_key in key or key in section_key:
-                            _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
-                            if verbose:
-                                print(f"Section '{section_key}' fuzzy matched to '{key}', pages {_page_numbers}")
-                            break
-                    else:
-                        # No match found, default to page 1
-                        _page_numbers = [1]
-                        if verbose:
-                            print(f"Section '{section_key}' not found, defaulting to page 1")
+        # Deterministic pre-check: if the query explicitly mentions a section
+        # title (e.g., "Conclusion"), resolve pages directly from the
+        # `section_index` to avoid nondeterministic LLM fallback.
+        q_lower = _query_str.lower()
+        _page_numbers = None
+        for key, info in _section_index.items():
+            title = (info.get('title') or '').lower()
+            # match on title, section number, or full key variants
+            if title and title in q_lower:
+                _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
+                if verbose:
+                    print(f"Deterministic section match for '{title}' -> pages {_page_numbers}")
+                break
+            # Avoid accidental matches on very short keys (e.g., 'a')
+            if key and len(key) > 2 and key in q_lower:
+                _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
+                if verbose:
+                    print(f"Deterministic section key match '{key}' -> pages {_page_numbers}")
+                break
+
+        # If we found a deterministic mapping, skip LLM and use it
+        if _page_numbers is not None:
+            if verbose:
+                print(f"Using deterministic pages {_page_numbers} for query: {_query_str}")
+        else:
+            query_text = (
+                '## Instruction:\n'
+                'Analyze the user query and determine which pages to retrieve.\n\n'
+                'If the query mentions SPECIFIC PAGE NUMBERS (e.g., "page 1", "pages 5-10"), extract those pages.\n'
+                'If the query mentions a SECTION NAME or NUMBER, look up the exact pages from the section list below.\n\n'
+                '## Available Sections in This Document:\n'
+                '{section_list}\n\n'
+                '## Output Format:\n'
+                'Return a JSON object with either:\n'
+                '- For explicit page numbers: {{"type": "pages", "pages": [1, 2, 3]}}\n'
+                '- For section references: {{"type": "section", "section": "introduction"}}\n\n'
+                '## Examples:\n'
+                '**Query:** "Summarize pages 10-15"\n'
+                '**Output:** {{"type": "pages", "pages": [10, 11, 12, 13, 14, 15]}}\n\n'
+                '**Query:** "What does the Introduction say?"\n'
+                '**Output:** {{"type": "section", "section": "introduction"}}\n\n'
+                '**Query:** "Describe Section 2.1"\n'
+                '**Output:** {{"type": "section", "section": "2.1"}}\n\n'
+                '**Query:** "What is in the Evaluation section?"\n'
+                '**Output:** {{"type": "section", "section": "evaluation"}}\n\n'
+                '**Query:** "Summarize the content from page 1 to page 3"\n'
+                '**Output:** {{"type": "pages", "pages": [1, 2, 3]}}\n\n'
+                '## Now analyze the following query:\n'
+                '**Query:** {query_str}\n'
+            )
+
+            if _page_numbers is None:
+                prompt = PromptTemplate(query_text)
+                _result_str = _llm.predict(prompt=prompt, query_str=_query_str, section_list=section_list_str)
             else:
-                # Explicit page numbers
-                _page_numbers = _result.get('pages', [1])
+                _result_str = None
+        
+        # If we didn't call the LLM because of deterministic mapping, _result_str
+        # may be None. Only attempt to JSON-decode if we actually invoked the LLM.
+        # Ensure _result_str is defined in all control paths (deterministic pre-check may skip LLM)
+        _result_str = None
+        try:
+            if _result_str is None:
+                _result = None
+            else:
+                _result = json.loads(_result_str)
+
+            if _result is not None:
+                if _result.get('type') == 'section':
+                    # Look up section in the index
+                    section_key = _result.get('section', '').lower().strip()
+                    section_info = _section_index.get(section_key)
+                    
+                    if section_info:
+                        _page_numbers = list(range(section_info['start_page'], section_info['end_page'] + 1))
+                        if verbose:
+                            print(f"Section '{section_key}' resolved to pages {_page_numbers}")
+                    else:
+                        # Fallback: try fuzzy matching
+                        for key, info in _section_index.items():
+                            if section_key in key or key in section_key:
+                                _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
+                                if verbose:
+                                    print(f"Section '{section_key}' fuzzy matched to '{key}', pages {_page_numbers}")
+                                break
+                        else:
+                            # No match found, default to page 1
+                            _page_numbers = [1]
+                            if verbose:
+                                print(f"Section '{section_key}' not found, defaulting to page 1")
+                else:
+                    # Explicit page numbers
+                    _page_numbers = _result.get('pages', [1])
+            # if _result is None, we already set _page_numbers via deterministic pre-check
                 
         except json.JSONDecodeError:
             # Fallback: try to parse as simple list
@@ -1330,12 +1441,15 @@ page_tool_description = (
 # query = "What is the content of the Evaluation section?"
 # query = "Summarize the content of the Evaluation section."
 # query = "Summarize the Conclusion section."
+# query = "Summarize the section 3.4, CASE STUDIES."
+query = "Summarize the CASE STUDIES section."
 # query = "What is in equation (1)?"
 # query = "What are in equation (3) and (4)?"
 # query = "What are in equation (4)?"
 # query = "What are in the equations (1), (2), (3), and (4)? What are they trying to represent collectively?"
-query = "What are in the equations (2) and (3)?"
+# query = "What are in the equations (2) and (3)?"
 # query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
+# query = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
 
 # =============================================================================
 # Build tools with lazy initialization

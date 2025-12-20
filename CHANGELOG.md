@@ -1,5 +1,21 @@
 # Changelog
 
+## [December 20, 2025]
+
+### 1. Enhanced Section Indexing and Retrieval
+
+**Improved Heading Detection**: Significantly upgraded `build_section_index` in `llamaparse.py` to handle diverse document formats:
+- Added support for **Markdown** (`#`), **plain numbered** (`5 CONCLUSION`), and **LaTeX** (`\section{...}`) headings.
+- Implemented **uppercase fallback** for titles like "ACKNOWLEDGEMENTS" that lack numbering.
+- Expanded search to multiple fields (`md`, `text`, `value`) and page-level sources to ensure no sections are missed.
+
+**Deterministic Section Retrieval**:
+- Added a **pre-check logic** in `page_filter_tool` that resolves section-based queries (e.g., "Summarize the CASE STUDIES section") directly from the `section_index`.
+- This bypasses the LLM for known sections, improving **speed, reliability, and cost** while avoiding non-deterministic LLM failures.
+- Maintained LLM fallback for complex page-range queries (e.g., "pages 5-10").
+
+---
+
 ## Changes Since Last Commit (December 14, 2025)
 
 ### 1. Fixed Critical Token Overflow Issue
