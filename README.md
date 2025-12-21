@@ -19,6 +19,13 @@ cd llamaindex
 pip install uv && uv pip install -e .
 ```
 
+#### MinerU Setup (Optional)
+To use the MinerU parsing pipeline, create the isolated environment to avoid dependency conflicts:
+```bash
+uv venv .mineru_env
+uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
+```
+
 ### Setup
 
 1. **Document**: Download [Paul Graham's essay](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing) → `./data/paul_graham/paul_graham_essay.pdf`

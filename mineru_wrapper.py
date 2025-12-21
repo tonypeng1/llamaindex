@@ -9,6 +9,14 @@ def run_mineru(input_pdf, output_dir):
     """
     Runs MinerU CLI to parse a PDF.
     """
+    mineru_path = "./.mineru_env/bin/mineru"
+    if not os.path.exists(mineru_path):
+        print(f"❌ Error: MinerU executable not found at {mineru_path}")
+        print("\nPlease set up the MinerU environment first:")
+        print("  1. uv venv .mineru_env")
+        print("  2. uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python")
+        return False
+
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
     
@@ -16,7 +24,7 @@ def run_mineru(input_pdf, output_dir):
     # Using vlm-mlx-engine for macOS as it's faster
     # If it fails, we could fallback to 'pipeline'
     cmd = [
-        "./.mineru_env/bin/mineru",
+        mineru_path,
         "-p", input_pdf,
         "-o", output_dir,
         "-b", "vlm-mlx-engine"
