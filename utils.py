@@ -153,15 +153,22 @@ class PageSortNodePostprocessor(BaseNodePostprocessor):
             for node in nodes:
                 # Try 'page' first (LlamaParse), then 'source' (PyMuPDF)
                 page_num = node.node.metadata.get("page", node.node.metadata.get("source"))
+                
+                # Handle non-integer page numbers gracefully
+                try:
+                    page_int = int(page_num) if page_num is not None else 0
+                except (ValueError, TypeError):
+                    page_int = 0
+                    
                 _nodes_dic.append({
-                    "source": page_num,
+                    "source": page_int,
                     "start_char_idx": node.node.start_char_idx,
                     "node": node
                 })
 
             # Sort based on page_label and then start_char_idx
             sorted_nodes_dic = sorted(_nodes_dic, \
-                                        key=lambda x: (int(x["source"]) if x["source"] is not None else 0, x["start_char_idx"] or 0))
+                                        key=lambda x: (x["source"], x["start_char_idx"] or 0))
 
             # Get the new nodes from the sorted node dic
             sorted_new_nodes = [node["node"] for node in sorted_nodes_dic]
@@ -1200,7 +1207,11 @@ def change_tree_engine_prompt_to_in_detail(
         "Given the information from multiple sources and NOT PRIOR KNOWLEDGE, "
         "answer the query below.\n"
         "TRY TO INCLUDE AS MANY DETAILS AS POSSIBLE ONLY FROM THE PROVIDED CONTEXT \n"
-        "IFORMATION. DO NOT INCLUDE ANYTHING THAT IS NOT IN THE PROVIDED CONTEXT INFORMATION.\n"
+        "IFORMATION. DO NOT INCLUDE ANYTHING THAT IS NOT IN THE PROVIDED CONTEXT INFORMATION.\n\n"
+        "=== MATHEMATICAL FORMULAS ===\n"
+        "For any mathematical equations or formulas in your response:\n"
+        "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"
+        "2. Use $ ... $ delimiters for inline math (within a sentence).\n\n"
         "Query: {query_str}\n"
         "Answer: "
         )
@@ -1213,7 +1224,11 @@ def change_tree_engine_prompt_to_in_detail(
         "Given the information from multiple sources and NOT PRIOR KNOWLEDGE, "
         "answer the query below.\n"
         "TRY TO INCLUDE AS MANY DETAILS AS POSSIBLE ONLY FROM THE PROVIDED CONTEXT \n"
-        "IFORMATION. DO NOT INCLUDE ANYTHING THAT IS NOT IN THE PROVIDED CONTEXT INFORMATION.\n"
+        "IFORMATION. DO NOT INCLUDE ANYTHING THAT IS NOT IN THE PROVIDED CONTEXT INFORMATION.\n\n"
+        "=== MATHEMATICAL FORMULAS ===\n"
+        "For any mathematical equations or formulas in your response:\n"
+        "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"
+        "2. Use $ ... $ delimiters for inline math (within a sentence).\n\n"
         "Query: {query_str}\n"
         "Answer: "
         )
@@ -1251,7 +1266,11 @@ def change_summary_engine_prompt_to_in_detail(engine):
     " 2. main arguments, \n"
     " 3. supporting evidence, and \n"
     " 4. key conclusions. \n"
-    "DO NOT INCLUDE ANYTHING THAT IS NOT IN THE PROVIDED CONTEXT INFORMATION.\n"
+    "DO NOT INCLUDE ANYTHING THAT IS NOT IN THE PROVIDED CONTEXT INFORMATION.\n\n"
+    "=== MATHEMATICAL FORMULAS ===\n"
+    "For any mathematical equations or formulas in your response:\n"
+    "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"
+    "2. Use $ ... $ delimiters for inline math (within a sentence).\n\n"
     "Query: {query_str}\n"
     "Answer: "
     )
@@ -1273,6 +1292,8 @@ def get_database_and_llamaparse_collection_name(
         chunk_method: str, 
         embed_model_name: str,
         parse_method: str,
+        chunk_size: Optional[int] = None,
+        chunk_overlap: Optional[int] = None,
         ) -> tuple:
     """
     Generate database and collection names for LlamaParse-based document processing.
@@ -1282,13 +1303,20 @@ def get_database_and_llamaparse_collection_name(
     chunk_method (str): The method used for chunking (e.g., "llamaparse").
     embed_model_name (str): The name of the embedding model.
     parse_method (str): The parsing method used (e.g., "jason", "markdown").
+    chunk_size (int, optional): The size of each chunk.
+    chunk_overlap (int, optional): The overlap between chunks.
 
     Returns:
     tuple: A tuple containing (database_name, collection_name, collection_name_summary).
     """
     database_name = f"{article_directory}_{chunk_method}"
-    collection_name = f"{embed_model_name}_parse_method_{parse_method}"
-    collection_name_summary = f"{embed_model_name}_parse_method_{parse_method}_summary"
+    
+    base_name = f"{embed_model_name}_parse_method_{parse_method}"
+    if chunk_size is not None and chunk_overlap is not None:
+        base_name += f"_chunk_size_{chunk_size}_chunk_overlap_{chunk_overlap}"
+        
+    collection_name = base_name
+    collection_name_summary = f"{base_name}_summary"
 
     return database_name, collection_name, collection_name_summary
 
@@ -1354,7 +1382,11 @@ def change_default_engine_prompt_to_in_detail(engine):
     "{context_str}\n"
     "---------------------\n"
     "Given the context information and not prior knowledge, answer the query. \n"
-    "Try to include as many key details as possible.\n"
+    "Try to include as many key details as possible.\n\n"
+    "=== MATHEMATICAL FORMULAS ===\n"
+    "For any mathematical equations or formulas in your response:\n"
+    "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"
+    "2. Use $ ... $ delimiters for inline math (within a sentence).\n\n"
     "Query: {query_str}\n"
     "Answer: "
     )
@@ -1375,7 +1407,11 @@ def change_default_engine_prompt_to_in_detail(engine):
     "---------------------\n"
     "Given the new context, refine the original answer to better answer the query. \n"
     "Try to include as many key details as possible. \n"
-    "If the context isn't useful, return the original answer.\n"
+    "If the context isn't useful, return the original answer.\n\n"
+    "=== MATHEMATICAL FORMULAS ===\n"
+    "For any mathematical equations or formulas in your response:\n"
+    "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"
+    "2. Use $ ... $ delimiters for inline math (within a sentence).\n\n"
     "Refined Answer: "
     )
 

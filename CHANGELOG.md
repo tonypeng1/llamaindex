@@ -1,5 +1,37 @@
 # Changelog
 
+## [December 21, 2025]
+
+### 1. MinerU Integration for PDF Parsing
+
+**Isolated Environment Strategy**:
+- Implemented an **isolation strategy** for MinerU (Magic-PDF) to resolve deep dependency conflicts with the main environment (Torch/Accelerate).
+- Created a dedicated `.mineru_env` virtual environment and a `mineru_wrapper.py` script to execute MinerU CLI via `subprocess`.
+- Optimized for **Apple Silicon** using the `vlm-mlx-engine` backend for high-performance parsing.
+
+**MinerU Pipeline Integration**:
+- Added `load_document_mineru` to convert MinerU's structured JSON output into LlamaIndex `Document` objects, maintaining page-level grouping.
+- Implemented `load_image_text_nodes_mineru` to extract images from MinerU output and generate detailed descriptions using **Claude Vision API** (`claude-sonnet-4-20250514`), ensuring parity with the LlamaParse pipeline.
+- Developed `build_section_index_mineru` to support **deterministic section retrieval** for MinerU-parsed documents, enabling exact section-based queries.
+
+**Pipeline Flexibility**:
+- Introduced a `chunk_method` toggle in `llamaparse.py` to switch between `"llamaparse"` and `"mineru"` pipelines.
+- Standardized metadata and node structures across both parsers to allow seamless comparison of RAG performance.
+
+### 2. RAG Optimization & Prompt Engineering
+
+- **Centralized Configuration**: Moved all RAG, database, and embedding settings to `config.py` as a single source of truth.
+- **Chunking Strategy**: Standardized on a **512-token chunk size** (aligned with ColBERT) and **80-token overlap** to improve retrieval context.
+- **LaTeX Standardization**: Updated all response prompts to enforce `$$ ... $$` for display equations and `$ ... $` for inline math.
+- **Dynamic Indexing**: Updated collection naming to include chunk parameters, preventing index collisions when settings are tuned.
+- **Improved Retrieval**: Refined deterministic section matching by sorting keys by length and replaced `GuidanceQuestionGenerator` with `LLMQuestionGenerator` for more reliable sub-query decomposition.
+
+### 3. Robustness & Fixes
+
+- **Async Support**: Fixed `LazyQueryEngine` to properly handle async queries and initialization.
+- **Metadata Handling**: Enhanced `PageSortNodePostprocessor` to handle non-integer page numbers gracefully.
+- **Table Processing**: Added HTML-to-Markdown conversion for MinerU tables using `pandas` for better LLM reasoning.
+
 ## [December 20, 2025]
 
 ### 1. Enhanced Section Indexing and Retrieval

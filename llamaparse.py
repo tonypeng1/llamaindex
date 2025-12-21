@@ -1,8 +1,10 @@
 from copy import deepcopy
+import asyncio
 import anthropic
 import base64
 from io import BytesIO
 import json
+import subprocess
 import nest_asyncio
 import os
 from dotenv import load_dotenv
@@ -34,8 +36,9 @@ from llama_index.llms.openai import OpenAI
 # TEMPORARILY DISABLED: Package version conflict with llama-index-llms-anthropic>=0.10
 # from llama_index.multi_modal_llms.anthropic import AnthropicMultiModal
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
-from llama_index.question_gen.guidance import GuidanceQuestionGenerator
-from llama_index.core.prompts.guidance_utils import convert_to_handlebars
+from llama_index.core.question_gen import LLMQuestionGenerator
+# from llama_index.question_gen.guidance import GuidanceQuestionGenerator
+# from llama_index.core.prompts.guidance_utils import convert_to_handlebars
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_parse import LlamaParse
 from guidance.models import OpenAI as GuidanceOpenAI
@@ -44,6 +47,8 @@ from db_operation import (
                 check_if_milvus_database_collection_exist,
                 check_if_mongo_database_namespace_exist
                 )
+
+from config import get_article_info, DATABASE_CONFIG, EMBEDDING_CONFIG
 
 from utils import (
                 change_default_engine_prompt_to_in_detail,
@@ -124,6 +129,232 @@ def load_document_nodes_llamaparse(
                                     _parse_method
                                     )
     return _base_nodes, _object
+
+
+def html_table_to_markdown(html_content):
+    """
+    Converts an HTML table to a Markdown table using pandas.
+    """
+    try:
+        import pandas as pd
+        from io import StringIO
+        # read_html returns a list of DataFrames
+        dfs = pd.read_html(StringIO(html_content))
+        if dfs:
+            return dfs[0].to_markdown(index=False)
+    except Exception as e:
+        print(f"⚠️ Could not convert HTML table to Markdown: {e}")
+    return html_content
+
+
+def load_document_mineru(content_list_path):
+    """
+    Load MinerU content_list.json and convert to LlamaIndex Documents.
+    Groups items by page to maintain page-level structure.
+    """
+    with open(content_list_path, 'r') as f:
+        content_list = json.load(f)
+    
+    # Group by page_idx
+    pages = {}
+    for item in content_list:
+        p_idx = item.get('page_idx', 0)
+        if p_idx not in pages:
+            pages[p_idx] = []
+        pages[p_idx].append(item)
+    
+    documents = []
+    for p_idx in sorted(pages.keys()):
+        page_items = pages[p_idx]
+        
+        page_content = []
+        for item in page_items:
+            item_type = item.get('type')
+            
+            if item_type == 'table':
+                table_parts = []
+                if item.get('table_caption'):
+                    table_parts.append(" ".join(item['table_caption']))
+                if item.get('table_body'):
+                    # Convert HTML table to Markdown for better LLM understanding
+                    markdown_table = html_table_to_markdown(item['table_body'])
+                    table_parts.append(markdown_table)
+                if item.get('table_footnote'):
+                    table_parts.append(" ".join(item['table_footnote']))
+                if table_parts:
+                    page_content.append("\n".join(table_parts))
+            
+            elif item_type == 'image':
+                if item.get('image_caption'):
+                    page_content.append(f"Figure: {' '.join(item['image_caption'])}")
+            
+            elif item_type == 'list':
+                if item.get('list_items'):
+                    page_content.append("\n".join(item['list_items']))
+            
+            elif item_type == 'code':
+                code_parts = []
+                if item.get('code_caption'):
+                    code_parts.append(" ".join(item['code_caption']))
+                if item.get('code_body'):
+                    code_parts.append(f"```\n{item['code_body']}\n```")
+                if code_parts:
+                    page_content.append("\n".join(code_parts))
+            
+            elif item_type == 'equation':
+                if item.get('text'):
+                    page_content.append(item.get('text'))
+            
+            elif item.get('text'):
+                page_content.append(item.get('text'))
+        
+        page_text = "\n\n".join(page_content)
+        
+        # Create a metadata dict similar to LlamaParse
+        metadata = {
+            "page": p_idx + 1,
+            "parser": "mineru"
+        }
+        
+        documents.append(
+            Document(
+                text=page_text,
+                metadata=metadata,
+            )
+        )
+    return documents
+
+
+def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, article_name):
+    """
+    Extract images from MinerU output and generate descriptions using Claude Vision API.
+    Reuses the same logic as LlamaParse for fair comparison.
+    """
+    with open(content_list_path, 'r') as f:
+        content_list = json.load(f)
+    
+    image_items = [item for item in content_list if item.get('type') == 'image']
+    
+    if not image_items:
+        print("📷 No images found in MinerU output.")
+        return []
+
+    # Prepare image_dicts in the format expected by the Claude logic
+    image_dicts = []
+    for item in image_items:
+        # MinerU img_path is relative to the output dir
+        full_path = os.path.join(base_dir, item['img_path'])
+        image_dicts.append({
+            "path": full_path,
+            "page_number": item.get('page_idx', 0) + 1,
+            "caption": " ".join(item.get('image_caption', []))
+        })
+
+    # Initialize Anthropic client
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    
+    # Cache file - use a different suffix for MinerU to avoid collision
+    cache_file = Path(f"./data/{article_dir}/{article_name.replace('.pdf', '_mineru_image_descriptions.json')}")
+    
+    # Load existing cache
+    descriptions_cache = {}
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r") as f:
+                descriptions_cache = json.load(f)
+            print(f"\n📂 Loaded {len(descriptions_cache)} cached MinerU image descriptions")
+        except:
+            descriptions_cache = {}
+    
+    print(f"\n📷 Processing {len(image_dicts)} MinerU images with Claude Vision...")
+    
+    img_text_nodes = []
+    
+    for i, image_dict in enumerate(image_dicts):
+        image_path = image_dict["path"]
+        image_name = os.path.basename(image_path)
+        
+        # Check cache first
+        if image_name in descriptions_cache:
+            description = descriptions_cache[image_name]["description"]
+            text_node = TextNode(
+                text=description,
+                metadata={
+                    "path": image_path,
+                    "image_name": image_name,
+                    "page": image_dict.get("page_number", 0),
+                    "type": "image_description",
+                    "parser": "mineru"
+                }
+            )
+            img_text_nodes.append(text_node)
+            continue
+        
+        try:
+            # Load image and check dimensions
+            with Image.open(image_path) as img:
+                width, height = img.size
+                max_dimension = 8000
+                if width > max_dimension or height > max_dimension:
+                    scale = min(max_dimension / width, max_dimension / height)
+                    img = img.resize((int(width * scale), int(height * scale)), Image.Resampling.LANCZOS)
+                
+                buffer = BytesIO()
+                ext = os.path.splitext(image_path)[1].lower()
+                img_format = "PNG" if ext == ".png" else "JPEG"
+                img.save(buffer, format=img_format)
+                image_data = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
+            
+            media_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
+            
+            # Call Claude Vision API
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1024,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_data,
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": f"Describe this image in detail. Caption: {image_dict['caption']}. Include all visual elements, labels, arrows, diagrams, charts, or any text visible in the image."
+                            }
+                        ],
+                    }
+                ]
+            )
+            
+            description = message.content[0].text
+            descriptions_cache[image_name] = {"description": description}
+            
+            text_node = TextNode(
+                text=description,
+                metadata={
+                    "path": image_path,
+                    "image_name": image_name,
+                    "page": image_dict.get("page_number", 0),
+                    "type": "image_description",
+                    "parser": "mineru"
+                }
+            )
+            img_text_nodes.append(text_node)
+            
+            # Save cache periodically
+            with open(cache_file, "w") as f:
+                json.dump(descriptions_cache, f)
+                
+        except Exception as e:
+            print(f"⚠️ Error processing image {image_name}: {e}")
+
+    return img_text_nodes
 
 
 def load_image_text_nodes_llamaparse(_json_objs, _parser, _article_dir, _article_name):
@@ -326,9 +557,9 @@ def create_and_save_llamaparse_vector_index_to_milvus_database(_base_nodes,
     # metadata does not seem to impact the details of the 74 index nodes in MongoDB.
 
     # Split any oversized nodes to fit within embedding model's token limit (8192 for text-embedding-3-small)
-    # Using chunk_size=2000 tokens with overlap to stay safely under the limit
+    # Using global chunk_size and chunk_overlap
     # Note: Some nodes may have very large text from OCR/table data
-    text_splitter = SentenceSplitter(chunk_size=2000, chunk_overlap=100)
+    text_splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     
     all_nodes = deepcopy_base_nodes + converted_objects + deepcopy_image_text_nodes
     
@@ -344,9 +575,9 @@ def create_and_save_llamaparse_vector_index_to_milvus_database(_base_nodes,
     
     for node in all_nodes:
         # Check if node text is potentially too long
-        # Using very conservative threshold: 8000 chars ≈ 2000 tokens
+        # Using threshold based on chunk_size (approx 4 chars per token)
         # This ensures we catch all oversized nodes
-        if len(node.text) > 8000:
+        if len(node.text) > (chunk_size * 4):
             print(f"   📝 Splitting oversized node ({len(node.text)} chars, ~{len(node.text)//4} tokens)...")
             chunks = text_splitter.split_text(node.text)
             print(f"      → Split into {len(chunks)} chunks")
@@ -388,6 +619,12 @@ class LazyQueryEngine:
     def __init__(self, factory):
         self._factory = factory
         self._engine = None
+        self._lock = asyncio.Lock()
+
+    async def _ensure_engine_async(self):
+        async with self._lock:
+            if self._engine is None:
+                self._engine = self._factory()
 
     def _ensure_engine(self):
         if self._engine is None:
@@ -398,10 +635,10 @@ class LazyQueryEngine:
         return self._engine.query(*args, **kwargs)
 
     async def aquery(self, *args, **kwargs):
-        self._ensure_engine()
+        await self._ensure_engine_async()
         if hasattr(self._engine, "aquery"):
             return await self._engine.aquery(*args, **kwargs)
-        raise NotImplementedError("Underlying query engine does not support async queries.")
+        return self._engine.query(*args, **kwargs)
 
     def __getattr__(self, item):
         self._ensure_engine()
@@ -540,8 +777,9 @@ def build_section_index(json_objs) -> Dict[str, Dict]:
         for j in range(i + 1, len(section_headings)):
             next_section = section_headings[j]
             if next_section['level'] <= current_level:
-                # Next section at same or higher level - this section ends before it
-                end_page = next_section['start_page'] - 1
+                # Next section at same or higher level - this section ends on that page
+                # We use the start page of the next section to be inclusive of shared pages
+                end_page = next_section['start_page']
                 break
         
         # Ensure end_page is at least start_page
@@ -589,6 +827,139 @@ def build_section_index(json_objs) -> Dict[str, Dict]:
     return section_index
 
 
+def build_section_index_mineru(content_list: List[Dict]) -> Dict[str, Dict]:
+    """
+    Builds a section index from MinerU content list.
+    """
+    import re
+    
+    # Patterns for section detection
+    # 1. Numbered sections: "1. Introduction", "2.1 Methodology", "A.1 Appendix"
+    md_num_pattern = re.compile(r'^(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)\s+(.+)$')
+    # 2. Plain numbered headings like '5. CONCLUSION' or '2.1. Methodology'
+    plain_num_pattern = re.compile(r'^(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)(?:\s{1,}|\.)+(.+)$')
+    
+    section_headings = []
+    seen_titles = set()
+    
+    for item in content_list:
+        if item.get('type') == 'text':
+            text = item.get('text', '').strip()
+            if not text:
+                continue
+                
+            # MinerU uses text_level to indicate headings. 
+            # If present, we trust it. If not, we use regex but with strict heuristics.
+            is_heading_marked = item.get('text_level') is not None
+            
+            # Check for numbered patterns
+            m = md_num_pattern.match(text) or plain_num_pattern.match(text)
+            
+            section_num = ""
+            section_title = ""
+            
+            if is_heading_marked:
+                if m:
+                    section_num = m.group(1)
+                    section_title = m.group(2).strip()
+                else:
+                    section_num = ""
+                    section_title = text
+            elif m:
+                # Not marked as heading, but matches regex. Use strict heuristics.
+                section_num = m.group(1)
+                section_title = m.group(2).strip()
+                
+                # HEURISTIC: Filter out paragraphs misidentified as headings
+                # 1. Titles are rarely very long
+                if len(text) > 100 or text.count(' ') > 10:
+                    continue
+                # 2. If section_num is a single letter, it's likely a sentence if the title is long and has lowercase
+                if len(section_num) == 1 and section_num.isalpha() and any(c.islower() for c in section_title):
+                    continue
+                # 3. If it ends with a period and is long, it's a sentence
+                if text.endswith('.') and len(text) > 40:
+                    continue
+            else:
+                # Fallback: uppercase titles (only if short)
+                if len(text) <= 60 and text.upper() == text and any(c.isalpha() for c in text) and len(text) > 3:
+                    section_num = ""
+                    section_title = text
+                else:
+                    continue
+            
+            # Now we have section_num and section_title
+            page_num = item.get('page_idx', 0) + 1
+            key = (section_title.lower(), page_num)
+            if key not in seen_titles:
+                section_headings.append({
+                    'start_page': page_num,
+                    'section_num': section_num,
+                    'title': section_title,
+                    'level': section_num.count('.') + 1 if section_num else 1,
+                })
+                seen_titles.add(key)
+
+    if not section_headings:
+        return {}
+
+    # Second pass: calculate end pages
+    # Find max page
+    total_pages = max(item.get('page_idx', 0) for item in content_list) + 1
+    
+    for i, section in enumerate(section_headings):
+        current_level = section['level']
+        end_page = total_pages
+        
+        for j in range(i + 1, len(section_headings)):
+            next_section = section_headings[j]
+            if next_section['level'] <= current_level:
+                # Next section at same or higher level - this section ends on that page
+                # We use the start page of the next section to be inclusive of shared pages
+                end_page = next_section['start_page']
+                break
+        
+        section['end_page'] = max(section['start_page'], end_page)
+
+    # Build the final index
+    section_index = {}
+    for section in section_headings:
+        section_info = {
+            'start_page': section['start_page'],
+            'end_page': section['end_page'],
+            'section_num': section['section_num'],
+            'title': section['title'],
+            'level': section['level'],
+        }
+        
+        if section['section_num']:
+            section_index[section['section_num'].lower()] = section_info
+        
+        title_key = section['title'].lower()
+        if title_key not in section_index:
+            section_index[title_key] = section_info
+            
+        if section['section_num']:
+            full_key = f"{section['section_num']} {section['title']}".lower()
+            section_index[full_key] = section_info
+
+    # Add aliases
+    common_aliases = {
+        'abstract': ['abstract', 'summary'],
+        'conclusion': ['conclusion', 'conclusions', 'concluding remarks'],
+        'references': ['references', 'bibliography'],
+        'appendix': ['appendix', 'appendices', 'supplementary'],
+    }
+    
+    for canonical, aliases in common_aliases.items():
+        if canonical in section_index:
+            for alias in aliases:
+                if alias not in section_index:
+                    section_index[alias] = section_index[canonical]
+                    
+    return section_index
+
+
 def format_section_list_for_prompt(section_index: Dict[str, Dict]) -> str:
     """
     Format the section index as a readable list for inclusion in LLM prompts.
@@ -619,9 +990,9 @@ def format_section_list_for_prompt(section_index: Dict[str, Dict]) -> str:
     return "\n".join(lines)
 
 
-def create_custom_guidance_prompt() -> str:
+def create_custom_sub_question_prompt() -> str:
     """
-    Create a custom prompt template for GuidanceQuestionGenerator.
+    Create a custom prompt template for LLMQuestionGenerator.
     
     This function constructs a prompt template that guides the question generation
     process for sub-question decomposition. The template includes:
@@ -631,13 +1002,18 @@ def create_custom_guidance_prompt() -> str:
     - A suffix for the actual query
     
     Returns:
-    str: A Handlebars-formatted prompt template string for use with GuidanceQuestionGenerator.
+    str: A prompt template string for use with LLMQuestionGenerator.
     """
-    # Write in Python format string style, then convert to Handlebars
+    # Write in Python format string style
     PREFIX = """\
     Given a user question, and a list of tools, output a list of relevant sub-questions \
-    in json markdown that when composed can help answer the full user question:
+    in json markdown that when composed can help answer the full user question.
+    The output MUST be a valid JSON object with an "items" key.
 
+    IMPORTANT: Break down the user question into multiple atomic sub-questions if it contains \
+    multiple parts, requests information about multiple entities, or requires multiple steps to answer. \
+    Each sub-question should focus on a single aspect of the original query. Even if all sub-questions \
+    use the same tool, they should be separated to ensure thorough retrieval.
     """
 
     # Default example from LlamaIndex
@@ -646,14 +1022,14 @@ def create_custom_guidance_prompt() -> str:
     <Tools>
     ```json
     [
-    {{
+    {
         "name": "uber_10k",
         "description": "Provides information about Uber financials for year 2021"
-    }},
-    {{
+    },
+    {
         "name": "lyft_10k",
         "description": "Provides information about Lyft financials for year 2021"
-    }}
+    }
     ]
     ```
 
@@ -662,14 +1038,14 @@ def create_custom_guidance_prompt() -> str:
 
     <Output>
     ```json
-    {{
+    {
     "items": [
-        {{"sub_question": "What is the revenue growth of Uber", "tool_name": "uber_10k"}},
-        {{"sub_question": "What is the EBITDA of Uber", "tool_name": "uber_10k"}},
-        {{"sub_question": "What is the revenue growth of Lyft", "tool_name": "lyft_10k"}},
-        {{"sub_question": "What is the EBITDA of Lyft", "tool_name": "lyft_10k"}}
+        {"sub_question": "What is the revenue growth of Uber", "tool_name": "uber_10k"},
+        {"sub_question": "What is the EBITDA of Uber", "tool_name": "uber_10k"},
+        {"sub_question": "What is the revenue growth of Lyft", "tool_name": "lyft_10k"},
+        {"sub_question": "What is the EBITDA of Lyft", "tool_name": "lyft_10k"}
     ]
-    }}
+    }
     ```
 
     """
@@ -680,10 +1056,10 @@ def create_custom_guidance_prompt() -> str:
     <Tools>
     ```json
     [
-    {{
+    {
         "name": "page_filter_tool",
         "description": "Perform a query search over the page numbers mentioned in the query"
-    }}
+    }
     ]
     ```
 
@@ -692,13 +1068,13 @@ def create_custom_guidance_prompt() -> str:
 
     <Output>
     ```json
-    {{
+    {
     "items": [
-        {{"sub_question": "Summarize the content on page 20 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}},
-        {{"sub_question": "Summarize the content on page 21 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}},
-        {{"sub_question": "Summarize the content on page 22 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}}
+        {"sub_question": "Summarize the content on page 20 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
+        {"sub_question": "Summarize the content on page 21 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
+        {"sub_question": "Summarize the content on page 22 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}
     ]
-    }}
+    }
     ```
 
     """
@@ -716,10 +1092,10 @@ def create_custom_guidance_prompt() -> str:
     <Output>
     """
 
-    # Combine and convert to Handlebars format
-    custom_guidance_prompt = convert_to_handlebars(PREFIX + EXAMPLE_1 + EXAMPLE_2 + SUFFIX)
+    # Combine and return
+    custom_prompt = PREFIX + EXAMPLE_1 + EXAMPLE_2 + SUFFIX
     
-    return custom_guidance_prompt
+    return custom_prompt
 
 
 def get_fusion_tree_page_filter_sort_detail_tool_llamaparse(
@@ -763,19 +1139,21 @@ def get_fusion_tree_page_filter_sort_detail_tool_llamaparse(
         # `section_index` to avoid nondeterministic LLM fallback.
         q_lower = _query_str.lower()
         _page_numbers = None
-        for key, info in _section_index.items():
-            title = (info.get('title') or '').lower()
-            # match on title, section number, or full key variants
-            if title and title in q_lower:
+        _result_str = None
+        
+        # Sort keys by length descending to find the most specific match first
+        # This prevents "Case Studies" from matching when "Additional Case Studies" is present
+        sorted_keys = sorted(_section_index.keys(), key=len, reverse=True)
+        for key in sorted_keys:
+            # Avoid accidental matches on very short keys (e.g., 'a', '1')
+            if len(key) < 3:
+                continue
+                
+            if key in q_lower:
+                info = _section_index[key]
                 _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
                 if verbose:
-                    print(f"Deterministic section match for '{title}' -> pages {_page_numbers}")
-                break
-            # Avoid accidental matches on very short keys (e.g., 'a')
-            if key and len(key) > 2 and key in q_lower:
-                _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
-                if verbose:
-                    print(f"Deterministic section key match '{key}' -> pages {_page_numbers}")
+                    print(f"Deterministic section match for '{key}' -> pages {_page_numbers}")
                 break
 
         # If we found a deterministic mapping, skip LLM and use it
@@ -817,8 +1195,6 @@ def get_fusion_tree_page_filter_sort_detail_tool_llamaparse(
         
         # If we didn't call the LLM because of deterministic mapping, _result_str
         # may be None. Only attempt to JSON-decode if we actually invoked the LLM.
-        # Ensure _result_str is defined in all control paths (deterministic pre-check may skip LLM)
-        _result_str = None
         try:
             if _result_str is None:
                 _result = None
@@ -1060,32 +1436,36 @@ Settings.llm = llm
 
 # Create embedding model with smaller batch size to avoid token limits
 embed_model = OpenAIEmbedding(
-    model_name="text-embedding-3-small",
+    model_name=EMBEDDING_CONFIG["model_name"],
     embed_batch_size=10  # Reduce batch size to avoid hitting 300k token limit
 )
 Settings.embed_model = embed_model
-embed_model_dim = 1536  # for text-embedding-3-small
-embed_model_name = "openai_embedding_3_small"
+embed_model_dim = EMBEDDING_CONFIG["dimension"]
+embed_model_name = EMBEDDING_CONFIG["short_name"]
 
-# Create article link
-# article_dictory = "uber"
-# article_name = "uber_10q_march_2022.pdf"
+# Get configuration from config.py
+article_info = get_article_info()
+rag_settings = article_info["rag_settings"]
 
-# article_dictory = "attention"
-# article_name = "attention_all.pdf"
+# Article details
+article_dictory = article_info["directory"]
+article_name = article_info["filename"]
 
-article_dictory = "Rag_anything"
-article_name = "RAG_Anything.pdf"
-
+# Create database link
 article_link = get_article_link(article_dictory,
                                 article_name
                                 )
 
-# Create database and collection names
-chunk_method = "llamaparse"
-parse_method = "jason"
+# =============================================================================
+# Parser Configuration: Choose between "llamaparse" and "mineru"
+# =============================================================================
+chunk_method = "mineru"  # Options: "llamaparse", "mineru"
+parse_method = "jason"   # For llamaparse: "jason", "markdown"
 
-# parse_method = "markdown"  # DOES NOT WORK
+# Global chunking configuration (from config.py)
+chunk_size = rag_settings["chunk_size"]
+chunk_overlap = rag_settings["chunk_overlap"]
+
 
 # Create database name and colleciton names
 (database_name, 
@@ -1095,11 +1475,13 @@ collection_name_summary) = get_database_and_llamaparse_collection_name(
                                                             chunk_method, 
                                                             embed_model_name, 
                                                             parse_method,
+                                                            chunk_size,
+                                                            chunk_overlap,
                                                             )
 
-# Initiate Milvus and MongoDB database
-uri_milvus = "http://localhost:19530"
-uri_mongo = "mongodb://localhost:27017/"
+# Initiate Milvus and MongoDB database (from config.py)
+uri_milvus = DATABASE_CONFIG["milvus_uri"]
+uri_mongo = DATABASE_CONFIG["mongo_uri"]
 
 # Check if the vector index has already been saved to Milvus database.
 save_index_vector = check_if_milvus_database_collection_exist(uri_milvus, 
@@ -1136,35 +1518,74 @@ storage_context_summary = get_summary_storage_context(uri_mongo,
                                                     )
 
 # Always load JSON (from cache if available) to build section index
-json_cache_path = Path(f"./data/{article_dictory}/{article_name.replace('.pdf', '_llamaparse.json')}")
+if chunk_method == "llamaparse":
+    json_cache_path = Path(f"./data/{article_dictory}/{article_name.replace('.pdf', '_llamaparse.json')}")
+elif chunk_method == "mineru":
+    mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
+    json_cache_path = Path(os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json"))
+
 section_index = None  # Initialize section index
 
 if json_cache_path.exists():
     print(f"\n📂 Loading cached JSON from {json_cache_path} for section index...")
     with open(json_cache_path, "r") as f:
         json_objs_for_index = json.load(f)
+    
     # Build section index from the JSON
-    section_index = build_section_index(json_objs_for_index)
-    print(f"\n📑 Built section index with {len(set(id(v) for v in section_index.values()))} unique sections")
-    # Print available sections for debugging
-    # print("   Available sections:")
-    # print(format_section_list_for_prompt(section_index))
+    if chunk_method == "llamaparse":
+        section_index = build_section_index(json_objs_for_index)
+    elif chunk_method == "mineru":
+        section_index = build_section_index_mineru(json_objs_for_index)
+        
+    if section_index:
+        unique_sections = sorted(
+            {id(v): v for v in section_index.values()}.values(),
+            key=lambda x: (x['start_page'], x['section_num'] or "")
+        )
+        print(f"\n📑 Built section index with {len(unique_sections)} unique sections:")
+        for s in unique_sections:
+            prefix = f"{s['section_num']} " if s['section_num'] else ""
+            print(f"   - {prefix}{s['title']} (Pages {s['start_page']}-{s['end_page']})")
 else:
     print(f"⚠️ JSON cache not found at {json_cache_path}, section index not available")
 
 # Load documnet nodes if either vector index or docstore not saved.
 if save_index_vector or add_document_vector or add_document_summary: 
 
-    # parsing_instruction = "Keep section number, sub-section number, and equation number as refeences in the output."
-    # 1. A new section starts with an integer (the section number) followed by spaces and the 
-    # section title in a line of its own.
-    # 2. A subsection starts with a subsection number (e.g., 1.1) followed by spaces and the 
-    # subsection title in a line of its own.
-    # 3. An equation occupies a line of its own and is centered in the line and with the 
-    # equation number in the right margin in a pair of parentheses (e.g., (1)).
-    # Aggressive parsing instruction for better equation recognition
-    # This helps LlamaParse correctly handle subscripts/superscripts that appear on separate lines in PDFs
-    parsing_instruction_equations = """
+    if chunk_method == "mineru":
+        # MinerU output path
+        mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
+        content_list_path = os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json")
+        
+        if not os.path.exists(content_list_path):
+            print(f"🌐 MinerU output not found. Running MinerU wrapper...")
+            # Call the wrapper script
+            subprocess.run([
+                "python", "mineru_wrapper.py", 
+                os.path.join(f"./data/{article_dictory}", article_name),
+                f"./data/{article_dictory}/mineru_output"
+            ], check=True)
+        
+        print(f"\n📂 Loading MinerU results from {content_list_path}...")
+        docs = load_document_mineru(content_list_path)
+        
+        # Use SentenceSplitter for MinerU documents
+        node_parser = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        base_nodes = node_parser.get_nodes_from_documents(docs)
+        objects = [] # MinerU doesn't have separate objects like LlamaParse yet
+        
+        # Load image descriptions using the same Claude logic
+        image_text_nodes = load_image_text_nodes_mineru(
+            content_list_path, 
+            mineru_base_dir, 
+            article_dictory, 
+            article_name
+        )
+
+    elif chunk_method == "llamaparse":
+        # Aggressive parsing instruction for better equation recognition
+        # This helps LlamaParse correctly handle subscripts/superscripts that appear on separate lines in PDFs
+        parsing_instruction_equations = """
     This is an academic paper containing mathematical equations with complex notation.
 
     === LATEX DELIMITER REQUIREMENTS ===
@@ -1216,58 +1637,58 @@ if save_index_vector or add_document_vector or add_document_summary:
     - Disconnected subscripts/superscripts that belong to nearby variables
     """
     
-    if parse_method == "jason":
-        parser = LlamaParse(
-                    api_key=LLAMA_CLOUD_API_KEY, 
-                    parsing_instruction=parsing_instruction_equations,
-                    # Premium mode for highest quality parsing (uses LlamaParse's best models)
-                    # Note: gpt4o_mode with external API key requires parse_mode="parse_page_with_lvm"
-                    # which changes the output format. Using premium_mode instead for best results.
-                    premium_mode=True,
-                    # Force re-parse to use new settings
-                    invalidate_cache=False,
-                    verbose=True,
-                    )
-        
-        # Cache JSON to avoid repeated API calls
-        json_cache_path = Path(f"./data/{article_dictory}/{article_name.replace('.pdf', '_llamaparse.json')}")
-        
-        if json_cache_path.exists():
-            print(f"\n📂 Loading cached JSON from {json_cache_path}...")
-            with open(json_cache_path, "r") as f:
-                json_objs = json.load(f)
+        if parse_method == "jason":
+            parser = LlamaParse(
+                        api_key=LLAMA_CLOUD_API_KEY, 
+                        parsing_instruction=parsing_instruction_equations,
+                        # Premium mode for highest quality parsing (uses LlamaParse's best models)
+                        # Note: gpt4o_mode with external API key requires parse_mode="parse_page_with_lvm"
+                        # which changes the output format. Using premium_mode instead for best results.
+                        premium_mode=True,
+                        # Force re-parse to use new settings
+                        invalidate_cache=False,
+                        verbose=True,
+                        )
+            
+            # Cache JSON to avoid repeated API calls
+            json_cache_path = Path(f"./data/{article_dictory}/{article_name.replace('.pdf', '_llamaparse.json')}")
+            
+            if json_cache_path.exists():
+                print(f"\n📂 Loading cached JSON from {json_cache_path}...")
+                with open(json_cache_path, "r") as f:
+                    json_objs = json.load(f)
+            else:
+                print(f"🌐 Fetching from LlamaParse API...")
+                json_objs = parser.get_json_result(article_link)
+                # Save to cache
+                with open(json_cache_path, "w") as f:
+                    json.dump(json_objs, f)
+                print(f"💾 Saved JSON cache to {json_cache_path}")
+
+            image_text_nodes = load_image_text_nodes_llamaparse(json_objs, parser, article_dictory, article_name)
+
+            (base_nodes,
+            objects) = load_document_nodes_llamaparse(
+                                                    json_objs,
+                                                    parse_method,
+                                                    )
+        elif parse_method == "markdown":  # DOES NOT WORK
+            parser = LlamaParse(
+                        api_key=LLAMA_CLOUD_API_KEY, 
+                        result_type="markdown",
+                        verbose=True,
+                        )
+            docs = parser.load_data(article_link)
+            node_parser = MarkdownElementNodeParser(
+                                            num_workers=8,
+                                            include_metadata=True,
+                                            )
+
+            raw_nodes = node_parser.get_nodes_from_documents(docs)
+            (base_nodes,
+            objects) = node_parser.get_nodes_and_objects(raw_nodes)
         else:
-            print(f"🌐 Fetching from LlamaParse API...")
-            json_objs = parser.get_json_result(article_link)
-            # Save to cache
-            with open(json_cache_path, "w") as f:
-                json.dump(json_objs, f)
-            print(f"💾 Saved JSON cache to {json_cache_path}")
-
-        image_text_nodes = load_image_text_nodes_llamaparse(json_objs, parser, article_dictory, article_name)
-
-        (base_nodes,
-        objects) = load_document_nodes_llamaparse(
-                                                json_objs,
-                                                parse_method,
-                                                )
-    elif parse_method == "markdown":  # DOES NOT WORK
-        parser = LlamaParse(
-                    api_key=LLAMA_CLOUD_API_KEY, 
-                    result_type="markdown",
-                    verbose=True,
-                    )
-        docs = parser.load_data(article_link)
-        node_parser = MarkdownElementNodeParser(
-                                        num_workers=8,
-                                        include_metadata=True,
-                                        )
-
-        raw_nodes = node_parser.get_nodes_from_documents(docs)
-        (base_nodes,
-        objects) = node_parser.get_nodes_and_objects(raw_nodes)
-    else:
-        print("parse_method is not defined.")
+            print("parse_method is not defined.")
 
 if save_index_vector == True:
     recursive_index = create_and_save_llamaparse_vector_index_to_milvus_database(
@@ -1286,7 +1707,7 @@ if add_document_vector == True:
     all_nodes_vector = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
     # Save document nodes to Mongodb docstore at the server
     storage_context_vector.docstore.add_documents(all_nodes_vector)
-    print(f"✅ Stitched prev/next relationships for {len(all_nodes_vector)} nodes")
+    print(f"\n✅ Stitched prev/next relationships for {len(all_nodes_vector)} nodes")
 
 if add_document_summary == True:
     # Stitch prev/next relationships so PrevNextNodePostprocessor can retrieve neighbors
@@ -1306,10 +1727,10 @@ if add_document_summary == True:
 # Fusion retrieval parameters
 # NOTE: Large values are now safe thanks to MetadataStripperPostprocessor in utils.py
 # which removes bloated LlamaParse metadata before LLM synthesis (reduced 253K -> 11K tokens)
-similarity_top_k_fusion = 48  # Number of similar nodes to retrieve for fusion
-fusion_top_n = 42  # Number of nodes to return from fusion (before reranking)
+similarity_top_k_fusion = 35  # Number of similar nodes to retrieve for fusion
+fusion_top_n = 25  # Number of nodes to return from fusion (before reranking)
 num_queries_fusion = 1  # Set to 1 to disable query generation (use original query)
-rerank_top_n = 32  # Number of nodes after ColBERT reranking
+rerank_top_n = 15  # Number of nodes after ColBERT reranking
 num_nodes_prev_next = 1  # Number of neighboring nodes to retrieve (0 = disabled)
 
 reranker = ColbertRerank(
@@ -1436,19 +1857,25 @@ page_tool_description = (
 # query = "In the Accuracy (%) on MMLongBench Dataset table (table 3), what methods are being compared, and what is the best performing method?"
 # query = "Please summarize the content in the Introduction section."
 # query = "Please summarize the content from pages 1 to 2."
-# query = "Please summarize the content in Section 2.1.1 MOTIVATING RAG-ANYTHING"
+# query = "Please summarize the content from pages 15 to 16."
+# query = "Please summarize the content in the section in the Appendix: ADDITIONAL CASE STUDIES."
+# query = "Please summarize the content in the Appendix section:CHALLENGES AND FUTURE DIRECTIONS FOR MULTI-MODAL RAG."
+# query = "Please summarize the content in the Appendix section A.5: CHALLENGES AND FUTURE DIRECTIONS FOR MULTI-MODAL RAG."
+# query = "Please summarize the content in Section A.2 ADDITIONAL CASE STUDIES"
+# query = "Please summarize the content in Section 4: RELATED WORK"
 # query = "Describe the content of Section 2.3 CROSS-MODAL HYBRID RETRIEVAL"
 # query = "What is the content of the Evaluation section?"
 # query = "Summarize the content of the Evaluation section."
 # query = "Summarize the Conclusion section."
 # query = "Summarize the section 3.4, CASE STUDIES."
-query = "Summarize the CASE STUDIES section."
+# query = "Summarize the CASE STUDIES section."
+# query = "Summarize the CROSS-MODAL HYBRID RETRIEVAL section."
 # query = "What is in equation (1)?"
 # query = "What are in equation (3) and (4)?"
 # query = "What are in equation (4)?"
 # query = "What are in the equations (1), (2), (3), and (4)? What are they trying to represent collectively?"
 # query = "What are in the equations (2) and (3)?"
-# query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
+query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 # query = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
 
 # =============================================================================
@@ -1479,15 +1906,11 @@ page_filter_tool = QueryEngineTool.from_defaults(
     description=page_tool_description,
 )
 
-# Create custom guidance prompt for SubQuestionQueryEngine
-CUSTOM_GUIDANCE_PROMPT = create_custom_guidance_prompt()
-question_gen = GuidanceQuestionGenerator.from_defaults(
-                            prompt_template_str=CUSTOM_GUIDANCE_PROMPT,
-                            guidance_llm=GuidanceOpenAI(
-                                model="gpt-4o",
-                                api_key=OPENAI_API_KEY,
-                                echo=False),
-                            verbose=True
+# Create custom sub-question prompt for SubQuestionQueryEngine
+CUSTOM_SUB_QUESTION_PROMPT = create_custom_sub_question_prompt()
+question_gen = LLMQuestionGenerator.from_defaults(
+                            llm=llm,
+                            prompt_template_str=CUSTOM_SUB_QUESTION_PROMPT
                             )
 
 # Define the 3 tools
@@ -1515,7 +1938,11 @@ if response_mode_env == "TREE_SUMMARIZE":
         "You are an expert assistant. Provide a detailed, structured, and thorough answer "
         "to the query below. Include key points, important details, any equations or "
         "examples present in the context, and list steps or components when applicable. "
-        "Be explicit and avoid omitting technical specifics.\n"
+        "Be explicit and avoid omitting technical specifics.\n\n"
+        "=== MATHEMATICAL FORMULAS ===\n"
+        "For any mathematical equations or formulas in your response:\n"
+        "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"
+        "2. Use $ ... $ delimiters for inline math (within a sentence).\n\n"
         "Query: {query_str}\n"
         "Detailed Answer: "
     )

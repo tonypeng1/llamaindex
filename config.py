@@ -29,7 +29,8 @@ from typing import Dict, Any, Optional, List
 # Change this to switch which article is being processed
 # Must be a key from ARTICLE_CONFIGS
 
-ACTIVE_ARTICLE = "paul_graham_essay"
+ACTIVE_ARTICLE = "Rag_anything"
+# ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "how_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_paper"
 # ACTIVE_ARTICLE = "metagpt"
@@ -131,6 +132,16 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "How should one start learning AI?",
         ],
     },
+    "Rag_anything": {
+        "directory": "Rag_anything",
+        "filename": "RAG_Anything.pdf",
+        "schema": "academic",
+        "description": "RAG Anything - A multimodal RAG system paper",
+        "sample_queries": [
+            "What is the main contribution of RAG Anything?",
+            "How does it handle multimodal data?",
+        ],
+    },
 }
 
 
@@ -141,8 +152,8 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
 
 DEFAULT_RAG_SETTINGS: Dict[str, Any] = {
     # Chunking settings
-    "chunk_size": 256,
-    "chunk_overlap": 64,
+    "chunk_size": 512,
+    "chunk_overlap": 80,
     "chunk_method": "sentence_splitter",
     
     # Metadata extraction: None, "entity", "langextract", "both"

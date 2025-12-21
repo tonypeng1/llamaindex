@@ -36,6 +36,10 @@ pip install uv && uv pip install -e .
 
 4. **Run**:
    ```bash
+   # Index the document (LlamaParse or MinerU)
+   python llamaparse.py
+   
+   # Query the system
    python langextract_simple.py
    ```
 
@@ -51,11 +55,33 @@ pip install uv && uv pip install -e .
 | **Entity Filtering** | Auto-detects entities in queries, filters vector retriever (40-60% precision boost) |
 | **Neural Re-ranking** | ColBERT for fine-grained relevance scoring |
 | **KeyBERT** | Keyphrase extraction reduces BM25 noise |
+| **MinerU Support** | Isolated PDF parsing pipeline optimized for Apple Silicon |
+
+---
+
+## Architecture & Data Processing
+
+### The "Search-then-Fetch" Workflow
+This system uses a dual-database architecture to balance search speed with context richness:
+
+1.  **Milvus (The "Librarian"):** Stores mathematical **embeddings** and **Node IDs**. When you ask a question, Milvus identifies the most relevant IDs. It does *not* store or send the full text to the LLM.
+2.  **MongoDB (The "Bookshelf"):** Stores the **full text** and **node relationships** (prev/next). Once Milvus finds the relevant IDs, the system "checks out" the full text from MongoDB.
+3.  **Context Expansion:** If enabled, the system automatically retrieves neighboring nodes from MongoDB to provide the LLM with surrounding context.
+4.  **Summary Path:** A separate MongoDB collection stores summary nodes, used exclusively by the `summary_tool` for "big picture" questions, bypassing the vector search entirely.
+
+### Multimodal Handling (MinerU)
+The pipeline explicitly handles complex document elements to ensure high-fidelity retrieval:
+
+*   **Tables:** Extracted as HTML and converted to **Markdown**. This allows the LLM to reason about structured data naturally.
+*   **Figures:** Uses a dual-path approach. The caption is included in the page text, while a **Claude Vision** agent generates a detailed visual description (labels, trends, diagrams) stored as a separate node.
+*   **Equations:** Explicitly captured as **LaTeX** strings. This preserves mathematical precision for technical queries.
+
+---
 
 ## Performance & Robustness
 
 - **Metadata stripping** — strips large LlamaParse metadata before saving to Milvus to avoid dynamic-field size and token-serialization blowups; full metadata is retained in MongoDB docstores.
-- **Conservative node splitting** — splits oversized nodes (≈8000 chars / ~2000 tokens) with overlap to prevent embedding and token-limit failures.
+- **Optimized node splitting** — uses a 512-token chunk size (aligned with ColBERT's limit) to ensure the reranker sees the entire context of every retrieved node.
 - **Image processing & caching** — resizes large images, chooses appropriate format, base64-encodes payloads, and caches generated descriptions to avoid repeated vision API calls.
 - **Safer embedding & lazy init** — reduced embedding batch sizes and deferred query-engine initialization to lower failure rates and startup cost.
 - **Optional detailed responses** — set `RESPONSE_MODE=TREE_SUMMARIZE` for verbose structured answers (higher token use).
@@ -73,35 +99,31 @@ pip install uv && uv pip install -e .
 | `"langextract"` | ⚡ | API | Rich semantic metadata (concepts, advice, experiences) |
 | `"both"` | ⚡ | API | Maximum metadata richness |
 
-### Article Configuration (`config.py`)
+### Centralized Configuration (`config.py`)
 
-Switch articles by changing `ACTIVE_ARTICLE`:
+`config.py` is the **single source of truth** for the entire pipeline. Both the **Indexer** (`llamaparse.py`) and the **Retriever** (`langextract_simple.py`) import their settings from here to ensure database consistency.
+
+#### 1. Select Active Article
+Switch the entire system to a different document by changing one variable:
 
 ```python
 # config.py
-ACTIVE_ARTICLE = "paul_graham_essay"  # Active article selection
-
-# Pre-configured articles:
-# - paul_graham_essay, how_to_do_great_work
-# - attention_paper, metagpt, uber_10q, andrew_ng_career
+ACTIVE_ARTICLE = "Rag_anything"  # Options: paul_graham_essay, attention_paper, etc.
 ```
 
-### RAG Settings (`config.py`)
+#### 2. Global RAG Settings
+Default parameters optimized for ColBERT reranking and multimodal retrieval:
 
 ```python
-# Default settings (can be overridden per-article)
+# config.py
 DEFAULT_RAG_SETTINGS = {
-    "chunk_size": 256,
-    "chunk_overlap": 64,
-    "metadata": "langextract",      # None, "entity", "langextract", "both"
-    "use_entity_filtering": True,
+    "chunk_size": 512,         # Aligned with ColBERT's 512-token limit
+    "chunk_overlap": 80,
+    "chunk_method": "mineru",  # Options: "llamaparse", "mineru"
+    "metadata": "None",        # Options: "None", "entity", "langextract", "both"
+    "use_entity_filtering": False,
     "similarity_top_k_fusion": 48,
     "rerank_top_n": 32,
-}
-
-# Per-article overrides (optional)
-ARTICLE_RAG_OVERRIDES = {
-    "attention_paper": {"metadata": "entity", "chunk_size": 512},
 }
 ```
 
