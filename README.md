@@ -115,7 +115,7 @@ Switch the entire system to a different document by changing one variable:
 
 ```python
 # config.py
-ACTIVE_ARTICLE = "Rag_anything"  # Options: paul_graham_essay, attention_paper, etc.
+ACTIVE_ARTICLE = "paul_graham_essay"  # Options: paul_graham_essay, attention_all, etc.
 ```
 
 #### 2. Global RAG Settings
@@ -125,12 +125,12 @@ Default parameters optimized for ColBERT reranking and multimodal retrieval:
 # config.py
 DEFAULT_RAG_SETTINGS = {
     "chunk_size": 512,         # Aligned with ColBERT's 512-token limit
-    "chunk_overlap": 80,
-    "chunk_method": "mineru",  # Options: "llamaparse", "mineru"
+    "chunk_overlap": 128,
+    "chunk_method": "sentence_splitter",
     "metadata": "None",        # Options: "None", "entity", "langextract", "both"
     "use_entity_filtering": False,
-    "similarity_top_k_fusion": 48,
-    "rerank_top_n": 32,
+    "similarity_top_k_fusion": 35,
+    "rerank_top_n": 15,
 }
 ```
 

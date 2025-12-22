@@ -62,22 +62,22 @@ All configuration is centralized in `config.py`:
 ACTIVE_ARTICLE = "paul_graham_essay"
 
 # Available articles (pre-configured):
-# - paul_graham_essay, how_to_do_great_work (Paul Graham essays)
-# - attention_paper, metagpt, uber_10q, andrew_ng_career
+# - paul_graham_essay, How_to_do_great_work (Paul Graham essays)
+# - attention_all, metagpt, uber_10q_march_2022, eBook-How-to-Build-a-Career-in-AI
 
 # Default RAG settings (applied to all articles)
 DEFAULT_RAG_SETTINGS = {
-    "metadata": "langextract",      # None, "entity", "langextract", "both"
-    "use_entity_filtering": True,
-    "chunk_size": 256,
-    "chunk_overlap": 64,
-    "similarity_top_k_fusion": 48,
-    "rerank_top_n": 32,
+    "metadata": "None",             # None, "entity", "langextract", "both"
+    "use_entity_filtering": False,
+    "chunk_size": 512,
+    "chunk_overlap": 128,
+    "similarity_top_k_fusion": 35,
+    "rerank_top_n": 15,
 }
 
 # Per-article overrides (optional)
 ARTICLE_RAG_OVERRIDES = {
-    "attention_paper": {"metadata": "entity", "chunk_size": 512},
+    "attention_all": {"metadata": "entity", "chunk_size": 512},
 }
 
 # Database endpoints
@@ -292,15 +292,15 @@ You can fine-tune the retrieval pipeline with these parameters in `langextract_s
 
 ```python
 # 1. Retrieval Parameters
-similarity_top_k_fusion = 48  # Initial retrieval count from vector store
-fusion_top_n = 42             # Number of nodes to keep after fusing BM25 + Vector results
-rerank_top_n = 32             # Final number of nodes after ColBERT reranking
+similarity_top_k_fusion = 35  # Initial retrieval count from vector store
+fusion_top_n = 25             # Number of nodes to keep after fusing BM25 + Vector results
+rerank_top_n = 15             # Final number of nodes after ColBERT reranking
 num_queries = 1               # Fusion query fan-out (1 disables query generation)
 num_nodes = 0                 # Additional context via SafePrevNext postprocessor
 
 # 2. Chunking Strategy
-chunk_size = 256              # Smaller chunks (256) = more precise retrieval
-chunk_overlap = 64            # Overlap to maintain context across chunks
+chunk_size = 512              # Standardized on 512 for ColBERT alignment
+chunk_overlap = 128           # Overlap to maintain context across chunks
 ```
 
 ### Supported Entities

@@ -29,13 +29,13 @@ from typing import Dict, Any, Optional, List
 # Change this to switch which article is being processed
 # Must be a key from ARTICLE_CONFIGS
 
-ACTIVE_ARTICLE = "Rag_anything"
-# ACTIVE_ARTICLE = "paul_graham_essay"
-# ACTIVE_ARTICLE = "how_to_do_great_work"
-# ACTIVE_ARTICLE = "attention_paper"
+# ACTIVE_ARTICLE = "RAG_Anything"
+ACTIVE_ARTICLE = "paul_graham_essay"
+# ACTIVE_ARTICLE = "How_to_do_great_work"
+# ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"
-# ACTIVE_ARTICLE = "uber_10q"
-# ACTIVE_ARTICLE = "andrew_ng_career"
+# ACTIVE_ARTICLE = "uber_10q_march_2022"
+# ACTIVE_ARTICLE = "eBook-How-to-Build-a-Career-in-AI"
 
 
 # =============================================================================
@@ -64,7 +64,7 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "How did rejecting prestigious conventional paths lead to the most influential creative projects?",
         ],
     },
-    "how_to_do_great_work": {
+    "How_to_do_great_work": {
         "directory": "paul_graham",
         "filename": "How_to_do_great_work.pdf",
         "schema": "paul_graham_detailed",  # Same schema works for PG essays
@@ -79,7 +79,7 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
     # -------------------------------------------------------------------------
     # Academic Papers (uses academic schema)
     # -------------------------------------------------------------------------
-    "attention_paper": {
+    "attention_all": {
         "directory": "attention",
         "filename": "attention_all.pdf",
         "schema": "academic",  # Uses academic paper schema
@@ -108,7 +108,7 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
     # -------------------------------------------------------------------------
     # Financial Documents (uses financial schema)
     # -------------------------------------------------------------------------
-    "uber_10q": {
+    "uber_10q_march_2022": {
         "directory": "uber",
         "filename": "uber_10q_march_2022.pdf",
         "schema": "financial",  # Uses financial document schema
@@ -122,7 +122,7 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
     # -------------------------------------------------------------------------
     # Career/Education Documents (uses career schema)
     # -------------------------------------------------------------------------
-    "andrew_ng_career": {
+    "eBook-How-to-Build-a-Career-in-AI": {
         "directory": "andrew",
         "filename": "eBook-How-to-Build-a-Career-in-AI.pdf",
         "schema": "career",  # Uses career advice schema
@@ -132,7 +132,7 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
             "How should one start learning AI?",
         ],
     },
-    "Rag_anything": {
+    "RAG_Anything": {
         "directory": "Rag_anything",
         "filename": "RAG_Anything.pdf",
         "schema": "academic",
@@ -153,7 +153,7 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
 DEFAULT_RAG_SETTINGS: Dict[str, Any] = {
     # Chunking settings
     "chunk_size": 512,
-    "chunk_overlap": 80,
+    "chunk_overlap": 128,
     "chunk_method": "sentence_splitter",
     
     # Metadata extraction: None, "entity", "langextract", "both"
@@ -163,11 +163,11 @@ DEFAULT_RAG_SETTINGS: Dict[str, Any] = {
     "use_entity_filtering": False,
     
     # Fusion retrieval settings
-    "similarity_top_k_fusion": 48,
-    "num_queries": 1,
-    "fusion_top_n": 42,
-    "rerank_top_n": 32,
-    "num_nodes": 1,  # For PrevNextNodePostprocessor
+    "similarity_top_k_fusion": 35,
+    "num_queries": 1,  # number of generated queries for fusion (1 = original query only)
+    "fusion_top_n": 25,
+    "rerank_top_n": 15,
+    "num_nodes": 0,  # For PrevNextNodePostprocessor
     
     # Debug settings
     "page_filter_verbose": True,
@@ -180,15 +180,11 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "use_entity_filtering": True,
     },
     # Example: Use different settings for academic papers
-    "attention_paper": {
-        "chunk_size": 512,  # Larger chunks for academic papers
-        "chunk_overlap": 128,
+    "attention_all": {
         "metadata": "entity",  # Use entity extraction only (no PG-specific schema)
         "use_entity_filtering": True,
     },
-    "uber_10q": {
-        "chunk_size": 512,
-        "chunk_overlap": 128,
+    "uber_10q_march_2022": {
         "metadata": "entity",
         "use_entity_filtering": True,
     },
@@ -196,7 +192,7 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "metadata": "entity",
         "use_entity_filtering": True,
     },
-    "andrew_ng_career": {
+    "eBook-How-to-Build-a-Career-in-AI": {
         "metadata": "entity",
         "use_entity_filtering": True,
     },

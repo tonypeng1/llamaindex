@@ -10,6 +10,16 @@
 - **Documentation Update**: Updated [README.md](README.md) and internal documentation to reflect the shift to MinerU as the default parsing engine.
 - **Pipeline Simplification**: Removed dual-parser logic from the main script to focus on the high-performance MinerU/MLX pipeline, improving maintainability.
 
+### 2. Article Standardization & RAG Tuning
+
+- **Article Naming**: Standardized article keys across `config.py`, `README.md`, and `README_GUIDE.md` (e.g., `attention_all`, `RAG_Anything`, `How_to_do_great_work`).
+- **RAG Parameter Tuning**: Optimized default retrieval parameters in `config.py`:
+    - Increased `chunk_overlap` to `128` for better context continuity.
+    - Reduced fusion and rerank counts (`similarity_top_k_fusion=35`, `rerank_top_n=15`) to improve response speed.
+    - Disabled `num_nodes` context expansion by default to focus on high-precision retrieval.
+- **Configuration Centralization**: Refactored `minerU.py` to pull all retrieval and debug settings (e.g., `page_filter_verbose`) directly from `config.py`, ensuring system-wide consistency.
+- **Default Article**: Switched the default `ACTIVE_ARTICLE` to `paul_graham_essay`.
+
 ## [December 21, 2025]
 
 ### 1. MinerU Integration for PDF Parsing

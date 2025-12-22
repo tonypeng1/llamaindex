@@ -1211,11 +1211,11 @@ if add_document_summary == True:
 # Fusion retrieval parameters
 # NOTE: Large values are now safe thanks to MetadataStripperPostprocessor in utils.py
 # which removes bloated LlamaParse metadata before LLM synthesis (reduced 253K -> 11K tokens)
-similarity_top_k_fusion = 35  # Number of similar nodes to retrieve for fusion
-fusion_top_n = 25  # Number of nodes to return from fusion (before reranking)
-num_queries_fusion = 1  # Set to 1 to disable query generation (use original query)
-rerank_top_n = 15  # Number of nodes after ColBERT reranking
-num_nodes_prev_next = 1  # Number of neighboring nodes to retrieve (0 = disabled)
+similarity_top_k_fusion = rag_settings["similarity_top_k_fusion"]
+fusion_top_n = rag_settings["fusion_top_n"]
+num_queries_fusion = rag_settings["num_queries"]
+rerank_top_n = rag_settings["rerank_top_n"]
+num_nodes_prev_next = rag_settings["num_nodes"]
 
 reranker = ColbertRerank(
     top_n=rerank_top_n,
@@ -1379,7 +1379,7 @@ keyphrase_tool = QueryEngineTool.from_defaults(
 )
 
 # Build the page_filter_tool lazily to avoid eager initialization
-page_filter_verbose = True  # Set to True for debugging page filter
+page_filter_verbose = rag_settings["page_filter_verbose"]
 
 # Use LazyQueryEngine to defer initialization until first use
 lazy_page_filter_engine = LazyQueryEngine(build_page_filter_query_engine)
