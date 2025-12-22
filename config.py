@@ -29,8 +29,8 @@ from typing import Dict, Any, Optional, List
 # Change this to switch which article is being processed
 # Must be a key from ARTICLE_CONFIGS
 
-ACTIVE_ARTICLE = "RAG_Anything"
-# ACTIVE_ARTICLE = "paul_graham_essay"
+# ACTIVE_ARTICLE = "RAG_Anything"
+ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"

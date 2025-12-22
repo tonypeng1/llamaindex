@@ -900,7 +900,7 @@ def get_text_nodes_from_query_keyphrase(
     if should_use_keybert:
         print(f"\n📌The keyphrase is: {query_keyphrase} (KeyBERT)\n")
     else:
-        print("\n📌Keyphrase extraction skipped; using raw query for BM25.\n")
+        print("\n📌Keyphrase extraction skipped; using raw query for BM25.")
 
     # Get page numbers containing the keyphrase using bm25 model, sorted in ascending order
     bm25_score_nodes = bm25_retriever.retrieve(query_keyphrase)

@@ -5,6 +5,8 @@
 ### 1. RAG Factory & Architectural Refactoring
 
 - **Centralized RAG Factory**: Introduced `rag_factory.py` as the single source of truth for building query engines and tools. This eliminates code duplication between `langextract_simple.py` and `minerU.py`.
+- **Database Initialization Refactoring**: Introduced `get_storage_contexts()` in both `minerU.py` and `langextract_simple.py` to standardize how Milvus and MongoDB stores are initialized and verified.
+- **Split-Brain Protection**: Integrated `handle_split_brain_state()` into the core ingestion pipeline. This ensures that if any part of the storage (Milvus Vector, Mongo Vector, or Mongo Summary) is missing, the system automatically resets and re-ingests all stores to maintain Node ID consistency.
 - **Dynamic Metadata Filtering**: Implemented `DynamicFilterQueryEngine` which extracts semantic filters (via LangExtract) and named entities (via SpanMarker) for *every* sub-question. This significantly narrows the search space in Milvus for complex multi-part queries.
 - **Lazy Initialization**: Refined `LazyQueryEngine` to defer resource-heavy tool initialization until the LLM actually selects the tool, reducing startup latency and API costs.
 - **Visibility & Logging**: Added explicit terminal logging for "🔍 Extracted Query Filters" and "✓ Created X filters" to provide transparency into how metadata is being used during retrieval.

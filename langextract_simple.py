@@ -46,24 +46,22 @@ Database Structure:
 - Collections are named based on metadata extraction method used
 """
 
-# Disable tokenizers parallelism warning (must be set before importing any tokenizers)
 import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
 from dotenv import load_dotenv
-load_dotenv()
-
-import json
-import time
 import nest_asyncio
 import sys
 import logging
+from pathlib import Path
+from typing import List, Optional, Tuple, Any
+
+load_dotenv()
+
+# Disable tokenizers parallelism warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Suppress langextract and kor warnings
 logging.getLogger("langextract").setLevel(logging.ERROR)
 logging.getLogger("kor").setLevel(logging.ERROR)
-
-from pathlib import Path
-from typing import List, Optional
 
 # Fix sys.excepthook error by ensuring a clean exception hook
 sys.excepthook = sys.__excepthook__
@@ -86,12 +84,6 @@ from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import (
                         SentenceSplitter,
                         )
-from llama_index.core.prompts import PromptTemplate
-from llama_index.core.query_engine import SubQuestionQueryEngine
-from llama_index.core.tools import (
-                        QueryEngineTool,
-                        )
-from llama_index.core.vector_stores import MetadataFilters
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.extractors.entity import EntityExtractor
 from llama_index.llms.anthropic import Anthropic
@@ -99,14 +91,10 @@ from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.readers.file import (
                         PyMuPDFReader,
                         )
-from llama_index.storage.docstore.mongodb import MongoDocumentStore
-from llama_index.core.question_gen import LLMQuestionGenerator
 
 from utils import (
                 get_article_link, 
                 get_database_and_sentence_splitter_collection_name,
-                get_fusion_tree_keyphrase_sort_detail_tool_simple,
-                get_fusion_tree_page_filter_sort_detail_engine,
                 get_summary_storage_context,
                 get_summary_tree_detail_tool,
                 stitch_prev_next_relationships,
@@ -308,6 +296,78 @@ def load_document_nodes_sentence_splitter(
     return _nodes
 
 
+def get_storage_contexts(
+    uri_milvus: str,
+    uri_mongo: str,
+    database_name: str,
+    collection_name_vector: str,
+    collection_name_summary: str,
+    embed_model_dim: int
+) -> Tuple[bool, bool, bool, Any, Any, Any, Any]:
+    """
+    Initializes storage contexts and checks for existing collections.
+    """
+    # Check if the vector index has already been saved to Milvus database.
+    save_index_vector = check_if_milvus_database_collection_exist(uri_milvus, 
+                                                           database_name, 
+                                                           collection_name_vector
+                                                           )
+
+    # Check if the vector document has already been saved to MongoDB database.
+    add_document_vector = check_if_mongo_database_namespace_exist(uri_mongo, 
+                                                           database_name, 
+                                                           collection_name_vector
+                                                           )
+
+    # Check if the summary document has already been saved to MongoDB database.
+    add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo, 
+                                                           database_name, 
+                                                           collection_name_summary
+                                                           )
+
+    # --- FIX FOR SPLIT-BRAIN ID MISMATCH ---
+    # If ANY of the stores (Milvus Vector, Mongo Vector, or Mongo Summary) is missing,
+    # we must re-ingest ALL of them to ensure the Node IDs match across the entire system.
+    (save_index_vector, 
+     add_document_vector, 
+     add_document_summary) = handle_split_brain_state(
+                                                save_index_vector,
+                                                add_document_vector,
+                                                add_document_summary,
+                                                uri_milvus,
+                                                uri_mongo,
+                                                database_name,
+                                                collection_name_vector,
+                                                collection_name_summary
+                                                )
+
+    # Create vector store, vector docstore, and vector storage context
+    (vector_store,
+     vector_docstore,
+     storage_context_vector) = get_vector_store_docstore_and_storage_context(uri_milvus,
+                                                                        uri_mongo,
+                                                                        database_name,
+                                                                        collection_name_vector,
+                                                                        embed_model_dim
+                                                                        )
+
+    # Create summary storage context
+    storage_context_summary = get_summary_storage_context(uri_mongo,
+                                                        database_name,
+                                                        collection_name_summary
+                                                        )
+    
+    return (
+        save_index_vector,
+        add_document_vector,
+        add_document_summary,
+        vector_store,
+        vector_docstore,
+        storage_context_vector,
+        storage_context_summary
+    )
+
+
 # Set LLM and embedding models
 ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
 llm = Anthropic(
@@ -394,59 +454,21 @@ collection_name_summary) = get_database_and_sentence_splitter_collection_name(
 uri_milvus = DATABASE_CONFIG["milvus_uri"]
 uri_mongo = DATABASE_CONFIG["mongo_uri"]
 
-# Check if the vector index has already been saved to Milvus database. 
-# If not, set save_index_vector to True.
-save_index_vector = check_if_milvus_database_collection_exist(uri_milvus, 
-                                                       database_name, 
-                                                       collection_name_vector
-                                                       )
-
-# Check if the vector document has already been saved to MongoDB database.
-# If not, set save_document_vector to True.
-add_document_vector = check_if_mongo_database_namespace_exist(uri_mongo, 
-                                                       database_name, 
-                                                       collection_name_vector
-                                                       )
-
-# Check if the summary document has already been saved to MongoDB database.
-add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo, 
-                                                       database_name, 
-                                                       collection_name_summary
-                                                       )
-
-# --- FIX FOR SPLIT-BRAIN ID MISMATCH ---
-# If ANY of the stores (Milvus Vector, Mongo Vector, or Mongo Summary) is missing,
-# we must re-ingest ALL of them to ensure the Node IDs match across the entire system.
-# This is crucial because SentenceSplitter generates non-deterministic IDs (different IDs on each run).
-
-(save_index_vector, 
- add_document_vector, 
- add_document_summary) = handle_split_brain_state(
-                        save_index_vector,
-                        add_document_vector,
-                        add_document_summary,
-                        uri_milvus,
-                        uri_mongo,
-                        database_name,
-                        collection_name_vector,
-                        collection_name_summary
-                        )
-
-# Create vector store, vector docstore, and vector storage context
-(vector_store,
+# Initialize storage contexts and check for existing collections
+(save_index_vector,
+ add_document_vector,
+ add_document_summary,
+ vector_store,
  vector_docstore,
- storage_context_vector) = get_vector_store_docstore_and_storage_context(uri_milvus,
-                                                                    uri_mongo,
-                                                                    database_name,
-                                                                    collection_name_vector,
-                                                                    embed_model_dim
-                                                                    )
-
-# Create summary storage context
-storage_context_summary = get_summary_storage_context(uri_mongo,
-                                                    database_name,
-                                                    collection_name_summary
-                                                    )
+ storage_context_vector,
+ storage_context_summary) = get_storage_contexts(
+                                                uri_milvus,
+                                                uri_mongo,
+                                                database_name,
+                                                collection_name_vector,
+                                                collection_name_summary,
+                                                embed_model_dim
+                                                )
 
 # Load documnet nodes if we need to ingest (flags are synchronized now, all True or all False)
 # metadata is an optional parameter, will use another function to parse the document

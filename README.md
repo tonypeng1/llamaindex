@@ -87,6 +87,7 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 
 ## Performance & Robustness
 
+- **Split-Brain Protection** — Automatic detection and recovery from inconsistent database states (e.g., missing Milvus collection but existing MongoDB docstore) to ensure Node ID synchronization across all stores.
 - **Metadata stripping** — strips large parser metadata (e.g., MinerU or LlamaParse OCR data) before saving to Milvus to avoid dynamic-field size and token-serialization blowups; full metadata is retained in MongoDB docstores.
 - **Optimized node splitting** — uses a 512-token chunk size (aligned with ColBERT's limit) to ensure the reranker sees the entire context of every retrieved node.
 - **Image processing & caching** — resizes large images, chooses appropriate format, base64-encodes payloads, and caches generated descriptions to avoid repeated vision API calls.

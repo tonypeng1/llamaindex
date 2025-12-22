@@ -2,8 +2,6 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from copy import deepcopy
-import asyncio
 import anthropic
 import base64
 from io import BytesIO
@@ -14,65 +12,39 @@ nest_asyncio.apply()
 
 from pathlib import Path
 from PIL import Image
-import time
 import re
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Any
 
 from llama_index.core import (
                         Document,
-                        PromptTemplate,
                         Settings,
                         VectorStoreIndex,
                         )
 from llama_index.core.node_parser import (
-                                    MarkdownElementNodeParser,
                                     SentenceSplitter
                                     )
-from llama_index.core.query_engine import SubQuestionQueryEngine
-from llama_index.core.schema import ImageDocument, TextNode
-from llama_index.core.tools import QueryEngineTool
-from llama_index.core.vector_stores import MetadataFilters
+from llama_index.core.schema import TextNode
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.anthropic import Anthropic
-# from llama_index.llms.mistralai import MistralAI
-from llama_index.llms.openai import OpenAI
-# TEMPORARILY DISABLED: Package version conflict with llama-index-llms-anthropic>=0.10
-# from llama_index.multi_modal_llms.anthropic import AnthropicMultiModal
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
-from llama_index.core.question_gen import LLMQuestionGenerator
-# from llama_index.question_gen.guidance import GuidanceQuestionGenerator
-# from llama_index.core.prompts.guidance_utils import convert_to_handlebars
-from llama_index.retrievers.bm25 import BM25Retriever
-from guidance.models import OpenAI as GuidanceOpenAI
 
 from db_operation import (
                 check_if_milvus_database_collection_exist,
-                check_if_mongo_database_namespace_exist
+                check_if_mongo_database_namespace_exist,
+                handle_split_brain_state
                 )
 
 from config import get_article_info, DATABASE_CONFIG, EMBEDDING_CONFIG
 import rag_factory
 from utils import (
-                change_default_engine_prompt_to_in_detail,
-                display_prompt_dict,
                 get_article_link,
                 get_database_and_llamaparse_collection_name,
-                get_fusion_tree_keyphrase_sort_detail_tool_simple,
-                get_fusion_tree_keyphrase_filter_sort_detail_engine,
-                get_fusion_tree_page_filter_sort_detail_engine,
                 get_summary_storage_context,
                 get_summary_tree_detail_tool,
-                get_text_nodes_from_query_keyphrase,
                 get_llamaparse_vector_store_docstore_and_storage_context,
                 stitch_prev_next_relationships,
                 )                
-from llama_index.core.response_synthesizers.factory import get_response_synthesizer
-from llama_index.core.response_synthesizers.type import ResponseMode
-from llama_index.core.prompts.base import PromptTemplate
-from llama_index.core.prompts.prompt_type import PromptType
 
-ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 def build_section_index_mineru(content_list: List[Dict]) -> Dict[str, Dict]:
     """
@@ -203,6 +175,146 @@ def build_section_index_mineru(content_list: List[Dict]) -> Dict[str, Dict]:
                     section_index[alias] = section_index[canonical]
                     
     return section_index
+
+
+def get_section_index_mineru(json_cache_path: Path) -> Optional[Dict[str, Dict]]:
+    """
+    Loads cached JSON and builds a section index.
+    """
+    if json_cache_path.exists():
+        print(f"\n📂 Loading cached JSON from {json_cache_path} for section index...")
+        with open(json_cache_path, "r") as f:
+            json_objs_for_index = json.load(f)
+        
+        # Build section index from the JSON
+        section_index = build_section_index_mineru(json_objs_for_index)
+            
+        if section_index:
+            unique_sections = sorted(
+                {id(v): v for v in section_index.values()}.values(),
+                key=lambda x: (x['start_page'], x['section_num'] or "")
+            )
+            print(f"\n📑 Built section index with {len(unique_sections)} unique sections:")
+            for s in unique_sections:
+                prefix = f"{s['section_num']} " if s['section_num'] else ""
+                print(f"   - {prefix}{s['title']} (Pages {s['start_page']}-{s['end_page']})")
+        return section_index
+    else:
+        print(f"⚠️ JSON cache not found at {json_cache_path}, section index not available")
+        return None
+
+
+def get_storage_contexts(
+    uri_milvus: str,
+    uri_mongo: str,
+    database_name: str,
+    collection_name_vector: str,
+    collection_name_summary: str,
+    embed_model_dim: int
+) -> Tuple[bool, bool, bool, Any, Any, Any, Any]:
+    """
+    Initializes storage contexts and checks for existing collections.
+    """
+    # Check if the vector index has already been saved to Milvus database.
+    save_index_vector = check_if_milvus_database_collection_exist(uri_milvus, 
+                                                           database_name, 
+                                                           collection_name_vector
+                                                           )
+
+    # Check if the vector document has already been saved to MongoDB database.
+    add_document_vector = check_if_mongo_database_namespace_exist(uri_mongo, 
+                                                           database_name, 
+                                                           collection_name_vector
+                                                           )
+
+    # Check if the summary document has already been saved to MongoDB database.
+    add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo, 
+                                                           database_name, 
+                                                           collection_name_summary
+                                                           )
+
+    # --- FIX FOR SPLIT-BRAIN ID MISMATCH ---
+    # If ANY of the stores (Milvus Vector, Mongo Vector, or Mongo Summary) is missing,
+    # we must re-ingest ALL of them to ensure the Node IDs match across the entire system.
+    (save_index_vector, 
+     add_document_vector, 
+     add_document_summary) = handle_split_brain_state(
+                                                save_index_vector,
+                                                add_document_vector,
+                                                add_document_summary,
+                                                uri_milvus,
+                                                uri_mongo,
+                                                database_name,
+                                                collection_name_vector,
+                                                collection_name_summary
+                                                )
+
+    # Create vector store, vector docstore, and vector storage context
+    (vector_store,
+     vector_docstore,
+     storage_context_vector) = get_llamaparse_vector_store_docstore_and_storage_context(uri_milvus,
+                                                                        uri_mongo,
+                                                                        database_name,
+                                                                        collection_name_vector,
+                                                                        embed_model_dim
+                                                                        )
+
+    # Create summary summary storage context
+    storage_context_summary = get_summary_storage_context(uri_mongo,
+                                                        database_name,
+                                                        collection_name_summary
+                                                        )
+    
+    return (
+        save_index_vector,
+        add_document_vector,
+        add_document_summary,
+        vector_store,
+        vector_docstore,
+        storage_context_vector,
+        storage_context_summary
+    )
+
+
+def ingest_document_mineru(
+    article_dictory: str,
+    article_name: str,
+    chunk_size: int,
+    chunk_overlap: int
+) -> Tuple[List[Any], List[Any], List[Any]]:
+    """
+    Runs MinerU if needed, loads documents, parses them into nodes, and extracts image descriptions.
+    """
+    # MinerU output path
+    mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
+    content_list_path = os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json")
+    
+    if not os.path.exists(content_list_path):
+        print(f"🌐 MinerU output not found. Running MinerU wrapper...")
+        # Call the wrapper script
+        subprocess.run([
+            "python", "mineru_wrapper.py", 
+            os.path.join(f"./data/{article_dictory}", article_name),
+            f"./data/{article_dictory}/mineru_output"
+        ], check=True)
+    
+    print(f"\n📂 Loading MinerU results from {content_list_path}...")
+    docs = load_document_mineru(content_list_path)
+    
+    # Use SentenceSplitter for MinerU documents
+    node_parser = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    base_nodes = node_parser.get_nodes_from_documents(docs)
+    objects = [] # MinerU doesn't have separate objects like LlamaParse yet
+    
+    # Load image descriptions using the same Claude logic
+    image_text_nodes = load_image_text_nodes_mineru(
+        content_list_path, 
+        mineru_base_dir, 
+        article_dictory, 
+        article_name
+    )
+    
+    return base_nodes, objects, image_text_nodes
 
 
 def html_table_to_markdown(html_content):
@@ -441,22 +553,13 @@ def create_and_save_vector_index_to_milvus_database(_base_nodes, _objects, _imag
     )
     return _recursive_index
 
+
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+
 # Set OpenAI API key, LLM, and embedding model
-
-# openai.api_key = os.environ['OPENAI_API_KEY']
-# llm = OpenAI(model="gpt-4o", temperature=0.0)
-# Settings.llm = llm
-
-# llm = MistralAI(
-#     model="mistral-large-latest", 
-#     temperature=0.0,
-#     max_tokens=2500,
-#     api_key=MISTRAL_API_KEY
-#     )
-# Settings.llm = llm
-
 llm = Anthropic(
-            model="claude-sonnet-4-0",  # Updated from deprecated claude-3-5-sonnet-20240620
+            model="claude-sonnet-4-0",
             temperature=0.0,
             max_tokens=2500,
             api_key=ANTHROPIC_API_KEY,
@@ -472,6 +575,11 @@ Settings.embed_model = embed_model
 embed_model_dim = EMBEDDING_CONFIG["dimension"]
 embed_model_name = EMBEDDING_CONFIG["short_name"]
 
+# =============================================================================
+# Get ALL settings from config.py and set up variables
+# NOTE: Set ACTIVE_ARTICLE in config.py to choose which document is processed
+# =============================================================================
+
 # Get configuration from config.py
 article_info = get_article_info()
 rag_settings = article_info["rag_settings"]
@@ -485,9 +593,7 @@ article_link = get_article_link(article_dictory,
                                 article_name
                                 )
 
-# =============================================================================
 # Parser Configuration: MinerU
-# =============================================================================
 chunk_method = "mineru"
 
 # Global chunking configuration (from config.py)
@@ -512,65 +618,28 @@ collection_name_summary) = get_database_and_llamaparse_collection_name(
 uri_milvus = DATABASE_CONFIG["milvus_uri"]
 uri_mongo = DATABASE_CONFIG["mongo_uri"]
 
-# Check if the vector index has already been saved to Milvus database.
-save_index_vector = check_if_milvus_database_collection_exist(uri_milvus, 
-                                                       database_name, 
-                                                       collection_name_vector
-                                                       )
-
-# Check if the vector document has already been saved to MongoDB database.
-add_document_vector = check_if_mongo_database_namespace_exist(uri_mongo, 
-                                                       database_name, 
-                                                       collection_name_vector
-                                                       )
-
-# Check if the summary document has already been saved to MongoDB database.
-add_document_summary = check_if_mongo_database_namespace_exist(uri_mongo, 
-                                                       database_name, 
-                                                       collection_name_summary
-                                                       )
-
-# Create vector store, vector docstore, and vector storage context
-(vector_store,
+# Initialize storage contexts and check for existing collections
+(save_index_vector,
+ add_document_vector,
+ add_document_summary,
+ vector_store,
  vector_docstore,
- storage_context_vector) = get_llamaparse_vector_store_docstore_and_storage_context(uri_milvus,
-                                                                    uri_mongo,
-                                                                    database_name,
-                                                                    collection_name_vector,
-                                                                    embed_model_dim
-                                                                    )
-
-# Create summary summary storage context
-storage_context_summary = get_summary_storage_context(uri_mongo,
-                                                    database_name,
-                                                    collection_name_summary
-                                                    )
+ storage_context_vector,
+ storage_context_summary) = get_storage_contexts(
+                                                uri_milvus,
+                                                uri_mongo,
+                                                database_name,
+                                                collection_name_vector,
+                                                collection_name_summary,
+                                                embed_model_dim
+                                                )
 
 # Always load JSON (from cache if available) to build section index
 mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
 json_cache_path = Path(os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json"))
 
-section_index = None  # Initialize section index
-
-if json_cache_path.exists():
-    print(f"\n📂 Loading cached JSON from {json_cache_path} for section index...")
-    with open(json_cache_path, "r") as f:
-        json_objs_for_index = json.load(f)
-    
-    # Build section index from the JSON
-    section_index = build_section_index_mineru(json_objs_for_index)
-        
-    if section_index:
-        unique_sections = sorted(
-            {id(v): v for v in section_index.values()}.values(),
-            key=lambda x: (x['start_page'], x['section_num'] or "")
-        )
-        print(f"\n📑 Built section index with {len(unique_sections)} unique sections:")
-        for s in unique_sections:
-            prefix = f"{s['section_num']} " if s['section_num'] else ""
-            print(f"   - {prefix}{s['title']} (Pages {s['start_page']}-{s['end_page']})")
-else:
-    print(f"⚠️ JSON cache not found at {json_cache_path}, section index not available")
+# Build section index from the JSON
+section_index = get_section_index_mineru(json_cache_path)
 
 # Initialize nodes
 base_nodes = []
@@ -579,42 +648,19 @@ image_text_nodes = []
 
 # Load documnet nodes if either vector index or docstore not saved.
 if save_index_vector or add_document_vector or add_document_summary: 
-
-    # MinerU output path
-    mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
-    content_list_path = os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json")
-    
-    if not os.path.exists(content_list_path):
-        print(f"🌐 MinerU output not found. Running MinerU wrapper...")
-        # Call the wrapper script
-        subprocess.run([
-            "python", "mineru_wrapper.py", 
-            os.path.join(f"./data/{article_dictory}", article_name),
-            f"./data/{article_dictory}/mineru_output"
-        ], check=True)
-    
-    print(f"\n📂 Loading MinerU results from {content_list_path}...")
-    docs = load_document_mineru(content_list_path)
-    
-    # Use SentenceSplitter for MinerU documents
-    node_parser = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    base_nodes = node_parser.get_nodes_from_documents(docs)
-    objects = [] # MinerU doesn't have separate objects like LlamaParse yet
-    
-    # Load image descriptions using the same Claude logic
-    image_text_nodes = load_image_text_nodes_mineru(
-        content_list_path, 
-        mineru_base_dir, 
-        article_dictory, 
-        article_name
-    )
+    base_nodes, objects, image_text_nodes = ingest_document_mineru(
+                                                                article_dictory,
+                                                                article_name,
+                                                                chunk_size,
+                                                                chunk_overlap
+                                                                )
 
 if save_index_vector == True:
     recursive_index = create_and_save_vector_index_to_milvus_database(
-                                                                    base_nodes,
-                                                                    objects, 
-                                                                    image_text_nodes
-                                                                    )                                 
+                                                                base_nodes,
+                                                                objects, 
+                                                                image_text_nodes
+                                                                )                                 
 else:
     # Load from Milvus database
     recursive_index = VectorStoreIndex.from_vector_store(
@@ -642,30 +688,21 @@ summary_tool = get_summary_tree_detail_tool(
                                         )
 
 if add_document_vector == True:
-    # Stitch prev/next relationships so PrevNextNodePostprocessor can retrieve neighbors
     all_nodes_vector = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
-    # Save document nodes to Mongodb docstore at the server
     storage_context_vector.docstore.add_documents(all_nodes_vector)
-    print(f"\n✅ Stitched prev/next relationships for {len(all_nodes_vector)} nodes")
+    print(f"\n✅ Stitched prev/next relationships in document for {len(all_nodes_vector)} nodes")
 
 if add_document_summary == True:
-    # Stitch prev/next relationships so PrevNextNodePostprocessor can retrieve neighbors
     all_nodes_summary = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
-    # Save document nodes to Mongodb docstore at the server
     storage_context_summary.docstore.add_documents(all_nodes_summary)
+    print(f"\n✅ Stitched prev/next relationships in summary for {len(all_nodes_summary)} nodes")
 
-# =============================================================================
-# Fusion BM25 + Vector Retrieval Configuration for keyphrase_tool
-# =============================================================================
-# This uses a hybrid retrieval approach combining:
+# Hhybrid retrieval approach with fusion and reranking:
 # 1. BM25 (keyword/lexical search) - good for exact matches like "equation (1)"
 # 2. Vector embeddings (semantic search) - good for meaning-based retrieval
 # 3. QueryFusionRetriever with reciprocal rank fusion
 # 4. ColBERT reranking for final ranking
 
-# Fusion retrieval parameters
-# NOTE: Large values are now safe thanks to MetadataStripperPostprocessor in utils.py
-# which removes bloated LlamaParse metadata before LLM synthesis (reduced 253K -> 11K tokens)
 similarity_top_k_fusion = rag_settings["similarity_top_k_fusion"]
 fusion_top_n = rag_settings["fusion_top_n"]
 num_queries_fusion = rag_settings["num_queries"]
@@ -707,7 +744,6 @@ query = "What are in equation (3) and (4)?"
 # query = "What are in the equations (2) and (3)?"
 # query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 # query = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
-
 
 # Build tools using the factory
 keyphrase_tool = rag_factory.get_keyphrase_tool(
