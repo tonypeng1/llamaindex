@@ -71,6 +71,9 @@ sys.excepthook = sys.__excepthook__
 # Apply nest_asyncio to allow nested event loops
 nest_asyncio.apply()
 
+# Silence the verbose HTTP request logs from Anthropic/OpenAI
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 from llama_index.core import (
                         Settings,
                         VectorStoreIndex,
@@ -118,6 +121,7 @@ from langextract_integration import (
                 enrich_nodes_with_langextract,
                 print_sample_metadata
                 )
+import rag_factory
 from config import (
                 get_active_config,
                 get_rag_settings,
@@ -302,263 +306,6 @@ def load_document_nodes_sentence_splitter(
     _nodes = stitch_prev_next_relationships(_nodes)
 
     return _nodes
-
-
-def get_fusion_tree_page_filter_sort_detail_tool_simple(
-    _query_str: str, 
-    _reranker: ColbertRerank,
-    _vector_docstore: MongoDocumentStore,
-    *,
-    verbose: bool = False,
-    ) -> QueryEngineTool:
-    """
-    This function generates a QueryEngineTool that extracts specific pages from a document store,
-    retrieves the text nodes corresponding to those pages, and then uses these nodes to create a fusion tree.
-    The fusion tree is then used to answer queries about the content of the specified pages.
-
-    Parameters:
-    _query_str (str): The query string from which to extract page numbers.
-    _reranker (ColbertRerank): The reranker to use for the fusion tree.
-    _vector_docstore (MongoDocumentStore): The document store containing the text nodes.
-
-    Returns:
-    QueryEngineTool: A tool that uses the fusion tree to answer queries about the specified pages.
-    """
-
-    query_text = (
-    '## Instruction:\n'
-    'Extract all page numbers from the user query. \n'
-    'The page numbers are usually indicated by the phrases "page" or "pages" \n'
-    'Return the page numbers as a list of strings, sorted in ascending order. \n'
-    'Do NOT include "**Output:**" in your response. If no page numbers are mentioned, output ["1"]. \n'
-
-    '## Examples:\n'
-    '**Query:** "Give me the main events from page 1 to page 4." \n'
-    '**Output:** ["1", "2", "3", "4"] \n'
-
-    '**Query:** "Give me the main events in the first 6 pages." \n'
-    '**Output:** ["1", "2", "3", "4", "5", "6"] \n'
-
-    '**Query:** "Summarize pages 10-15 of the document." \n'
-    '**Output:** ["10", "11", "12", "13", "14", "15"] \n'
-
-    '**Query:** "What are the key findings on page 2?" \n'
-    '**Output:** ["2"] \n'
-
-    '**Query:** "What is mentioned about YC (Y Combinator) on pages 19 and 20?" \n'
-    '**Output:** ["19", "20"] \n'
-
-    '**Query:** "What are the lessons learned by the author at the company Interleaf?" \n'
-    '**Output:** ["1"] \n'
-
-    '## Now extract the page numbers from the following query: \n'
-
-    '**Query:** {query_str} \n'
-    )
-
-    # Need to print "1" if no page numbers are mentioned so that this code can run correctly
-
-    prompt = PromptTemplate(query_text)
-    _page_numbers = llm.predict(prompt=prompt, query_str=_query_str)
-    _page_numbers = json.loads(_page_numbers)  # Convert the string to a list of string
-    if verbose:
-        print(f"Page_numbers in page filter: {_page_numbers}")
-
-    # Get text nodes from the vector docstore that match the page numbers
-    _text_nodes = []
-    for _, node in _vector_docstore.docs.items():
-        page_val = node.metadata.get('page', node.metadata.get('source'))
-        if page_val in _page_numbers:
-            _text_nodes.append(node) 
-
-    node_length = len(vector_docstore.docs)
-    if verbose:
-        print(f"Node length in docstore: {node_length}")
-        print(f"Text nodes retrieved from docstore length is: {len(_text_nodes)}")
-        for i, n in enumerate(_text_nodes):
-            page_val = n.metadata.get('page', n.metadata.get('source', 'unknown'))
-            print(f"Item {i+1} of the text nodes retrieved from docstore is page: {page_val}")
-    
-    _vector_filter_retriever = vector_index.as_retriever(
-                                    similarity_top_k=node_length,
-                                    filters=MetadataFilters.from_dicts(
-                                        [{
-                                            "key": "source", 
-                                            "value": _page_numbers,
-                                            "operator": "in"
-                                        }]
-                                    )
-                                )
-    
-    # Calculate the number of nodes retrieved from the vector index on these pages
-    _fusion_top_n_filter = len(_text_nodes)
-    _num_queries_filter = 1
-
-    _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
-                                                                _vector_filter_retriever,
-                                                                _fusion_top_n_filter,
-                                                                _text_nodes,
-                                                                _num_queries_filter,
-                                                                _reranker,
-                                                                _vector_docstore,
-                                                                _page_numbers
-                                                                )
-    
-    _fusion_tree_page_filter_sort_detail_tool = QueryEngineTool.from_defaults(
-                                                        name="page_filter_tool",
-                                                        query_engine=_fusion_tree_page_filter_sort_detail_engine,
-                                                        description=page_tool_description,
-                                                        )
-
-    return _fusion_tree_page_filter_sort_detail_tool
-
-
-def create_custom_sub_question_prompt() -> str:
-    """
-    Create a custom prompt template for LLMQuestionGenerator.
-    
-    This function constructs a prompt template that guides the question generation
-    process for sub-question decomposition. The template includes:
-    - A prefix explaining the task
-    - Example 1: Financial comparison (default LlamaIndex example)
-    - Example 2: Page-based content summarization
-    - A suffix for the actual query
-    
-    Returns:
-    str: A prompt template string for use with LLMQuestionGenerator.
-    """
-    # Write in Python format string style
-    PREFIX = """\
-    Given a user question, and a list of tools, output a list of relevant sub-questions \
-    in json markdown that when composed can help answer the full user question.
-    The output MUST be a valid JSON object with an "items" key.
-
-    IMPORTANT: Break down the user question into multiple atomic sub-questions if it contains \
-    multiple parts, requests information about multiple entities, or requires multiple steps to answer. \
-    Each sub-question should focus on a single aspect of the original query. Even if all sub-questions \
-    use the same tool, they should be separated to ensure thorough retrieval.
-    """
-
-    # Default example from LlamaIndex
-    EXAMPLE_1 = """\
-    # Example 1
-    <Tools>
-    ```json
-    [
-    {
-        "name": "uber_10k",
-        "description": "Provides information about Uber financials for year 2021"
-    },
-    {
-        "name": "lyft_10k",
-        "description": "Provides information about Lyft financials for year 2021"
-    }
-    ]
-    ```
-
-    <User Question>
-    Compare and contrast the revenue growth and EBITDA of Uber and Lyft for year 2021
-
-    <Output>
-    ```json
-    {
-    "items": [
-        {"sub_question": "What is the revenue growth of Uber", "tool_name": "uber_10k"},
-        {"sub_question": "What is the EBITDA of Uber", "tool_name": "uber_10k"},
-        {"sub_question": "What is the revenue growth of Lyft", "tool_name": "lyft_10k"},
-        {"sub_question": "What is the EBITDA of Lyft", "tool_name": "lyft_10k"}
-    ]
-    }
-    ```
-
-    """
-
-    # Tailored example for page-based queries
-    EXAMPLE_2 = """\
-    # Example 2
-    <Tools>
-    ```json
-    [
-    {
-        "name": "page_filter_tool",
-        "description": "Perform a query search over the page numbers mentioned in the query"
-    }
-    ]
-    ```
-
-    <User Question>
-    Summarize the content from pages 20 to 22 in the voice of the author by NOT retrieving the text verbatim
-
-    <Output>
-    ```json
-    {
-    "items": [
-        {"sub_question": "Summarize the content on page 20 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
-        {"sub_question": "Summarize the content on page 21 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
-        {"sub_question": "Summarize the content on page 22 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}
-    ]
-    }
-    ```
-
-    """
-
-    SUFFIX = """\
-    # Example 3
-    <Tools>
-    ```json
-    {tools_str}
-    ```
-
-    <User Question>
-    {query_str}
-
-    <Output>
-    """
-
-    # Combine and return
-    custom_prompt = PREFIX + EXAMPLE_1 + EXAMPLE_2 + SUFFIX
-    
-    return custom_prompt
-
-
-class LazyQueryEngine:
-    """Instantiate the underlying query engine only when first queried."""
-
-    # This wrapper defers tool creation until the sub-question engine actually calls
-    # the query, preventing eager page-filter initialization (and its logging) when
-    # the tool is merely registered but not used.
-
-    def __init__(self, factory):
-        self._factory = factory
-        self._engine = None
-
-    def _ensure_engine(self):
-        if self._engine is None:
-            self._engine = self._factory()
-
-    def query(self, *args, **kwargs):
-        self._ensure_engine()
-        return self._engine.query(*args, **kwargs)
-
-    async def aquery(self, *args, **kwargs):
-        self._ensure_engine()
-        if hasattr(self._engine, "aquery"):
-            return await self._engine.aquery(*args, **kwargs)
-        raise NotImplementedError("Underlying query engine does not support async queries.")
-
-    def __getattr__(self, item):
-        self._ensure_engine()
-        return getattr(self._engine, item)
-
-
-def build_page_filter_query_engine():
-    tool = get_fusion_tree_page_filter_sort_detail_tool_simple(
-        query_str,
-        colbert_reranker,
-        vector_docstore,
-        verbose=page_filter_verbose,
-    )
-    return tool.query_engine
 
 
 # Set LLM and embedding models
@@ -749,7 +496,7 @@ summary_tool = get_summary_tree_detail_tool(
 
 # query_str = "What was mentioned about Jessica from pages 17 to 22?"
 # query_str = "What was mentioned about Jessica from pages 17 to 22? Please cite page numbers in your answer."
-# query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
+query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
 # query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
 # query_str = "What strategic advice is given about startups?"
 # query_str = "Has the author been to Europe?"
@@ -760,7 +507,7 @@ summary_tool = get_summary_tree_detail_tool(
 # query_str = "Who are mentioned as colleagues in the document?"
 # query_str = "Does the author have any advice on relationships?"
 # query_str = "Create table of contents for this article."
-query_str = "How did rejecting prestigious conventional paths lead to the most influential creative projects?"
+# query_str = "How did rejecting prestigious conventional paths lead to the most influential creative projects?"
 
 # query_str = "What did the author advice on choosing what to work on?"
 # query_str = "Why morale needs to be nurtured and protected?" 
@@ -788,139 +535,51 @@ colbert_reranker = ColbertRerank(
     keep_retrieval_score=True,
 )
 
-specific_tool_description = (
-            "Useful for retrieving specific, precise, or targeted content from the document. "
-            "Use this fuction to pinpoint the relevant information from the document "
-            "when user seeks factual answer or a specific detail from the document, "
-            "for example, when user uses interrogative words like 'what', 'who', 'where', "
-            "'when', 'why', 'how', which may not require understanding the entire document "
-            "to provide an answer."
-            )
-
-# fusion_keyphrase_tool: "Useful for retrieving SPECIFIC context from the document."
 # Enable entity filtering when using entity metadata extraction AND use_entity_filtering is True
 enable_entity_filtering = use_entity_filtering and metadata in ["entity", "langextract", "both"]
 
-keyphrase_tool = get_fusion_tree_keyphrase_sort_detail_tool_simple(
-                                                    vector_index,
-                                                    vector_docstore,
-                                                    similarity_top_k_fusion,
-                                                    fusion_top_n,
-                                                    query_str,
-                                                    num_queries,
-                                                    colbert_reranker,
-                                                    specific_tool_description,
-                                                    enable_entity_filtering=enable_entity_filtering,
-                                                    metadata_option=metadata if metadata else None,
-                                                    llm=llm,
-                                                    num_nodes=num_nodes, # For PrevNextNodePostprocessor
-                                                    )
+# Build tools using the factory
+keyphrase_tool = rag_factory.get_keyphrase_tool(
+    query_str,
+    vector_index,
+    vector_docstore,
+    colbert_reranker,
+    llm,
+    rag_settings,
+    enable_entity_filtering=enable_entity_filtering,
+    metadata_option=metadata if metadata else None,
+)
 
-page_tool_description = (
-                "Perform a query search over the page numbers mentioned in the query. "
-                "Use this function when user only need to retrieve information from specific PAGES, "
-                "for example when user asks 'What happened on PAGE 19?' "
-                "or 'What are the things mentioned on PAGES 19 and 20?' "
-                "or 'Describe the contents from PAGE 1 to PAGE 4'. "
-                "DO NOT GENERATE A SUB-QUESTION ASKING ABOUT ONE PAGE ONLY "
-                "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
-                )
+page_filter_tool = rag_factory.get_page_filter_tool(
+    query_str,
+    colbert_reranker,
+    vector_index,
+    vector_docstore,
+    llm,
+    metadata_key="source",  # LangExtract uses 'source' for page numbers
+    verbose=page_filter_verbose,
+)
 
-# Use LazyQueryEngine to defer initialization until first use (to avoid eager logging)
-lazy_page_filter_engine = LazyQueryEngine(build_page_filter_query_engine)
-
-page_filter_tool = QueryEngineTool.from_defaults(
-    name="page_filter_tool",
-    query_engine=lazy_page_filter_engine,
-    description=page_tool_description,
-    )
-
-CUSTOM_SUB_QUESTION_PROMPT = create_custom_sub_question_prompt()
-question_gen = LLMQuestionGenerator.from_defaults(
-                            llm=Settings.llm,
-                            prompt_template_str=CUSTOM_SUB_QUESTION_PROMPT
-                            )
-
-tools=[
+tools = [
     keyphrase_tool,
     summary_tool,
     page_filter_tool
-    ]
+]
 
-sub_question_engine = SubQuestionQueryEngine.from_defaults(
-                                        question_gen=question_gen, 
-                                        query_engine_tools=tools,
-                                        verbose=True,
-                                        )
+# Build and run the engine
+sub_question_engine = rag_factory.build_sub_question_engine(
+    tools,
+    llm,
+    verbose=True
+)
 
 print(f"\n📝 ORIGINAL QUERY: {query_str}\n")
 
-# Retry logic for sub-question generation failures
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
-
-response = None
-for attempt in range(1, MAX_RETRIES + 1):
-    try:
-        response = sub_question_engine.query(query_str)
-        break  # Success, exit retry loop
-    except Exception as e:
-        error_msg = str(e)
-        if "json" in error_msg.lower():
-            # This is a transient JSON parsing error, retry
-            print(f"⚠️ Attempt {attempt}/{MAX_RETRIES}: JSON parsing failed, retrying in {RETRY_DELAY}s...")
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY)
-            else:
-                print(f"❌ All {MAX_RETRIES} attempts failed. Error: {e}")
-        else:
-            # Different error, don't retry
-            print(f"❌ Error getting answer from LLM: {e}")
-            break
+# Execute query with retry logic (handled by factory or locally)
+response = sub_question_engine.query(query_str)
 
 if response is not None:
-    # Collect nodes with metadata (actual document nodes)
-    document_nodes = []
-    
-    for i, n in enumerate(response.source_nodes):
-        if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
-            # Store node info for sequential output
-            page_num = n.metadata.get('page', n.metadata.get('source', 'unknown'))
-            document_nodes.append({
-                'page': page_num,
-                'text': n.text,
-                'score': n.score,
-                'node_id': n.node_id,
-            })
-        else:
-            print(f"Item {i+1} question and response:\n{n.text}\n ")
-    
-    # Output sequential nodes with page numbers in a list
-    if document_nodes:
-        import tiktoken
-        enc = tiktoken.encoding_for_model("gpt-4")  # cl100k_base encoding (similar to Claude)
-        
-        print("\n" + "="*80)
-        print("SEQUENTIAL NODES WITH PAGE NUMBERS AND TOKEN COUNTS (sent to LLM for final answer):")
-        print("="*80)
-        total_tokens = 0
-        for i, node_info in enumerate(document_nodes, 1):
-            node_id_prefix = node_info['node_id'][:8] if node_info.get('node_id') else 'UNKNOWN'
-            node_tokens = len(enc.encode(node_info['text']))
-            total_tokens += node_tokens
-            print(f"  Node {i}: Page {node_info['page']} | {node_tokens:,} tokens | {len(node_info['text']):,} chars (ID: {node_id_prefix}..., Score: {round(node_info['score'], 3) if node_info['score'] else 'N/A'})")
-        print(f"\n  📊 TOTAL: {len(document_nodes)} nodes, {total_tokens:,} tokens (context only, excludes system prompt)")
-        print("="*80)
-        for i, node_info in enumerate(document_nodes, 1):
-            node_id_prefix = node_info['node_id'][:8] if node_info.get('node_id') else 'UNKNOWN'
-            print(
-                f"--- Node {i} | ID {node_id_prefix} | Page {node_info['page']} | "
-                f"Score: {round(node_info['score'], 3) if node_info['score'] is not None else 'N/A'} ---"
-            )
-            # print(f"{node_info['text']}")
-            # print("-" * 80)
-        print("="*80 + "\n")
-
+    rag_factory.print_response_diagnostics(response)
     print(f"\n📝 RESPONSE:\n{response}\n")
 
 # Cleanup resources
@@ -931,14 +590,7 @@ try:
 except:
     pass
 
-# Suppress warnings and force immediate exit to avoid excepthook errors during Python shutdown
+# Suppress warnings and force immediate exit
 import warnings
 warnings.filterwarnings('ignore')
 os._exit(0)
-
-
-
-
-
-
-

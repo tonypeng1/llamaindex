@@ -1,3 +1,7 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 from copy import deepcopy
 import asyncio
 import anthropic
@@ -6,13 +10,13 @@ from io import BytesIO
 import json
 import subprocess
 import nest_asyncio
-import os
-from dotenv import load_dotenv
+nest_asyncio.apply()
 
 from pathlib import Path
 from PIL import Image
 import time
-from dotenv import load_dotenv
+import re
+from typing import List, Dict, Optional
 
 from llama_index.core import (
                         Document,
@@ -47,7 +51,7 @@ from db_operation import (
                 )
 
 from config import get_article_info, DATABASE_CONFIG, EMBEDDING_CONFIG
-
+import rag_factory
 from utils import (
                 change_default_engine_prompt_to_in_detail,
                 display_prompt_dict,
@@ -67,12 +71,138 @@ from llama_index.core.response_synthesizers.type import ResponseMode
 from llama_index.core.prompts.base import PromptTemplate
 from llama_index.core.prompts.prompt_type import PromptType
 
-# Load environment variables from .env if available
-try:
-    load_dotenv()
-except Exception:
-    # Don't hard-fail if python-dotenv is not installed; print a hint for devs
-    print("⚠️ python-dotenv not installed or failed to load; .env not loaded (pip install python-dotenv to enable)")
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+
+def build_section_index_mineru(content_list: List[Dict]) -> Dict[str, Dict]:
+    """
+    Builds a section index from MinerU content list.
+    """
+    # Patterns for section detection
+    # 1. Numbered sections: "1. Introduction", "2.1 Methodology", "A.1 Appendix"
+    md_num_pattern = re.compile(r'^(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)\s+(.+)$')
+    # 2. Plain numbered headings like '5. CONCLUSION' or '2.1. Methodology'
+    plain_num_pattern = re.compile(r'^(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)(?:\s{1,}|\.)+(.+)$')
+    
+    section_headings = []
+    seen_titles = set()
+    
+    for item in content_list:
+        if item.get('type') == 'text':
+            text = item.get('text', '').strip()
+            if not text:
+                continue
+                
+            # MinerU uses text_level to indicate headings. 
+            # If present, we trust it. If not, we use regex but with strict heuristics.
+            is_heading_marked = item.get('text_level') is not None
+            
+            # Check for numbered patterns
+            m = md_num_pattern.match(text) or plain_num_pattern.match(text)
+            
+            section_num = ""
+            section_title = ""
+            
+            if is_heading_marked:
+                if m:
+                    section_num = m.group(1)
+                    section_title = m.group(2).strip()
+                else:
+                    section_num = ""
+                    section_title = text
+            elif m:
+                # Not marked as heading, but matches regex. Use strict heuristics.
+                section_num = m.group(1)
+                section_title = m.group(2).strip()
+                
+                # HEURISTIC: Filter out paragraphs misidentified as headings
+                # 1. Titles are rarely very long
+                if len(text) > 100 or text.count(' ') > 10:
+                    continue
+                # 2. If section_num is a single letter, it's likely a sentence if the title is long and has lowercase
+                if len(section_num) == 1 and section_num.isalpha() and any(c.islower() for c in section_title):
+                    continue
+                # 3. If it ends with a period and is long, it's a sentence
+                if text.endswith('.') and len(text) > 40:
+                    continue
+            else:
+                # Fallback: uppercase titles (only if short)
+                if len(text) <= 60 and text.upper() == text and any(c.isalpha() for c in text) and len(text) > 3:
+                    section_num = ""
+                    section_title = text
+                else:
+                    continue
+            
+            # Now we have section_num and section_title
+            page_num = item.get('page_idx', 0) + 1
+            key = (section_title.lower(), page_num)
+            if key not in seen_titles:
+                section_headings.append({
+                    'start_page': page_num,
+                    'section_num': section_num,
+                    'title': section_title,
+                    'level': section_num.count('.') + 1 if section_num else 1,
+                })
+                seen_titles.add(key)
+
+    if not section_headings:
+        return {}
+
+    # Second pass: calculate end pages
+    # Find max page
+    total_pages = max(item.get('page_idx', 0) for item in content_list) + 1
+    
+    for i, section in enumerate(section_headings):
+        current_level = section['level']
+        end_page = total_pages
+        
+        for j in range(i + 1, len(section_headings)):
+            next_section = section_headings[j]
+            if next_section['level'] <= current_level:
+                # Next section at same or higher level - this section ends on that page
+                # We use the start page of the next section to be inclusive of shared pages
+                end_page = next_section['start_page']
+                break
+        
+        section['end_page'] = max(section['start_page'], end_page)
+
+    # Build the final index
+    section_index = {}
+    for section in section_headings:
+        section_info = {
+            'start_page': section['start_page'],
+            'end_page': section['end_page'],
+            'section_num': section['section_num'],
+            'title': section['title'],
+            'level': section['level'],
+        }
+        
+        if section['section_num']:
+            section_index[section['section_num'].lower()] = section_info
+        
+        title_key = section['title'].lower()
+        if title_key not in section_index:
+            section_index[title_key] = section_info
+            
+        if section['section_num']:
+            full_key = f"{section['section_num']} {section['title']}".lower()
+            section_index[full_key] = section_info
+
+    # Add aliases
+    common_aliases = {
+        'abstract': ['abstract', 'summary'],
+        'conclusion': ['conclusion', 'conclusions', 'concluding remarks'],
+        'references': ['references', 'bibliography'],
+        'appendix': ['appendix', 'appendices', 'supplementary'],
+    }
+    
+    for canonical, aliases in common_aliases.items():
+        if canonical in section_index:
+            for alias in aliases:
+                if alias not in section_index:
+                    section_index[alias] = section_index[canonical]
+                    
+    return section_index
 
 
 def html_table_to_markdown(html_content):
@@ -301,716 +431,15 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
     return img_text_nodes
 
 
-def create_and_save_vector_index_to_milvus_database(_base_nodes,
-                                                   _objects,
-                                                   _image_text_nodes):
-
-    deepcopy_base_nodes = deepcopy(_base_nodes)
-    deepcopy_image_text_nodes = deepcopy(_image_text_nodes)
-
-    # Remove metadata from base nodes before saving to vector store (otherwise max character 
-    # in dynamic field in Milvus will be exceeded).
-    for node in deepcopy_base_nodes:
-        node.metadata = {}
-
-    # Convert IndexNodes to TextNodes to avoid large .obj serialization
-    # IndexNodes contain .obj attribute with large OCR coordinate arrays that exceed Milvus limit
-    converted_objects = []
-    for obj in _objects:
-        # Create a simple TextNode with just the text content
-        text_node = TextNode(
-            text=obj.text,
-            id_=f"converted_{obj.node_id}",
-            metadata={"type": "index_node_text", "original_id": obj.node_id}
-        )
-        converted_objects.append(text_node)
-    if converted_objects:
-        print(f"   🔄 Converted {len(converted_objects)} IndexNodes to TextNodes (stripped .obj attribute)")
-
-    # Also clear large metadata from image text nodes (keep only essential fields)
-    for img_node in deepcopy_image_text_nodes:
-        # Keep only essential metadata, remove large OCR data if present
-        img_node.metadata = {
-            "type": img_node.metadata.get("type", "image_description"),
-            "image_name": img_node.metadata.get("image_name", ""),
-            "page_number": img_node.metadata.get("page_number", "unknown")
-        }
-
-    # Split any oversized nodes to fit within embedding model's token limit (8192 for text-embedding-3-small)
-    # Using global chunk_size and chunk_overlap
-    # Note: Some nodes may have very large text from OCR/table data
-    text_splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    
-    all_nodes = deepcopy_base_nodes + converted_objects + deepcopy_image_text_nodes
-    
-    # Debug: Find the largest nodes
-    print(f"\n🔍 Analyzing node sizes...")
-    node_sizes = [(i, len(node.text), type(node).__name__) for i, node in enumerate(all_nodes)]
-    node_sizes.sort(key=lambda x: x[1], reverse=True)
-    print(f"   Top 5 largest nodes by text length:")
-    for idx, size, node_type in node_sizes[:5]:
-        print(f"      Node {idx}: {size:,} chars (~{size//4:,} tokens) - {node_type}")
-    
-    split_nodes = []
-    
-    for node in all_nodes:
-        # Check if node text is potentially too long
-        # Using threshold based on chunk_size (approx 4 chars per token)
-        # This ensures we catch all oversized nodes
-        if len(node.text) > (chunk_size * 4):
-            print(f"   📝 Splitting oversized node ({len(node.text)} chars, ~{len(node.text)//4} tokens)...")
-            chunks = text_splitter.split_text(node.text)
-            print(f"      → Split into {len(chunks)} chunks")
-            for i, chunk in enumerate(chunks):
-                new_node = TextNode(
-                    text=chunk,
-                    metadata={"chunk_index": i, "original_node_id": node.node_id}  # Minimal metadata
-                )
-                split_nodes.append(new_node)
-        else:
-            # Create a new TextNode with minimal metadata to avoid large _node_content serialization
-            # The original node may have large metadata that gets serialized by Milvus into dynamic fields
-            new_node = TextNode(
-                text=node.text,
-                id_=node.node_id,
-                metadata={}  # Empty metadata - critical for Milvus field size limit
-            )
-            split_nodes.append(new_node)
-    
-    print(f"   📊 Total nodes after splitting: {len(split_nodes)} (from {len(all_nodes)} original)")
-
-    _index = VectorStoreIndex(
-        nodes=split_nodes,
+def create_and_save_vector_index_to_milvus_database(_base_nodes, _objects, _image_text_nodes):
+    """
+    Creates a VectorStoreIndex from nodes and saves it to Milvus.
+    """
+    _recursive_index = VectorStoreIndex(
+        nodes=_base_nodes + _objects + _image_text_nodes,
         storage_context=storage_context_vector,
-        )
-
-
-    return _index
-
-
-class LazyQueryEngine:
-    """Instantiate the underlying query engine only when first queried.
-    
-    This wrapper defers tool creation until the sub-question engine actually calls
-    the query, preventing eager page-filter initialization (and its logging) when
-    the tool is merely registered but not used.
-    """
-
-    def __init__(self, factory):
-        self._factory = factory
-        self._engine = None
-        self._lock = asyncio.Lock()
-
-    async def _ensure_engine_async(self):
-        async with self._lock:
-            if self._engine is None:
-                self._engine = self._factory()
-
-    def _ensure_engine(self):
-        if self._engine is None:
-            self._engine = self._factory()
-
-    def query(self, *args, **kwargs):
-        self._ensure_engine()
-        return self._engine.query(*args, **kwargs)
-
-    async def aquery(self, *args, **kwargs):
-        await self._ensure_engine_async()
-        if hasattr(self._engine, "aquery"):
-            return await self._engine.aquery(*args, **kwargs)
-        return self._engine.query(*args, **kwargs)
-
-    def __getattr__(self, item):
-        self._ensure_engine()
-        return getattr(self._engine, item)
-
-
-import re
-from typing import Dict, List, Optional
-
-
-def build_section_index_mineru(content_list: List[Dict]) -> Dict[str, Dict]:
-    """
-    Builds a section index from MinerU content list.
-    """
-    import re
-    
-    # Patterns for section detection
-    # 1. Numbered sections: "1. Introduction", "2.1 Methodology", "A.1 Appendix"
-    md_num_pattern = re.compile(r'^(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)\s+(.+)$')
-    # 2. Plain numbered headings like '5. CONCLUSION' or '2.1. Methodology'
-    plain_num_pattern = re.compile(r'^(\d+(?:\.\d+)*|[A-Z](?:\.\d+)*)(?:\s{1,}|\.)+(.+)$')
-    
-    section_headings = []
-    seen_titles = set()
-    
-    for item in content_list:
-        if item.get('type') == 'text':
-            text = item.get('text', '').strip()
-            if not text:
-                continue
-                
-            # MinerU uses text_level to indicate headings. 
-            # If present, we trust it. If not, we use regex but with strict heuristics.
-            is_heading_marked = item.get('text_level') is not None
-            
-            # Check for numbered patterns
-            m = md_num_pattern.match(text) or plain_num_pattern.match(text)
-            
-            section_num = ""
-            section_title = ""
-            
-            if is_heading_marked:
-                if m:
-                    section_num = m.group(1)
-                    section_title = m.group(2).strip()
-                else:
-                    section_num = ""
-                    section_title = text
-            elif m:
-                # Not marked as heading, but matches regex. Use strict heuristics.
-                section_num = m.group(1)
-                section_title = m.group(2).strip()
-                
-                # HEURISTIC: Filter out paragraphs misidentified as headings
-                # 1. Titles are rarely very long
-                if len(text) > 100 or text.count(' ') > 10:
-                    continue
-                # 2. If section_num is a single letter, it's likely a sentence if the title is long and has lowercase
-                if len(section_num) == 1 and section_num.isalpha() and any(c.islower() for c in section_title):
-                    continue
-                # 3. If it ends with a period and is long, it's a sentence
-                if text.endswith('.') and len(text) > 40:
-                    continue
-            else:
-                # Fallback: uppercase titles (only if short)
-                if len(text) <= 60 and text.upper() == text and any(c.isalpha() for c in text) and len(text) > 3:
-                    section_num = ""
-                    section_title = text
-                else:
-                    continue
-            
-            # Now we have section_num and section_title
-            page_num = item.get('page_idx', 0) + 1
-            key = (section_title.lower(), page_num)
-            if key not in seen_titles:
-                section_headings.append({
-                    'start_page': page_num,
-                    'section_num': section_num,
-                    'title': section_title,
-                    'level': section_num.count('.') + 1 if section_num else 1,
-                })
-                seen_titles.add(key)
-
-    if not section_headings:
-        return {}
-
-    # Second pass: calculate end pages
-    # Find max page
-    total_pages = max(item.get('page_idx', 0) for item in content_list) + 1
-    
-    for i, section in enumerate(section_headings):
-        current_level = section['level']
-        end_page = total_pages
-        
-        for j in range(i + 1, len(section_headings)):
-            next_section = section_headings[j]
-            if next_section['level'] <= current_level:
-                # Next section at same or higher level - this section ends on that page
-                # We use the start page of the next section to be inclusive of shared pages
-                end_page = next_section['start_page']
-                break
-        
-        section['end_page'] = max(section['start_page'], end_page)
-
-    # Build the final index
-    section_index = {}
-    for section in section_headings:
-        section_info = {
-            'start_page': section['start_page'],
-            'end_page': section['end_page'],
-            'section_num': section['section_num'],
-            'title': section['title'],
-            'level': section['level'],
-        }
-        
-        if section['section_num']:
-            section_index[section['section_num'].lower()] = section_info
-        
-        title_key = section['title'].lower()
-        if title_key not in section_index:
-            section_index[title_key] = section_info
-            
-        if section['section_num']:
-            full_key = f"{section['section_num']} {section['title']}".lower()
-            section_index[full_key] = section_info
-
-    # Add aliases
-    common_aliases = {
-        'abstract': ['abstract', 'summary'],
-        'conclusion': ['conclusion', 'conclusions', 'concluding remarks'],
-        'references': ['references', 'bibliography'],
-        'appendix': ['appendix', 'appendices', 'supplementary'],
-    }
-    
-    for canonical, aliases in common_aliases.items():
-        if canonical in section_index:
-            for alias in aliases:
-                if alias not in section_index:
-                    section_index[alias] = section_index[canonical]
-                    
-    return section_index
-
-
-def format_section_list_for_prompt(section_index: Dict[str, Dict]) -> str:
-    """
-    Format the section index as a readable list for inclusion in LLM prompts.
-    
-    Args:
-        section_index: The section index built by build_section_index
-        
-    Returns:
-        A formatted string listing available sections
-    """
-    # Get unique sections (avoid duplicates from multiple keys)
-    seen = set()
-    sections = []
-    
-    for key, info in section_index.items():
-        identifier = (info['section_num'], info['title'])
-        if identifier not in seen:
-            seen.add(identifier)
-            sections.append(info)
-    
-    # Sort by start_page
-    sections.sort(key=lambda x: (x['start_page'], x['section_num']))
-    
-    lines = []
-    for s in sections:
-        lines.append(f"  - Section {s['section_num']}: {s['title']} (pages {s['start_page']}-{s['end_page']})")
-    
-    return "\n".join(lines)
-
-
-def create_custom_sub_question_prompt() -> str:
-    """
-    Create a custom prompt template for LLMQuestionGenerator.
-    
-    This function constructs a prompt template that guides the question generation
-    process for sub-question decomposition. The template includes:
-    - A prefix explaining the task
-    - Example 1: Financial comparison (default LlamaIndex example)
-    - Example 2: Page-based content summarization
-    - A suffix for the actual query
-    
-    Returns:
-    str: A prompt template string for use with LLMQuestionGenerator.
-    """
-    # Write in Python format string style
-    PREFIX = """\
-    Given a user question, and a list of tools, output a list of relevant sub-questions \
-    in json markdown that when composed can help answer the full user question.
-    The output MUST be a valid JSON object with an "items" key.
-
-    IMPORTANT: Break down the user question into multiple atomic sub-questions if it contains \
-    multiple parts, requests information about multiple entities, or requires multiple steps to answer. \
-    Each sub-question should focus on a single aspect of the original query. Even if all sub-questions \
-    use the same tool, they should be separated to ensure thorough retrieval.
-    """
-
-    # Default example from LlamaIndex
-    EXAMPLE_1 = """\
-    # Example 1
-    <Tools>
-    ```json
-    [
-    {
-        "name": "uber_10k",
-        "description": "Provides information about Uber financials for year 2021"
-    },
-    {
-        "name": "lyft_10k",
-        "description": "Provides information about Lyft financials for year 2021"
-    }
-    ]
-    ```
-
-    <User Question>
-    Compare and contrast the revenue growth and EBITDA of Uber and Lyft for year 2021
-
-    <Output>
-    ```json
-    {
-    "items": [
-        {"sub_question": "What is the revenue growth of Uber", "tool_name": "uber_10k"},
-        {"sub_question": "What is the EBITDA of Uber", "tool_name": "uber_10k"},
-        {"sub_question": "What is the revenue growth of Lyft", "tool_name": "lyft_10k"},
-        {"sub_question": "What is the EBITDA of Lyft", "tool_name": "lyft_10k"}
-    ]
-    }
-    ```
-
-    """
-
-    # Tailored example for page-based queries
-    EXAMPLE_2 = """\
-    # Example 2
-    <Tools>
-    ```json
-    [
-    {
-        "name": "page_filter_tool",
-        "description": "Perform a query search over the page numbers mentioned in the query"
-    }
-    ]
-    ```
-
-    <User Question>
-    Summarize the content from pages 20 to 22 in the voice of the author by NOT retrieving the text verbatim
-
-    <Output>
-    ```json
-    {
-    "items": [
-        {"sub_question": "Summarize the content on page 20 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
-        {"sub_question": "Summarize the content on page 21 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
-        {"sub_question": "Summarize the content on page 22 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}
-    ]
-    }
-    ```
-
-    """
-
-    SUFFIX = """\
-    # Example 3
-    <Tools>
-    ```json
-    {tools_str}
-    ```
-
-    <User Question>
-    {query_str}
-
-    <Output>
-    """
-
-    # Combine and return
-    custom_prompt = PREFIX + EXAMPLE_1 + EXAMPLE_2 + SUFFIX
-    
-    return custom_prompt
-
-
-def get_fusion_tree_page_filter_sort_detail_tool_mineru(
-    _query_str: str, 
-    _reranker: ColbertRerank,
-    _vector_index,
-    _vector_docstore,
-    _llm,
-    _section_index: Optional[Dict[str, Dict]] = None,
-    *,
-    verbose: bool = False,
-    ) -> QueryEngineTool:
-    """
-    Generate a QueryEngineTool that extracts specific pages from a document store,
-    retrieves the text nodes corresponding to those pages, and creates a fusion tree.
-    
-    NOTE: This is adapted for MinerU which uses 'page' metadata key (integer).
-    
-    Parameters:
-    _query_str (str): The query string from which to extract page numbers.
-    _reranker (ColbertRerank): The reranker to use for the fusion tree.
-    _vector_index: The vector index for retrieval.
-    _vector_docstore: The document store containing the text nodes.
-    _llm: The LLM to use for page number extraction.
-    _section_index: Optional section index for accurate section-to-page resolution.
-
-    Returns:
-    QueryEngineTool: A tool that uses the fusion tree to answer queries about the specified pages.
-    """
-    
-    # Build section list for prompt if section_index is available
-    section_list_str = ""
-    if _section_index:
-        section_list_str = format_section_list_for_prompt(_section_index)
-    
-    # Use section-aware prompt if section_index is available
-    if _section_index and section_list_str:
-        # Deterministic pre-check: if the query explicitly mentions a section
-        # title (e.g., "Conclusion"), resolve pages directly from the
-        # `section_index` to avoid nondeterministic LLM fallback.
-        q_lower = _query_str.lower()
-        _page_numbers = None
-        _result_str = None
-        
-        # Sort keys by length descending to find the most specific match first
-        # This prevents "Case Studies" from matching when "Additional Case Studies" is present
-        sorted_keys = sorted(_section_index.keys(), key=len, reverse=True)
-        for key in sorted_keys:
-            # Avoid accidental matches on very short keys (e.g., 'a', '1')
-            if len(key) < 3:
-                continue
-                
-            if key in q_lower:
-                info = _section_index[key]
-                _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
-                if verbose:
-                    print(f"Deterministic section match for '{key}' -> pages {_page_numbers}")
-                break
-
-        # If we found a deterministic mapping, skip LLM and use it
-        if _page_numbers is not None:
-            if verbose:
-                print(f"Using deterministic pages {_page_numbers} for query: {_query_str}")
-        else:
-            query_text = (
-                '## Instruction:\n'
-                'Analyze the user query and determine which pages to retrieve.\n\n'
-                'If the query mentions SPECIFIC PAGE NUMBERS (e.g., "page 1", "pages 5-10"), extract those pages.\n'
-                'If the query mentions a SECTION NAME or NUMBER, look up the exact pages from the section list below.\n\n'
-                '## Available Sections in This Document:\n'
-                '{section_list}\n\n'
-                '## Output Format:\n'
-                'Return a JSON object with either:\n'
-                '- For explicit page numbers: {{"type": "pages", "pages": [1, 2, 3]}}\n'
-                '- For section references: {{"type": "section", "section": "introduction"}}\n\n'
-                '## Examples:\n'
-                '**Query:** "Summarize pages 10-15"\n'
-                '**Output:** {{"type": "pages", "pages": [10, 11, 12, 13, 14, 15]}}\n\n'
-                '**Query:** "What does the Introduction say?"\n'
-                '**Output:** {{"type": "section", "section": "introduction"}}\n\n'
-                '**Query:** "Describe Section 2.1"\n'
-                '**Output:** {{"type": "section", "section": "2.1"}}\n\n'
-                '**Query:** "What is in the Evaluation section?"\n'
-                '**Output:** {{"type": "section", "section": "evaluation"}}\n\n'
-                '**Query:** "Summarize the content from page 1 to page 3"\n'
-                '**Output:** {{"type": "pages", "pages": [1, 2, 3]}}\n\n'
-                '## Now analyze the following query:\n'
-                '**Query:** {query_str}\n'
-            )
-
-            if _page_numbers is None:
-                prompt = PromptTemplate(query_text)
-                _result_str = _llm.predict(prompt=prompt, query_str=_query_str, section_list=section_list_str)
-            else:
-                _result_str = None
-        
-        # If we didn't call the LLM because of deterministic mapping, _result_str
-        # may be None. Only attempt to JSON-decode if we actually invoked the LLM.
-        try:
-            if _result_str is None:
-                _result = None
-            else:
-                _result = json.loads(_result_str)
-
-            if _result is not None:
-                if _result.get('type') == 'section':
-                    # Look up section in the index
-                    section_key = _result.get('section', '').lower().strip()
-                    section_info = _section_index.get(section_key)
-                    
-                    if section_info:
-                        _page_numbers = list(range(section_info['start_page'], section_info['end_page'] + 1))
-                        if verbose:
-                            print(f"Section '{section_key}' resolved to pages {_page_numbers}")
-                    else:
-                        # Fallback: try fuzzy matching
-                        for key, info in _section_index.items():
-                            if section_key in key or key in section_key:
-                                _page_numbers = list(range(info['start_page'], info['end_page'] + 1))
-                                if verbose:
-                                    print(f"Section '{section_key}' fuzzy matched to '{key}', pages {_page_numbers}")
-                                break
-                        else:
-                            # No match found, default to page 1
-                            _page_numbers = [1]
-                            if verbose:
-                                print(f"Section '{section_key}' not found, defaulting to page 1")
-                else:
-                    # Explicit page numbers
-                    _page_numbers = _result.get('pages', [1])
-            # if _result is None, we already set _page_numbers via deterministic pre-check
-                
-        except json.JSONDecodeError:
-            # Fallback: try to parse as simple list
-            try:
-                _page_numbers = json.loads(_result_str)
-                if not isinstance(_page_numbers, list):
-                    _page_numbers = [1]
-            except:
-                _page_numbers = [1]
-    else:
-        # Fallback to original behavior if no section_index
-        query_text = (
-        '## Instruction:\n'
-        'Extract all page numbers from the user query. \n'
-        'The page numbers can be indicated by: \n'
-        '  1. Explicit phrases like "page" or "pages" \n'
-        '  2. References to document sections (e.g., "Introduction" typically spans pages 1-2, \n'
-        '     "Abstract" is usually page 1, "Conclusion" is typically near the end) \n'
-        'Return the page numbers as a list of integers, sorted in ascending order. \n'
-        'Do NOT include "**Output:**" in your response. \n'
-        'If the query mentions a section name without explicit pages, estimate reasonable page range. \n'
-        'If no page numbers or sections are mentioned, output [1]. \n'
-
-        '## Examples:\n'
-        '**Query:** "Give me the main events from page 1 to page 4." \n'
-        '**Output:** [1, 2, 3, 4] \n'
-
-        '**Query:** "Give me the main events in the first 6 pages." \n'
-        '**Output:** [1, 2, 3, 4, 5, 6] \n'
-
-        '**Query:** "Summarize pages 10-15 of the document." \n'
-        '**Output:** [10, 11, 12, 13, 14, 15] \n'
-
-        '**Query:** "What are the key findings on page 2?" \n'
-        '**Output:** [2] \n'
-
-        '**Query:** "Summarize the content in the Introduction section." \n'
-        '**Output:** [1, 2, 3] \n'
-
-        '**Query:** "What does the Abstract say?" \n'
-        '**Output:** [1] \n'
-
-        '**Query:** "Describe the Methodology section." \n'
-        '**Output:** [3, 4, 5] \n'
-
-        '**Query:** "What are the lessons learned by the author at the company?" \n'
-        '**Output:** [1] \n'
-
-        '## Now extract the page numbers from the following query: \n'
-
-        '**Query:** {query_str} \n'
-        )
-
-        prompt = PromptTemplate(query_text)
-        _page_numbers_str = _llm.predict(prompt=prompt, query_str=_query_str)
-        _page_numbers = json.loads(_page_numbers_str)
-    
-    if verbose:
-        print(f"Page_numbers in page filter: {_page_numbers}")
-
-    # Get text nodes from the vector docstore that match the page numbers
-    # NOTE: MinerU uses 'page' key with integer values
-    _text_nodes = []
-    for _, node in _vector_docstore.docs.items():
-        page_num = node.metadata.get('page')
-        if page_num is not None and page_num in _page_numbers:
-            _text_nodes.append(node) 
-
-    node_length = len(_vector_docstore.docs)
-    if verbose:
-        print(f"Node length in docstore: {node_length}")
-        print(f"Text nodes retrieved from docstore length is: {len(_text_nodes)}")
-        for i, n in enumerate(_text_nodes):
-            print(f"Item {i+1} of the text nodes retrieved from docstore is page: {n.metadata.get('page')}")
-    
-    _vector_filter_retriever = _vector_index.as_retriever(
-                                    similarity_top_k=node_length,
-                                    filters=MetadataFilters.from_dicts(
-                                        [{
-                                            "key": "page", 
-                                            "value": _page_numbers,
-                                            "operator": "in"
-                                        }]
-                                    )
-                                )
-    
-    # Calculate the number of nodes retrieved from the vector index on these pages
-    _fusion_top_n_filter = len(_text_nodes)
-    _num_queries_filter = 1
-
-    _fusion_tree_page_filter_sort_detail_engine = get_fusion_tree_page_filter_sort_detail_engine(
-                                                                _vector_filter_retriever,
-                                                                _fusion_top_n_filter,
-                                                                _text_nodes,
-                                                                _num_queries_filter,
-                                                                _reranker,
-                                                                _vector_docstore,
-                                                                [str(p) for p in _page_numbers]  # Convert to strings for display
-                                                                )
-    
-    page_tool_description = (
-                "Perform a query search over the page numbers mentioned in the query. "
-                "Use this function when user only need to retrieve information from specific PAGES, "
-                "for example when user asks 'What happened on PAGE 1?' "
-                "or 'What are the things mentioned on PAGES 1 and 2?' "
-                "or 'Describe the contents from PAGE 1 to PAGE 4'. "
-                "DO NOT GENERATE A SUB-QUESTION ASKING ABOUT ONE PAGE ONLY "
-                "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
-                )
-    
-    _fusion_tree_page_filter_sort_detail_tool = QueryEngineTool.from_defaults(
-                                                        name="page_filter_tool",
-                                                        query_engine=_fusion_tree_page_filter_sort_detail_engine,
-                                                        description=page_tool_description,
-                                                        )
-
-    return _fusion_tree_page_filter_sort_detail_tool
-
-
-def build_page_filter_query_engine():
-    tool = get_fusion_tree_page_filter_sort_detail_tool_mineru(
-        query,
-        reranker,
-        recursive_index,
-        storage_context_vector.docstore,
-        llm,
-        section_index,  # Pass the section index
-        verbose=page_filter_verbose,
     )
-    return tool.query_engine
-
-
-def build_keyphrase_query_engine():
-    """
-    Build a fusion BM25 + Vector query engine for keyphrase-based retrieval.
-    
-    This function is called lazily when the keyphrase_tool is first used.
-    It creates:
-    1. BM25 retriever for keyword/lexical search
-    2. Vector retriever for semantic search  
-    3. QueryFusionRetriever combining both with reciprocal rank fusion
-    4. ColBERT reranking for final ranking
-    """
-    print(f"\n🔧 Building keyphrase fusion engine for query...")
-    
-    # Get BM25 text nodes from docstore using keyphrase extraction
-    keyphrase_text_nodes = get_text_nodes_from_query_keyphrase(
-        storage_context_vector.docstore,
-        similarity_top_k_fusion,
-        query,
-    )
-    
-    # Create BM25 retriever for keyword/lexical search
-    bm25_keyphrase_retriever = BM25Retriever.from_defaults(
-        similarity_top_k=similarity_top_k_fusion,
-        nodes=keyphrase_text_nodes,
-    )
-    
-    # Create vector retriever for semantic search
-    vector_retriever = recursive_index.as_retriever(
-        similarity_top_k=similarity_top_k_fusion,
-    )
-    
-    # Create fusion query engine combining BM25 + Vector with reranking
-    fusion_keyphrase_engine = get_fusion_tree_keyphrase_filter_sort_detail_engine(
-        vector_retriever,
-        storage_context_vector.docstore,
-        bm25_keyphrase_retriever,
-        fusion_top_n,
-        num_queries_fusion,
-        reranker,
-        num_nodes_prev_next,
-    )
-    
-    print(f"✅ Keyphrase fusion engine built successfully")
-    return fusion_keyphrase_engine
-
-
-nest_asyncio.apply()
-# MISTRAL_API_KEY = os.environ['MISTRAL_API_KEY']
-ANTHROPIC_API_KEY = os.environ['ANTHROPIC_API_KEY']
-OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
+    return _recursive_index
 
 # Set OpenAI API key, LLM, and embedding model
 
@@ -1065,6 +494,7 @@ chunk_method = "mineru"
 chunk_size = rag_settings["chunk_size"]
 chunk_overlap = rag_settings["chunk_overlap"]
 
+page_filter_verbose = rag_settings.get("page_filter_verbose", False)
 
 # Create database name and colleciton names
 (database_name, 
@@ -1142,6 +572,11 @@ if json_cache_path.exists():
 else:
     print(f"⚠️ JSON cache not found at {json_cache_path}, section index not available")
 
+# Initialize nodes
+base_nodes = []
+objects = []
+image_text_nodes = []
+
 # Load documnet nodes if either vector index or docstore not saved.
 if save_index_vector or add_document_vector or add_document_summary: 
 
@@ -1183,8 +618,28 @@ if save_index_vector == True:
 else:
     # Load from Milvus database
     recursive_index = VectorStoreIndex.from_vector_store(
-        vector_store=vector_store
+        vector_store=vector_store,
+        storage_context=storage_context_vector
         )
+
+summary_tool_description = (
+    "Useful for summarization or full context questions related to the ENTIRE document. "
+    "Use this function ONLY when user asks a question that requires understanding the "
+    "FULL context or storyline of the WHOLE document, for example when user asks "
+    "'What is this document about?', 'Give me an overview of the entire paper', "
+    "'What are the main themes throughout the document?', or when the query involves "
+    "comparing across ALL sections of the document. "
+    "DO NOT use this tool for questions about SPECIFIC SECTIONS like 'Introduction', "
+    "'Conclusion', 'Evaluation', 'Methodology', etc. - use page_filter_tool instead. "
+    "NEVER use this tool for questions about EQUATIONS, FORMULAS, FIGURES, or TABLES - "
+    "use keyphrase_tool instead for those. Even if asking about multiple equations "
+    "collectively (e.g., 'What do equations 1-4 represent?'), use keyphrase_tool. "
+    )
+
+summary_tool = get_summary_tree_detail_tool(
+                                        summary_tool_description,
+                                        storage_context_summary
+                                        )
 
 if add_document_vector == True:
     # Stitch prev/next relationships so PrevNextNodePostprocessor can retrieve neighbors
@@ -1224,117 +679,8 @@ reranker = ColbertRerank(
     keep_retrieval_score=True,
 )
 
-# Tool descriptions for the 3-tool architecture
-specific_tool_description = (
-    "Useful for retrieving SPECIFIC context from the document. "
-    "Use this function when user asks a specific question that may NOT require "
-    "understanding the full context of the document, for example "
-    "when user seeks factual answer or a specific detail from the document, "
-    "for example, when user uses interrogative words like 'what', 'who', 'where', "
-    "'when', 'why', 'how', which may not require understanding the entire document "
-    "to provide an answer. "
-    "ALWAYS use this tool for questions about EQUATIONS, FORMULAS, FIGURES, or TABLES, "
-    "including questions asking what multiple equations represent collectively. "
-    "Examples: 'What is in equation (1)?', 'What do equations (1)-(4) represent?', "
-    "'What is the formula for X?', 'What does Figure 2 show?', 'Describe Table 1'. "
-    )
-
-# recursive_query_engine_prompts_dict = recursive_query_engine.get_prompts()
-# type = "recursive_query_engine:"
-# display_prompt_dict(type.upper(), recursive_query_engine_prompts_dict)
-
-summary_tool_description = (
-    "Useful for summarization or full context questions related to the ENTIRE document. "
-    "Use this function ONLY when user asks a question that requires understanding the "
-    "FULL context or storyline of the WHOLE document, for example when user asks "
-    "'What is this document about?', 'Give me an overview of the entire paper', "
-    "'What are the main themes throughout the document?', or when the query involves "
-    "comparing across ALL sections of the document. "
-    "DO NOT use this tool for questions about SPECIFIC SECTIONS like 'Introduction', "
-    "'Conclusion', 'Evaluation', 'Methodology', etc. - use page_filter_tool instead. "
-    "NEVER use this tool for questions about EQUATIONS, FORMULAS, FIGURES, or TABLES - "
-    "use keyphrase_tool instead for those. Even if asking about multiple equations "
-    "collectively (e.g., 'What do equations 1-4 represent?'), use keyphrase_tool. "
-    "Examples where you should NOT use this tool: "
-    "'Summarize the Introduction section', 'What is in the Evaluation section?', "
-    "'Describe the Conclusion', 'Summarize Section 2.1', "
-    "'What is in equation (1)?', 'What do equations (1)-(4) represent collectively?', "
-    "'What does Figure 1 show?', 'Describe Table 2'. "
-    )
-
-summary_tool = get_summary_tree_detail_tool(
-                                        summary_tool_description,
-                                        storage_context_summary
-                                        )
-
-page_tool_description = (
-    "Perform a query search over specific pages or SECTIONS of the document. "
-    "Use this function when user asks about specific PAGES or specific SECTIONS. "
-    "Examples for PAGES: 'What happened on page 1?', 'Summarize pages 5-10', "
-    "'What is on page 3?'. "
-    "Examples for SECTIONS: 'Summarize the Introduction section', "
-    "'What is in the Evaluation section?', 'Describe the Conclusion', "
-    "'Summarize Section 2.1', 'What does the Methodology section say?', "
-    "'Summarize the content of the Abstract'. "
-    "This tool maps section names to their actual page numbers automatically. "
-    "DO NOT GENERATE A SUB-QUESTION ASKING ABOUT ONE PAGE ONLY "
-    "IF EQUAL TO OR MORE THAN 2 PAGES ARE MENTIONED IN THE QUERY. "
-    )
-
-# query = "what is UBER Short-term insurance reserves reported in 2022?"
-# query = "what is UBER's common stock subject to repurchase in 2021?"
-# query = "What is UBER Long-term insurance reserves reported in 2021?"
-# query = "What is the number of monthly active platform consumers in Q2 2021?"
-# query = "What is the number of monthly active platform consumers in 2022?"
-# query = "What is the number of trips in 2021?"
-# query = "What is the free cash flow in 2021?"
-# query = "What is the gross bookings of delivery in Q3 2021?"
-# query = "What is the gross bookings in 2022?"
-# query = "What is the value of mobility adjusted EBITDA in 2022?" 
-# query = "What is the status of the classification of drivers?"
-# query = "What is the comprehensive income (loss) attributable to Uber reported in 2021?"
-# query = "What is the comprehensive income (loss) attributable to Uber Technologies reported in 2022?"
-# query = "What are the data shown in the bar graph titled 'Monthly Active Platform Consumers'?"
-# query = "Can you tell me the page number on which the bar graph titled 'Monthly Active Platform Consumers' is located?"
-# query = "What are the data shown in the bar graph titled 'Monthly Active Platform Consumers' on page 43?"
-# query = "What is the Q2 2020 value shown in the bar graph titled 'Monthly Active Platform Consumers' on page 43?"
-# query = "What are the main risk factors for Uber?"
-# query = "What are the data shown in the bar graph titled 'Trips'?"
-# query = "What are the data shown in the bar graph titled 'Gross Bookings'?"
-
-# query = "What is the benefit of multi-head attention instead of single-head attention?"
-# query = "Describe the content of section 3.1"  # not wortking (cannot find the section even for Claude model)
-# query = "Describe the content of section 3.1 with the title 'Encoder and Decoder Stackes'."  # WORK 
-# query = "What is the caption of Figure 2?"
-# query = "What is in equation (1)."
-# query = "What is in equation (2)."  # not working
-# query = "What is in equation (3)."  # not working
-# query = "Is there any equation in section 5.3?"  # not working
-# query = "Is there any equation in section 5.3 titlted 'Optimizer'?"
-# query = "How many equations are there in the full context of this document.?"  # WORK!
-# query = "How many equations are there in this document.?"  # WORK!
-# query = "What is on page 6?"  # WORK!
-# query = "How many tables are there in this document?"
-# query = "What is table 1 about?"
-# query = "What do the results in table 1 show?"
-# query = "List all sections and subsections in this document. Keep the original section/subsection numbers."  # not working
-# query = "List all sections and subsections in the full context of this document. Use the original section/subsection numbers."  # WORK!
-# query = "Find out how many sections and subsections does this document have and use the results to describe the content of subsection 3.1."
-# query = "List all sections with the section number and section title?"  # not working
-# query = "Create a table of content."  # not working
-# query = "What does Figure 1 show?" 
-# query = "Describe Figure 1 in detail." 
-# query = "What does table 1 show?"
-# query = "What are the resutls in table 1?"
-# query = "Describe Figure 2 in detail."
-# query = "What is the title of table 2?"
-# query = "In table 2 what do 'EN-DE' and 'EN-FR' mean?"
-# query = "What is the BLEU score of the model 'MoE' in EN-FR in Table 2?" 
-# query = "How do a query and a set of key value pairs work together in an attention function?" 
-# query = "What is the formula for Scaled Dot-Product Attention?"
-# query = "Describe the Transformer architecture shown in Figure 1."
-# query = "Describe Figure 2 in detail. What visual elements does it contain?"
-
+# queries for testing
+# query = "What are the main findings of this paper?"
 # RAG-Anything paper queries
 # query = "Describe Figure 1 in detail. What visual elements and workflow does it show?"
 # query = "In the Accuracy (%) on DocBench Dataset table (table 2), what methods are being compared and what is the worst performing method?"
@@ -1362,161 +708,60 @@ query = "What are in equation (3) and (4)?"
 # query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 # query = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
 
-# =============================================================================
-# Build tools with lazy initialization
-# =============================================================================
-# Both keyphrase_tool and page_filter_tool use LazyQueryEngine to defer 
-# initialization until first use. This ensures the 'query' variable is defined
-# when the BM25 retriever is built.
 
-# Build the keyphrase_tool lazily (uses BM25 + Vector fusion)
-lazy_keyphrase_engine = LazyQueryEngine(build_keyphrase_query_engine)
-
-keyphrase_tool = QueryEngineTool.from_defaults(
-    name="keyphrase_tool",
-    query_engine=lazy_keyphrase_engine,
-    description=specific_tool_description,
+# Build tools using the factory
+keyphrase_tool = rag_factory.get_keyphrase_tool(
+    query,
+    recursive_index,
+    storage_context_vector.docstore,
+    reranker,
+    llm,
+    rag_settings,
 )
 
-# Build the page_filter_tool lazily to avoid eager initialization
-page_filter_verbose = rag_settings["page_filter_verbose"]
-
-# Use LazyQueryEngine to defer initialization until first use
-lazy_page_filter_engine = LazyQueryEngine(build_page_filter_query_engine)
-
-page_filter_tool = QueryEngineTool.from_defaults(
-    name="page_filter_tool",
-    query_engine=lazy_page_filter_engine,
-    description=page_tool_description,
+page_filter_tool = rag_factory.get_page_filter_tool(
+    query,
+    reranker,
+    recursive_index,
+    storage_context_vector.docstore,
+    llm,
+    section_index=section_index,
+    metadata_key="page",
+    verbose=page_filter_verbose,
 )
 
-# Create custom sub-question prompt for SubQuestionQueryEngine
-CUSTOM_SUB_QUESTION_PROMPT = create_custom_sub_question_prompt()
-question_gen = LLMQuestionGenerator.from_defaults(
-                            llm=llm,
-                            prompt_template_str=CUSTOM_SUB_QUESTION_PROMPT
-                            )
-
-# Define the 3 tools
 tools = [
     keyphrase_tool,
     summary_tool,
     page_filter_tool
 ]
 
-# Use TREE_SUMMARIZE response synthesizer (default behavior)
-# Allow overriding response mode with environment variable for testing
-response_mode_env = os.environ.get("RESPONSE_MODE", "TREE_SUMMARIZE").upper()
-if response_mode_env not in {m.name for m in ResponseMode}:
-    print(f"⚠️ Invalid RESPONSE_MODE={response_mode_env}; falling back to COMPACT")
-    response_mode_env = "TREE_SUMMARIZE"
-
-# If TREE_SUMMARIZE, use a more detailed summary prompt for verbosity
-summary_template = None
-if response_mode_env == "TREE_SUMMARIZE":
-    detailed_tree_tmpl = (
-        "Context information from multiple sources is below.\n"
-        "---------------------\n"
-        "{context_str}\n"
-        "---------------------\n"
-        "You are an expert assistant. Provide a detailed, structured, and thorough answer "
-        "to the query below. Include key points, important details, any equations or "
-        "examples present in the context, and list steps or components when applicable. "
-        "Be explicit and avoid omitting technical specifics.\n\n"
-        "=== MATHEMATICAL FORMULAS ===\n"
-        "For any mathematical equations or formulas in your response:\n"
-        "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"
-        "2. Use $ ... $ delimiters for inline math (within a sentence).\n\n"
-        "Query: {query_str}\n"
-        "Detailed Answer: "
-    )
-    summary_template = PromptTemplate(detailed_tree_tmpl, prompt_type=PromptType.SUMMARY)
-
-synth = get_response_synthesizer(
-    response_mode=ResponseMode[response_mode_env],
-    summary_template=summary_template,
+# Build and run the engine
+sub_question_engine = rag_factory.build_sub_question_engine(
+    tools,
+    llm,
+    verbose=True
 )
-print(f"\n🔧 Using {response_mode_env} response synthesizer for final answers")
-
-# Create SubQuestionQueryEngine with the 3 tools and the specified synthesizer
-sub_question_engine = SubQuestionQueryEngine.from_defaults(
-                                        question_gen=question_gen, 
-                                        query_engine_tools=tools,
-                                        response_synthesizer=synth,
-                                        verbose=True,
-                                        )
 
 print(f"\n📝 QUERY: {query}\n")
 
-# Retry logic for GuidanceQuestionGenerator failures
-# The guidance library sometimes fails to parse LLM output as valid JSON
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
-
-response = None
-for attempt in range(1, MAX_RETRIES + 1):
-    try:
-        response = sub_question_engine.query(query)
-        break  # Success, exit retry loop
-    except Exception as e:
-        error_msg = str(e)
-        if "Failed to parse pydantic object from guidance program" in error_msg or \
-           "json" in error_msg.lower():
-            # This is a transient JSON parsing error, retry
-            print(f"⚠️ Attempt {attempt}/{MAX_RETRIES}: Guidance JSON parsing failed, retrying in {RETRY_DELAY}s...")
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY)
-            else:
-                print(f"❌ All {MAX_RETRIES} attempts failed. Error: {e}")
-        else:
-            # Different error, don't retry
-            print(f"❌ Error getting answer from LLM: {e}")
-            break
+# Execute query
+response = sub_question_engine.query(query)
 
 if response is not None:
-    # Collect nodes with metadata (actual document nodes)
-    document_nodes = []
-    
-    for i, n in enumerate(response.source_nodes):
-        if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
-            # Store node info for sequential output
-            page_num = n.metadata.get('page', n.metadata.get('source', 'unknown'))
-            document_nodes.append({
-                'page': page_num,
-                'text': n.text,
-                'score': n.score,
-                'node_id': n.node_id,
-            })
-        # else:
-        #     print(f"Item {i+1} question and response:\n{n.text}\n ")
-    
-    # Output sequential nodes with page numbers in a list
-    if document_nodes:
-        import tiktoken
-        enc = tiktoken.encoding_for_model("gpt-4")  # cl100k_base encoding (similar to Claude)
-        
-        print("\n" + "="*80)
-        print("SEQUENTIAL NODES WITH PAGE NUMBERS AND TOKEN COUNTS (sent to LLM for final answer):")
-        print("="*80)
-        total_tokens = 0
-        for i, node_info in enumerate(document_nodes, 1):
-            node_id_prefix = node_info['node_id'][:8] if node_info.get('node_id') else 'UNKNOWN'
-            node_tokens = len(enc.encode(node_info['text']))
-            total_tokens += node_tokens
-            print(f"  Node {i}: Page {node_info['page']} | {node_tokens:,} tokens | {len(node_info['text']):,} chars (ID: {node_id_prefix}..., Score: {round(node_info['score'], 3) if node_info['score'] else 'N/A'})")
-        print(f"\n  📊 TOTAL: {len(document_nodes)} nodes, {total_tokens:,} tokens (context only, excludes system prompt)")
-        
-        # # Print the contents of each page sent to LLM
-        # print("\n" + "="*80)
-        # print("CONTENTS OF PAGES SENT TO LLM:")
-        # print("="*80)
-        # for i, node_info in enumerate(document_nodes, 1):
-        #     print(f"\n--- Page {node_info['page']} (Node {i}) ---")
-        #     print(node_info['text'])
-        #     print("-" * 40)
-
+    rag_factory.print_response_diagnostics(response)
     print(f"\n📝 RESPONSE:\n{response}\n")
 
-vector_store.client.release_collection(collection_name=collection_name_vector)
-vector_store.client.close()
+# Cleanup resources
+try:
+    if 'vector_store' in dir() and hasattr(vector_store, 'client'):
+        vector_store.client.release_collection(collection_name=collection_name_vector)
+        vector_store.client.close()
+except:
+    pass
+
+# Suppress warnings and force immediate exit
+import warnings
+warnings.filterwarnings('ignore')
+os._exit(0)
 

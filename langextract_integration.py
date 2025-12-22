@@ -373,7 +373,7 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
         filters = json.loads(response_text)
         
         if filters:
-            print(f"\n🔍 Extracted Query Filters: {filters}")
+            print(f"\n🔍 LangExtract Extracted Query Filters: {filters}")
             
         return filters
         

@@ -2,7 +2,23 @@
 
 ## [December 22, 2025]
 
-### 1. Migration to MinerU as Primary Parser
+### 1. RAG Factory & Architectural Refactoring
+
+- **Centralized RAG Factory**: Introduced `rag_factory.py` as the single source of truth for building query engines and tools. This eliminates code duplication between `langextract_simple.py` and `minerU.py`.
+- **Dynamic Metadata Filtering**: Implemented `DynamicFilterQueryEngine` which extracts semantic filters (via LangExtract) and named entities (via SpanMarker) for *every* sub-question. This significantly narrows the search space in Milvus for complex multi-part queries.
+- **Lazy Initialization**: Refined `LazyQueryEngine` to defer resource-heavy tool initialization until the LLM actually selects the tool, reducing startup latency and API costs.
+- **Visibility & Logging**: Added explicit terminal logging for "🔍 Extracted Query Filters" and "✓ Created X filters" to provide transparency into how metadata is being used during retrieval.
+
+### 2. MinerU Pipeline Stabilization
+
+- **Critical Bug Fixes**: Resolved 10+ issues in `minerU.py`, including:
+    - Fixed a `RuntimeError` caused by nested async loops by applying `nest_asyncio.apply()`.
+    - Corrected syntax errors in vector index creation and missing function implementations.
+    - Fixed `NameError` for undefined variables like `query` and `page_filter_verbose`.
+- **Deterministic Section Retrieval**: Restored and optimized `build_section_index_mineru` to allow exact mapping of section names (e.g., "CASE STUDIES") to page ranges, bypassing vector search for known sections.
+- **Environment Robustness**: Improved `.env` loading and added validation for `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` at script startup.
+
+### 3. Migration to MinerU as Primary Parser
 
 - **Main Script Promotion**: Promoted `minerU.py` to the primary indexing and RAG entry point, replacing `llamaparse.py`.
 - **Code Archival**: Moved the original `llamaparse.py` to [archive/llamaparse.py](archive/llamaparse.py) to maintain a clean root directory while preserving the legacy pipeline.

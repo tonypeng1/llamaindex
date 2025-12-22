@@ -58,8 +58,8 @@ uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
 |---------|-------------|
 | **Dual Storage** | Milvus (vectors) + MongoDB (documents) with deduplication |
 | **Multi-Tool Query** | `keyphrase_tool` (facts), `page_filter_tool` (pages), `summary_tool` (summaries) |
+| **Dynamic Filtering** | Extracts semantic filters (LangExtract) and entities per sub-question for precise retrieval |
 | **Hybrid Retrieval** | Vector similarity + BM25 keyword search with reciprocal rank fusion |
-| **Entity Filtering** | Auto-detects entities in queries, filters vector retriever (40-60% precision boost) |
 | **Neural Re-ranking** | ColBERT for fine-grained relevance scoring |
 | **KeyBERT** | Keyphrase extraction reduces BM25 noise |
 | **MinerU Support** | Isolated PDF parsing pipeline optimized for Apple Silicon |
