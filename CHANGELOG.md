@@ -20,6 +20,13 @@
 - **Configuration Centralization**: Refactored `minerU.py` to pull all retrieval and debug settings (e.g., `page_filter_verbose`) directly from `config.py`, ensuring system-wide consistency.
 - **Default Article**: Switched the default `ACTIVE_ARTICLE` to `paul_graham_essay`.
 
+### 3. LangExtract Pipeline Modernization
+
+- **Sub-Question Generation**: Replaced `GuidanceQuestionGenerator` with `LLMQuestionGenerator` in `langextract_simple.py` for more reliable sub-query decomposition, eliminating dependencies on the `guidance` library.
+- **Retry Mechanism**: Added a robust retry loop (3 attempts) for sub-question generation to handle transient JSON parsing failures from the LLM.
+- **Metadata Resilience**: Updated node retrieval logic to use `.get()` for metadata keys, ensuring compatibility with both `'page'` (MinerU) and `'source'` (LlamaIndex) metadata schemas.
+- **Enhanced Debugging**: Integrated `tiktoken` for precise token counting of retrieved context and added final response printing to the terminal output.
+
 ## [December 21, 2025]
 
 ### 1. MinerU Integration for PDF Parsing

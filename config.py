@@ -176,6 +176,8 @@ DEFAULT_RAG_SETTINGS: Dict[str, Any] = {
 # Per-article RAG settings overrides (optional)
 ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "paul_graham_essay": {
+        "chunk_size": 256,
+        "chunk_overlap": 64,
         "metadata": "langextract",  # Use LangExtract schema
         "use_entity_filtering": True,
     },

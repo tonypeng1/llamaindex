@@ -54,6 +54,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import json
+import time
 import nest_asyncio
 import sys
 import logging
@@ -96,9 +97,7 @@ from llama_index.readers.file import (
                         PyMuPDFReader,
                         )
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
-from llama_index.question_gen.guidance import GuidanceQuestionGenerator
-from llama_index.core.prompts.guidance_utils import convert_to_handlebars
-from guidance.models import OpenAI as GuidanceOpenAI
+from llama_index.core.question_gen import LLMQuestionGenerator
 
 from utils import (
                 get_article_link, 
@@ -368,7 +367,8 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
     # Get text nodes from the vector docstore that match the page numbers
     _text_nodes = []
     for _, node in _vector_docstore.docs.items():
-        if node.metadata['source'] in _page_numbers:
+        page_val = node.metadata.get('page', node.metadata.get('source'))
+        if page_val in _page_numbers:
             _text_nodes.append(node) 
 
     node_length = len(vector_docstore.docs)
@@ -376,7 +376,8 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
         print(f"Node length in docstore: {node_length}")
         print(f"Text nodes retrieved from docstore length is: {len(_text_nodes)}")
         for i, n in enumerate(_text_nodes):
-            print(f"Item {i+1} of the text nodes retrieved from docstore is page: {n.metadata['source']}")
+            page_val = n.metadata.get('page', n.metadata.get('source', 'unknown'))
+            print(f"Item {i+1} of the text nodes retrieved from docstore is page: {page_val}")
     
     _vector_filter_retriever = vector_index.as_retriever(
                                     similarity_top_k=node_length,
@@ -412,9 +413,9 @@ def get_fusion_tree_page_filter_sort_detail_tool_simple(
     return _fusion_tree_page_filter_sort_detail_tool
 
 
-def create_custom_guidance_prompt() -> str:
+def create_custom_sub_question_prompt() -> str:
     """
-    Create a custom prompt template for GuidanceQuestionGenerator.
+    Create a custom prompt template for LLMQuestionGenerator.
     
     This function constructs a prompt template that guides the question generation
     process for sub-question decomposition. The template includes:
@@ -424,13 +425,18 @@ def create_custom_guidance_prompt() -> str:
     - A suffix for the actual query
     
     Returns:
-    str: A Handlebars-formatted prompt template string for use with GuidanceQuestionGenerator.
+    str: A prompt template string for use with LLMQuestionGenerator.
     """
-    # Write in Python format string style, then convert to Handlebars
+    # Write in Python format string style
     PREFIX = """\
     Given a user question, and a list of tools, output a list of relevant sub-questions \
-    in json markdown that when composed can help answer the full user question:
+    in json markdown that when composed can help answer the full user question.
+    The output MUST be a valid JSON object with an "items" key.
 
+    IMPORTANT: Break down the user question into multiple atomic sub-questions if it contains \
+    multiple parts, requests information about multiple entities, or requires multiple steps to answer. \
+    Each sub-question should focus on a single aspect of the original query. Even if all sub-questions \
+    use the same tool, they should be separated to ensure thorough retrieval.
     """
 
     # Default example from LlamaIndex
@@ -439,14 +445,14 @@ def create_custom_guidance_prompt() -> str:
     <Tools>
     ```json
     [
-    {{
+    {
         "name": "uber_10k",
         "description": "Provides information about Uber financials for year 2021"
-    }},
-    {{
+    },
+    {
         "name": "lyft_10k",
         "description": "Provides information about Lyft financials for year 2021"
-    }}
+    }
     ]
     ```
 
@@ -455,14 +461,14 @@ def create_custom_guidance_prompt() -> str:
 
     <Output>
     ```json
-    {{
+    {
     "items": [
-        {{"sub_question": "What is the revenue growth of Uber", "tool_name": "uber_10k"}},
-        {{"sub_question": "What is the EBITDA of Uber", "tool_name": "uber_10k"}},
-        {{"sub_question": "What is the revenue growth of Lyft", "tool_name": "lyft_10k"}},
-        {{"sub_question": "What is the EBITDA of Lyft", "tool_name": "lyft_10k"}}
+        {"sub_question": "What is the revenue growth of Uber", "tool_name": "uber_10k"},
+        {"sub_question": "What is the EBITDA of Uber", "tool_name": "uber_10k"},
+        {"sub_question": "What is the revenue growth of Lyft", "tool_name": "lyft_10k"},
+        {"sub_question": "What is the EBITDA of Lyft", "tool_name": "lyft_10k"}
     ]
-    }}
+    }
     ```
 
     """
@@ -473,10 +479,10 @@ def create_custom_guidance_prompt() -> str:
     <Tools>
     ```json
     [
-    {{
+    {
         "name": "page_filter_tool",
         "description": "Perform a query search over the page numbers mentioned in the query"
-    }}
+    }
     ]
     ```
 
@@ -485,13 +491,13 @@ def create_custom_guidance_prompt() -> str:
 
     <Output>
     ```json
-    {{
+    {
     "items": [
-        {{"sub_question": "Summarize the content on page 20 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}},
-        {{"sub_question": "Summarize the content on page 21 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}},
-        {{"sub_question": "Summarize the content on page 22 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}}
+        {"sub_question": "Summarize the content on page 20 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
+        {"sub_question": "Summarize the content on page 21 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"},
+        {"sub_question": "Summarize the content on page 22 in the voice of the author by NOT retrieving the text verbatim", "tool_name": "page_filter_tool"}
     ]
-    }}
+    }
     ```
 
     """
@@ -509,12 +515,10 @@ def create_custom_guidance_prompt() -> str:
     <Output>
     """
 
-    # Combine and convert to Handlebars format
-    custom_guidance_prompt = convert_to_handlebars(PREFIX + EXAMPLE_1 + EXAMPLE_2 + SUFFIX)
-    # Alternative with only one example:
-    # custom_guidance_prompt = convert_to_handlebars(PREFIX + EXAMPLE_1 + SUFFIX)
+    # Combine and return
+    custom_prompt = PREFIX + EXAMPLE_1 + EXAMPLE_2 + SUFFIX
     
-    return custom_guidance_prompt
+    return custom_prompt
 
 
 class LazyQueryEngine:
@@ -831,15 +835,10 @@ page_filter_tool = QueryEngineTool.from_defaults(
     description=page_tool_description,
     )
 
-CUSTOM_GUIDANCE_PROMPT = create_custom_guidance_prompt()
-OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
-question_gen = GuidanceQuestionGenerator.from_defaults(
-                            prompt_template_str=CUSTOM_GUIDANCE_PROMPT,
-                            guidance_llm=GuidanceOpenAI(
-                                model="gpt-4o",
-                                api_key=OPENAI_API_KEY,
-                                echo=False),
-                            verbose=True
+CUSTOM_SUB_QUESTION_PROMPT = create_custom_sub_question_prompt()
+question_gen = LLMQuestionGenerator.from_defaults(
+                            llm=Settings.llm,
+                            prompt_template_str=CUSTOM_SUB_QUESTION_PROMPT
                             )
 
 tools=[
@@ -856,11 +855,28 @@ sub_question_engine = SubQuestionQueryEngine.from_defaults(
 
 print(f"\n📝 ORIGINAL QUERY: {query_str}\n")
 
+# Retry logic for sub-question generation failures
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
+
 response = None
-try:
-    response = sub_question_engine.query(query_str)
-except Exception as e:
-    print(f"Error getting json answer from LLM: {e}")
+for attempt in range(1, MAX_RETRIES + 1):
+    try:
+        response = sub_question_engine.query(query_str)
+        break  # Success, exit retry loop
+    except Exception as e:
+        error_msg = str(e)
+        if "json" in error_msg.lower():
+            # This is a transient JSON parsing error, retry
+            print(f"⚠️ Attempt {attempt}/{MAX_RETRIES}: JSON parsing failed, retrying in {RETRY_DELAY}s...")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY)
+            else:
+                print(f"❌ All {MAX_RETRIES} attempts failed. Error: {e}")
+        else:
+            # Different error, don't retry
+            print(f"❌ Error getting answer from LLM: {e}")
+            break
 
 if response is not None:
     # Collect nodes with metadata (actual document nodes)
@@ -868,11 +884,10 @@ if response is not None:
     
     for i, n in enumerate(response.source_nodes):
         if bool(n.metadata): # the first few nodes may not have metadata (the LLM response nodes)
-            # print(f"Item {i+1} of the source pages of response is page: {n.metadata['source']} \
-            # (with score: {round(n.score, 3) if n.score is not None else None})")
             # Store node info for sequential output
+            page_num = n.metadata.get('page', n.metadata.get('source', 'unknown'))
             document_nodes.append({
-                'page': n.metadata['source'],
+                'page': page_num,
                 'text': n.text,
                 'score': n.score,
                 'node_id': n.node_id,
@@ -882,8 +897,19 @@ if response is not None:
     
     # Output sequential nodes with page numbers in a list
     if document_nodes:
+        import tiktoken
+        enc = tiktoken.encoding_for_model("gpt-4")  # cl100k_base encoding (similar to Claude)
+        
         print("\n" + "="*80)
-        print("SEQUENTIAL NODES WITH PAGE NUMBERS (sent to LLM for final answer):")
+        print("SEQUENTIAL NODES WITH PAGE NUMBERS AND TOKEN COUNTS (sent to LLM for final answer):")
+        print("="*80)
+        total_tokens = 0
+        for i, node_info in enumerate(document_nodes, 1):
+            node_id_prefix = node_info['node_id'][:8] if node_info.get('node_id') else 'UNKNOWN'
+            node_tokens = len(enc.encode(node_info['text']))
+            total_tokens += node_tokens
+            print(f"  Node {i}: Page {node_info['page']} | {node_tokens:,} tokens | {len(node_info['text']):,} chars (ID: {node_id_prefix}..., Score: {round(node_info['score'], 3) if node_info['score'] else 'N/A'})")
+        print(f"\n  📊 TOTAL: {len(document_nodes)} nodes, {total_tokens:,} tokens (context only, excludes system prompt)")
         print("="*80)
         for i, node_info in enumerate(document_nodes, 1):
             node_id_prefix = node_info['node_id'][:8] if node_info.get('node_id') else 'UNKNOWN'
@@ -894,6 +920,9 @@ if response is not None:
             # print(f"{node_info['text']}")
             # print("-" * 80)
         print("="*80 + "\n")
+
+    print(f"\n📝 RESPONSE:\n{response}\n")
+
 # Cleanup resources
 try:
     if 'vector_store' in dir() and hasattr(vector_store, 'client'):
