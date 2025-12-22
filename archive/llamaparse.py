@@ -1867,7 +1867,7 @@ page_tool_description = (
 # query = "What is the content of the Evaluation section?"
 # query = "Summarize the content of the Evaluation section."
 # query = "Summarize the Conclusion section."
-# query = "Summarize the section 3.4, CASE STUDIES."
+query = "Summarize the section 3.4, CASE STUDIES."
 # query = "Summarize the CASE STUDIES section."
 # query = "Summarize the CROSS-MODAL HYBRID RETRIEVAL section."
 # query = "What is in equation (1)?"
@@ -1875,7 +1875,7 @@ page_tool_description = (
 # query = "What are in equation (4)?"
 # query = "What are in the equations (1), (2), (3), and (4)? What are they trying to represent collectively?"
 # query = "What are in the equations (2) and (3)?"
-query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
+# query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 # query = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
 
 # =============================================================================

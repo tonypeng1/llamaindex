@@ -43,8 +43,8 @@ uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
 
 4. **Run**:
    ```bash
-   # Index the document (LlamaParse or MinerU)
-   python llamaparse.py
+   # Index the document (MinerU)
+   python minerU.py
    
    # Query the system
    python langextract_simple.py
@@ -87,7 +87,7 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 
 ## Performance & Robustness
 
-- **Metadata stripping** — strips large LlamaParse metadata before saving to Milvus to avoid dynamic-field size and token-serialization blowups; full metadata is retained in MongoDB docstores.
+- **Metadata stripping** — strips large parser metadata (e.g., MinerU or LlamaParse OCR data) before saving to Milvus to avoid dynamic-field size and token-serialization blowups; full metadata is retained in MongoDB docstores.
 - **Optimized node splitting** — uses a 512-token chunk size (aligned with ColBERT's limit) to ensure the reranker sees the entire context of every retrieved node.
 - **Image processing & caching** — resizes large images, chooses appropriate format, base64-encodes payloads, and caches generated descriptions to avoid repeated vision API calls.
 - **Safer embedding & lazy init** — reduced embedding batch sizes and deferred query-engine initialization to lower failure rates and startup cost.
@@ -108,7 +108,7 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 
 ### Centralized Configuration (`config.py`)
 
-`config.py` is the **single source of truth** for the entire pipeline. Both the **Indexer** (`llamaparse.py`) and the **Retriever** (`langextract_simple.py`) import their settings from here to ensure database consistency.
+`config.py` is the **single source of truth** for the entire pipeline. Both the **Indexer** (`minerU.py`) and the **Retriever** (`langextract_simple.py`) import their settings from here to ensure database consistency.
 
 #### 1. Select Active Article
 Switch the entire system to a different document by changing one variable:

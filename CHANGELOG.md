@@ -1,5 +1,15 @@
 # Changelog
 
+## [December 22, 2025]
+
+### 1. Migration to MinerU as Primary Parser
+
+- **Main Script Promotion**: Promoted `minerU.py` to the primary indexing and RAG entry point, replacing `llamaparse.py`.
+- **Code Archival**: Moved the original `llamaparse.py` to [archive/llamaparse.py](archive/llamaparse.py) to maintain a clean root directory while preserving the legacy pipeline.
+- **Metadata Stripping**: Integrated `MetadataStripperPostprocessor` in `utils.py` to strip large parser metadata (OCR/Layout data) before Milvus insertion, preventing token serialization blowups.
+- **Documentation Update**: Updated [README.md](README.md) and internal documentation to reflect the shift to MinerU as the default parsing engine.
+- **Pipeline Simplification**: Removed dual-parser logic from the main script to focus on the high-performance MinerU/MLX pipeline, improving maintainability.
+
 ## [December 21, 2025]
 
 ### 1. MinerU Integration for PDF Parsing
