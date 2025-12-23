@@ -1294,6 +1294,7 @@ def get_database_and_llamaparse_collection_name(
         parse_method: str,
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
+        metadata: Optional[str] = None,
         ) -> tuple:
     """
     Generate database and collection names for LlamaParse-based document processing.
@@ -1305,6 +1306,8 @@ def get_database_and_llamaparse_collection_name(
     parse_method (str): The parsing method used (e.g., "jason", "markdown").
     chunk_size (int, optional): The size of each chunk.
     chunk_overlap (int, optional): The overlap between chunks.
+    metadata (Optional[str], optional): Any additional metadata to be included in the 
+    collection name. Defaults to None.
 
     Returns:
     tuple: A tuple containing (database_name, collection_name, collection_name_summary).
@@ -1315,8 +1318,13 @@ def get_database_and_llamaparse_collection_name(
     if chunk_size is not None and chunk_overlap is not None:
         base_name += f"_chunk_size_{chunk_size}_chunk_overlap_{chunk_overlap}"
         
-    collection_name = base_name
-    collection_name_summary = f"{base_name}_summary"
+    # Generate the collection name with optional metadata
+    collection_name = f"{base_name}_metadata_{metadata}" \
+        if metadata else base_name
+
+    # Generate the summary collection name with optional metadata
+    collection_name_summary = f"{base_name}_summary_metadata_{metadata}" \
+        if metadata else f"{base_name}_summary"
 
     return database_name, collection_name, collection_name_summary
 

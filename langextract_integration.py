@@ -7,6 +7,7 @@ using Google's LangExtract library with OpenAI GPT-4.
 
 import os
 import json
+import hashlib
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
@@ -237,6 +238,112 @@ def enrich_nodes_with_langextract(
         print(f"\n{'='*80}")
         print(f"✅ Enrichment complete!")
         print(f"   Successfully enriched: {enriched_count}/{len(nodes)} nodes")
+        if failed_count > 0:
+            print(f"   Failed: {failed_count} nodes")
+        print(f"{'='*80}\n")
+    
+    return nodes
+
+
+def enrich_nodes_with_langextract_cached(
+    nodes: List[TextNode],
+    article_dir: str,
+    article_name: str,
+    schema_name: str = "paul_graham_detailed",
+    verbose: bool = True
+) -> List[TextNode]:
+    """
+    Enrich a list of TextNode objects with LangExtract metadata using a local cache.
+    
+    Parameters:
+    nodes (List[TextNode]): List of nodes to enrich
+    article_dir (str): Directory of the article (for cache path)
+    article_name (str): Name of the article (for cache path)
+    schema_name (str): The extraction schema to use
+    verbose (bool): Print progress information
+    
+    Returns:
+    List[TextNode]: The same nodes with enriched metadata
+    """
+    from pathlib import Path
+    
+    # Define cache path
+    cache_file = Path(f"./data/{article_dir}/{article_name.replace('.pdf', '_langextract_cache.json')}")
+    
+    # Load existing cache
+    cache = {}
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r") as f:
+                cache = json.load(f)
+            if verbose:
+                print(f"📂 Loaded {len(cache)} cached LangExtract extractions from {cache_file}")
+        except Exception as e:
+            if verbose:
+                print(f"⚠️ Error loading cache: {e}")
+            cache = {}
+
+    if verbose:
+        print(f"\n{'='*80}")
+        print(f"LangExtract Metadata Enrichment (Cached)")
+        print(f"{'='*80}")
+        print(f"Processing {len(nodes)} nodes with schema: {schema_name}")
+    
+    # Check for API key
+    if not os.environ.get('OPENAI_API_KEY'):
+        print("\n⚠️  Warning: OPENAI_API_KEY not found!")
+        print("   Skipping LangExtract enrichment.")
+        return nodes
+    
+    enriched_count = 0
+    cached_count = 0
+    failed_count = 0
+    
+    for i, node in enumerate(nodes):
+        # Create a unique key based on text content and schema
+        text_hash = hashlib.sha256(f"{node.text}{schema_name}".encode()).hexdigest()
+        
+        if text_hash in cache:
+            node.metadata.update(cache[text_hash])
+            cached_count += 1
+        else:
+            if verbose:
+                print(f"  Extracting node {i + 1}/{len(nodes)} (API call)...")
+            
+            try:
+                # Extract metadata from node text
+                langextract_metadata = extract_metadata_from_text(
+                    node.text,
+                    schema_name=schema_name
+                )
+                
+                # Add to node metadata and cache
+                if langextract_metadata:
+                    node.metadata.update(langextract_metadata)
+                    cache[text_hash] = langextract_metadata
+                    enriched_count += 1
+                    
+                    # Save cache periodically (every 5 new extractions)
+                    if enriched_count % 5 == 0:
+                        with open(cache_file, "w") as f:
+                            json.dump(cache, f)
+                
+            except Exception as e:
+                if verbose:
+                    print(f"  Warning: Failed to enrich node {i}: {e}")
+                failed_count += 1
+                continue
+    
+    # Final cache save
+    if enriched_count > 0:
+        with open(cache_file, "w") as f:
+            json.dump(cache, f)
+    
+    if verbose:
+        print(f"\n{'='*80}")
+        print(f"✅ Enrichment complete!")
+        print(f"   Cached: {cached_count} nodes")
+        print(f"   Newly enriched: {enriched_count} nodes")
         if failed_count > 0:
             print(f"   Failed: {failed_count} nodes")
         print(f"{'='*80}\n")

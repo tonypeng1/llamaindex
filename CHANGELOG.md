@@ -1,5 +1,20 @@
 # Changelog
 
+## [December 23, 2025]
+
+### 1. LangExtract Caching & MinerU Integration
+
+- **Metadata Caching**: Implemented `enrich_nodes_with_langextract_cached` in `langextract_integration.py`. This uses a local JSON cache (`_langextract_cache.json`) to store GPT-4o extraction results, significantly reducing API costs and ingestion time for repeated runs.
+- **MinerU LangExtract Support**: Integrated LangExtract enrichment into the `minerU.py` pipeline. Both base text nodes and image description nodes can now be enriched with structured semantic metadata.
+- **Dynamic Collection Naming**: Updated `utils.py` and `minerU.py` to include the `metadata` extraction method in the database collection names. This prevents data collisions when switching between different metadata extraction strategies (e.g., None vs. LangExtract).
+- **Logging Optimization**: Suppressed verbose `absl` (Google) logging across `minerU.py` and `langextract_simple.py` for a cleaner terminal experience.
+
+### 2. Configuration & Query Refinement
+
+- **Active Article Switch**: Updated `config.py` to set `RAG_Anything` as the default `ACTIVE_ARTICLE`.
+- **RAG Tuning**: Added article-specific overrides for `RAG_Anything` in `config.py`, enabling `langextract` metadata and entity filtering by default.
+- **Query Updates**: Updated the active test query for the `RAG_Anything` paper in `queries.py`.
+
 ## [December 22, 2025]
 
 ### 1. RAG Factory & Architectural Refactoring

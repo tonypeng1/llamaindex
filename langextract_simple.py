@@ -59,9 +59,10 @@ load_dotenv()
 # Disable tokenizers parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Suppress langextract and kor warnings
+# Suppress langextract, kor, and absl warnings
 logging.getLogger("langextract").setLevel(logging.ERROR)
 logging.getLogger("kor").setLevel(logging.ERROR)
+logging.getLogger("absl").setLevel(logging.ERROR)
 
 # Fix sys.excepthook error by ensuring a clean exception hook
 sys.excepthook = sys.__excepthook__

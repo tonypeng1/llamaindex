@@ -1,6 +1,10 @@
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv()
+
+# Suppress absl (Google) logging
+logging.getLogger("absl").setLevel(logging.ERROR)
 
 import anthropic
 import base64
@@ -280,7 +284,9 @@ def ingest_document_mineru(
     article_dictory: str,
     article_name: str,
     chunk_size: int,
-    chunk_overlap: int
+    chunk_overlap: int,
+    metadata_option: Optional[str] = None,
+    schema_name: str = "paul_graham_detailed"
 ) -> Tuple[List[Any], List[Any], List[Any]]:
     """
     Runs MinerU if needed, loads documents, parses them into nodes, and extracts image descriptions.
@@ -313,6 +319,31 @@ def ingest_document_mineru(
         article_dictory, 
         article_name
     )
+
+    # Enrich with LangExtract metadata if requested
+    if metadata_option in ["langextract", "both"]:
+        from langextract_integration import enrich_nodes_with_langextract_cached, print_sample_metadata
+        
+        print(f"\n🚀 Enriching {len(base_nodes)} base nodes with LangExtract...")
+        base_nodes = enrich_nodes_with_langextract_cached(
+            base_nodes,
+            article_dictory,
+            article_name,
+            schema_name=schema_name,
+            verbose=True
+        )
+        
+        print(f"\n🚀 Enriching {len(image_text_nodes)} image nodes with LangExtract...")
+        image_text_nodes = enrich_nodes_with_langextract_cached(
+            image_text_nodes,
+            article_dictory,
+            article_name,
+            schema_name=schema_name,
+            verbose=True
+        )
+        
+        # Print sample metadata for verification
+        print_sample_metadata(base_nodes, num_samples=2)
     
     return base_nodes, objects, image_text_nodes
 
@@ -587,6 +618,7 @@ rag_settings = article_info["rag_settings"]
 # Article details
 article_dictory = article_info["directory"]
 article_name = article_info["filename"]
+schema_name = article_info["schema"]
 
 # Create database link
 article_link = get_article_link(article_dictory,
@@ -600,6 +632,13 @@ chunk_method = "mineru"
 chunk_size = rag_settings["chunk_size"]
 chunk_overlap = rag_settings["chunk_overlap"]
 
+# Metadata extraction options:
+# None, "entity", "langextract", and "both"
+metadata = rag_settings.get("metadata")
+
+# Entity-based filtering configuration
+use_entity_filtering = rag_settings.get("use_entity_filtering", False)
+
 page_filter_verbose = rag_settings.get("page_filter_verbose", False)
 
 # Create database name and colleciton names
@@ -612,6 +651,7 @@ collection_name_summary) = get_database_and_llamaparse_collection_name(
                                                             "mineru", # parse_method
                                                             chunk_size,
                                                             chunk_overlap,
+                                                            metadata # Pass metadata to collection name
                                                             )
 
 # Initiate Milvus and MongoDB database (from config.py)
@@ -652,7 +692,9 @@ if save_index_vector or add_document_vector or add_document_summary:
                                                                 article_dictory,
                                                                 article_name,
                                                                 chunk_size,
-                                                                chunk_overlap
+                                                                chunk_overlap,
+                                                                metadata,
+                                                                schema_name
                                                                 )
 
 if save_index_vector == True:
@@ -718,6 +760,9 @@ reranker = ColbertRerank(
 
 query = QUERY
 
+# Enable entity filtering when using entity metadata extraction AND use_entity_filtering is True
+enable_entity_filtering = use_entity_filtering and metadata in ["entity", "langextract", "both"]
+
 # Build tools using the factory
 keyphrase_tool = rag_factory.get_keyphrase_tool(
     query,
@@ -726,6 +771,8 @@ keyphrase_tool = rag_factory.get_keyphrase_tool(
     reranker,
     llm,
     rag_settings,
+    enable_entity_filtering=enable_entity_filtering,
+    metadata_option=metadata if metadata else None,
 )
 
 page_filter_tool = rag_factory.get_page_filter_tool(

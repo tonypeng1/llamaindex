@@ -132,7 +132,7 @@ CAREER_ACTIVE = "What skills are needed for an AI career?"
 # RAG_ANYTHING_ACTIVE = "What is the content of the Evaluation section?"
 # RAG_ANYTHING_ACTIVE = "Summarize the content of the Evaluation section."
 # RAG_ANYTHING_ACTIVE = "Summarize the Conclusion section."
-RAG_ANYTHING_ACTIVE = "Summarize the section 3.4, CASE STUDIES."
+# RAG_ANYTHING_ACTIVE = "Summarize the section 3.4, CASE STUDIES."
 # RAG_ANYTHING_ACTIVE = "Summarize the CASE STUDIES section."
 # RAG_ANYTHING_ACTIVE = "Summarize the CROSS-MODAL HYBRID RETRIEVAL section."
 # RAG_ANYTHING_ACTIVE = "What is in equation (1)?"
@@ -142,6 +142,8 @@ RAG_ANYTHING_ACTIVE = "Summarize the section 3.4, CASE STUDIES."
 # RAG_ANYTHING_ACTIVE = "What are in the equations (2) and (3)?"
 # RAG_ANYTHING_ACTIVE = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 # RAG_ANYTHING_ACTIVE = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
+# RAG_ANYTHING_ACTIVE = "What are the specific challenges mentioned regarding text-centric retrieval bias?"
+RAG_ANYTHING_ACTIVE = "Does the paper mention an example of a merged graph for cross-modal hybrid retrieval? If so, describe the example in detail."
 
 
 # =============================================================================
