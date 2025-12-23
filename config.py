@@ -22,6 +22,7 @@ Example:
 """
 
 from typing import Dict, Any, Optional, List
+from queries import get_query_for_article
 
 # =============================================================================
 # ACTIVE ARTICLE SELECTION
@@ -36,6 +37,9 @@ ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "metagpt"
 # ACTIVE_ARTICLE = "uber_10q_march_2022"
 # ACTIVE_ARTICLE = "eBook-How-to-Build-a-Career-in-AI"
+
+# Get the active query for the selected article
+QUERY = get_query_for_article(ACTIVE_ARTICLE)
 
 
 # =============================================================================
@@ -57,23 +61,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "paul_graham_essay.pdf",
         "schema": "paul_graham_detailed",
         "description": "Paul Graham's essay about his life journey through programming, startups, and Y Combinator",
-        "sample_queries": [
-            "What did Paul Graham do in 1980, in 1996 and in 2019?",
-            "What strategic advice is given about startups?",
-            "What experiences from the 1990s are described?",
-            "How did rejecting prestigious conventional paths lead to the most influential creative projects?",
-        ],
     },
     "How_to_do_great_work": {
         "directory": "paul_graham",
         "filename": "How_to_do_great_work.pdf",
         "schema": "paul_graham_detailed",  # Same schema works for PG essays
         "description": "Paul Graham's essay on how to do great work",
-        "sample_queries": [
-            "What is the key to doing great work?",
-            "How should one choose what to work on?",
-            "What role does curiosity play in great work?",
-        ],
     },
     
     # -------------------------------------------------------------------------
@@ -84,11 +77,6 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "attention_all.pdf",
         "schema": "academic",  # Uses academic paper schema
         "description": "Attention Is All You Need - Transformer architecture paper",
-        "sample_queries": [
-            "What is the main contribution of the paper?",
-            "How does self-attention work?",
-            "What are the results on machine translation?",
-        ],
     },
     
     # -------------------------------------------------------------------------
@@ -99,10 +87,6 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "metagpt.pdf",
         "schema": "technical",  # Uses technical documentation schema
         "description": "MetaGPT technical documentation",
-        "sample_queries": [
-            "What is MetaGPT?",
-            "How does the multi-agent system work?",
-        ],
     },
     
     # -------------------------------------------------------------------------
@@ -113,10 +97,6 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "uber_10q_march_2022.pdf",
         "schema": "financial",  # Uses financial document schema
         "description": "Uber 10-Q financial report for Q1 2022",
-        "sample_queries": [
-            "What was Uber's revenue in Q1 2022?",
-            "What are the key risk factors mentioned?",
-        ],
     },
     
     # -------------------------------------------------------------------------
@@ -127,20 +107,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "eBook-How-to-Build-a-Career-in-AI.pdf",
         "schema": "career",  # Uses career advice schema
         "description": "Andrew Ng's guide on building a career in AI",
-        "sample_queries": [
-            "What skills are needed for an AI career?",
-            "How should one start learning AI?",
-        ],
     },
     "RAG_Anything": {
         "directory": "Rag_anything",
         "filename": "RAG_Anything.pdf",
         "schema": "academic",
         "description": "RAG Anything - A multimodal RAG system paper",
-        "sample_queries": [
-            "What is the main contribution of RAG Anything?",
-            "How does it handle multimodal data?",
-        ],
     },
 }
 
@@ -180,6 +152,10 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "chunk_overlap": 64,
         "metadata": "langextract",  # Use LangExtract schema
         "use_entity_filtering": True,
+        "similarity_top_k_fusion": 48,
+        "fusion_top_n": 35,
+        "rerank_top_n": 25,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
     # Example: Use different settings for academic papers
     "attention_all": {
@@ -325,6 +301,7 @@ def print_article_summary(article_key: Optional[str] = None) -> None:
     print(f"   Filename:  {config['filename']}")
     print(f"   Schema:    {config['schema']}")
     print(f"   Description: {config['description']}")
+    print(f"   Active Query: \"{QUERY}\"")
     print(f"\n📊 RAG Settings:")
     print(f"   Metadata Extraction: {metadata if metadata else 'None (Basic)'}")
     if metadata in ["langextract", "both"]:
@@ -339,12 +316,7 @@ def print_article_summary(article_key: Optional[str] = None) -> None:
     print(f"   ├─ Fusion Top N: {rag['fusion_top_n']}")
     print(f"   ├─ Rerank Top N: {rag['rerank_top_n']}")
     print(f"   └─ Prev/Next Nodes: {rag['num_nodes']}")
-    
-    # if config.get("sample_queries"):
-    #     print(f"\n   Sample Queries:")
-    #     for i, q in enumerate(config["sample_queries"][:3], 1):
-    #         print(f"   {i}. {q[:60]}{'...' if len(q) > 60 else ''}")
-    # print(f"\n{'='*80}\n")
+    print(f"\n{'='*60}\n")
 
 
 # =============================================================================

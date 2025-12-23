@@ -36,9 +36,13 @@ uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
    ANTHROPIC_API_KEY=your_key
    ```
 
-3. **Configure**: Edit `config.py` to select article:
+3. **Configure**: Edit `config.py` to select article and `queries.py` to select the active query:
    ```python
+   # In config.py
    ACTIVE_ARTICLE = "paul_graham_essay"  # or other configured articles
+   
+   # In queries.py
+   PG_ACTIVE = "What did the author do after handing off Y Combinator to Sam Altman?"
    ```
 
 4. **Run**:

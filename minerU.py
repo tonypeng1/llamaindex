@@ -34,7 +34,7 @@ from db_operation import (
                 handle_split_brain_state
                 )
 
-from config import get_article_info, DATABASE_CONFIG, EMBEDDING_CONFIG
+from config import get_article_info, DATABASE_CONFIG, EMBEDDING_CONFIG, QUERY
 import rag_factory
 from utils import (
                 get_article_link,
@@ -716,34 +716,7 @@ reranker = ColbertRerank(
     keep_retrieval_score=True,
 )
 
-# queries for testing
-# query = "What are the main findings of this paper?"
-# RAG-Anything paper queries
-# query = "Describe Figure 1 in detail. What visual elements and workflow does it show?"
-# query = "In the Accuracy (%) on DocBench Dataset table (table 2), what methods are being compared and what is the worst performing method?"
-# query = "In the Accuracy (%) on MMLongBench Dataset table (table 3), what methods are being compared, and what is the best performing method?"
-# query = "Please summarize the content in the Introduction section."
-# query = "Please summarize the content from pages 1 to 2."
-# query = "Please summarize the content from pages 15 to 16."
-# query = "Please summarize the content in the section in the Appendix: ADDITIONAL CASE STUDIES."
-# query = "Please summarize the content in the Appendix section:CHALLENGES AND FUTURE DIRECTIONS FOR MULTI-MODAL RAG."
-# query = "Please summarize the content in the Appendix section A.5: CHALLENGES AND FUTURE DIRECTIONS FOR MULTI-MODAL RAG."
-# query = "Please summarize the content in Section A.2 ADDITIONAL CASE STUDIES"
-# query = "Please summarize the content in Section 4: RELATED WORK"
-# query = "Describe the content of Section 2.3 CROSS-MODAL HYBRID RETRIEVAL"
-# query = "What is the content of the Evaluation section?"
-# query = "Summarize the content of the Evaluation section."
-# query = "Summarize the Conclusion section."
-# query = "Summarize the section 3.4, CASE STUDIES."
-# query = "Summarize the CASE STUDIES section."
-# query = "Summarize the CROSS-MODAL HYBRID RETRIEVAL section."
-# query = "What is in equation (1)?"
-query = "What are in equation (3) and (4)?"
-# query = "What are in equation (4)?"
-# query = "What are in the equations (1), (2), (3), and (4)? What are they trying to represent collectively?"
-# query = "What are in the equations (2) and (3)?"
-# query = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
-# query = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
+query = QUERY
 
 # Build tools using the factory
 keyphrase_tool = rag_factory.get_keyphrase_tool(

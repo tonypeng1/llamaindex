@@ -45,6 +45,13 @@
 - **Metadata Resilience**: Updated node retrieval logic to use `.get()` for metadata keys, ensuring compatibility with both `'page'` (MinerU) and `'source'` (LlamaIndex) metadata schemas.
 - **Enhanced Debugging**: Integrated `tiktoken` for precise token counting of retrieved context and added final response printing to the terminal output.
 
+### 4. Centralized Query Management
+
+- **New Query Repository**: Created `queries.py` to centralize all test queries for different articles, allowing for easy switching between prompts via comment/uncomment.
+- **Dynamic Query Selection**: Integrated `queries.py` with `config.py` via a global `QUERY` variable that automatically tracks the `ACTIVE_ARTICLE`.
+- **RAG Script Integration**: Updated `minerU.py` and `langextract_simple.py` to import and use the global `QUERY` from `config.py`, ensuring consistency across different RAG implementations.
+- **Configuration Cleanup**: Removed legacy `sample_queries` from `ARTICLE_CONFIGS` in `config.py` to reduce clutter and maintain a single source of truth for active queries.
+
 ## [December 21, 2025]
 
 ### 1. MinerU Integration for PDF Parsing

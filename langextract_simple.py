@@ -116,6 +116,7 @@ from config import (
                 print_article_summary,
                 EMBEDDING_CONFIG,
                 DATABASE_CONFIG,
+                QUERY,
                 )
 
 
@@ -516,36 +517,8 @@ summary_tool = get_summary_tree_detail_tool(
                                         storage_context_summary
                                         )
 
-# query_str = "What was mentioned about Jessica from pages 17 to 22?"
-# query_str = "What was mentioned about Jessica from pages 17 to 22? Please cite page numbers in your answer."
-query_str = "What did Paul Graham do in 1980, in 1996 and in 2019?"
-# query_str = "What did the author do after handing off Y Combinator to Sam Altman?"
-# query_str = "What strategic advice is given about startups?"
-# query_str = "Has the author been to Europe?"
-# query_str = "What was mentioned about Jessica from pages 17 to 19?"
-# query_str = "List all people mentioned in the document."
-# query_str = "What experiences from the 1990s are described?"
-# query_str = "What programming concepts are given in the document?"
-# query_str = "Who are mentioned as colleagues in the document?"
-# query_str = "Does the author have any advice on relationships?"
-# query_str = "Create table of contents for this article."
-# query_str = "How did rejecting prestigious conventional paths lead to the most influential creative projects?"
 
-# query_str = "What did the author advice on choosing what to work on?"
-# query_str = "Why morale needs to be nurtured and protected?" 
-# query_str = "What are the contents from pages 26 to 29?"
-# query_str = "What are the contents from pages 20 to 24 (one page at a time)?"
-# query_str = ("What are the concise contents from pages 20 to 24 (one page at a time) in the voice of the author?"
-#              )
-# query_str = (
-#     "Summarize the content from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
-#     )
-# query_str = (
-#     "Summarize the key takeaways from pages 1 to 5 (one page at a time) in a sequential order and in the voice of the author by NOT retrieving the text verbatim."
-#     )
-# query_str = (
-#     "Summarize the key contents from pages 1 to 5 (one page at a time) in the voice of the author by NOT retrieving the text verbatim."
-#     )
+query_str = QUERY
 
 vector_store.client.load_collection(collection_name=collection_name_vector)
 
