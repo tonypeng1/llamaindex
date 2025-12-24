@@ -1,9 +1,25 @@
 # Changelog
 
+## [December 24, 2025]
+
+### 1. GLiNER Entity Extraction Integration
+
+- **GLiNER Transition**: Replaced the `span-marker` based `EntityExtractor` with a custom `GLiNERExtractor` in [gliner_extractor.py](gliner_extractor.py). This enables zero-shot, domain-specific entity extraction using the `urchade/gliner_medium-v2.1` model on Apple Silicon (MPS).
+- **Domain-Specific Entity Sets**: Defined six specialized entity sets (Academic, Technical, Financial, General, Paul Graham, and Career) in [langextract_schemas.py](langextract_schemas.py), each containing ~20 optimized entity types for better retrieval precision.
+- **MinerU Ingestion Integration**: Integrated GLiNER into the [minerU.py](minerU.py) pipeline. Both base text nodes and image description nodes are now enriched with domain-specific entities during ingestion.
+- **Dynamic Query Filtering**: Updated [rag_factory.py](rag_factory.py) to use GLiNER for query-time entity extraction. This allows the `DynamicFilterQueryEngine` to apply precise metadata filters to sub-questions based on the detected entities.
+
+### 2. Configuration & Testing
+
+- **Active Article Switch**: Updated [config.py](config.py) to set `paul_graham_essay` as the default `ACTIVE_ARTICLE` and enabled `entity` metadata extraction by default.
+- **New Test Suite**: Added [test/test_gliner_mineru.py](test/test_gliner_mineru.py) and [test_gliner_query.py](test_gliner_query.py) to validate GLiNER extraction quality and performance across different document types.
+- **Dependency Update**: Added `gliner` to [pyproject.toml](pyproject.toml) and updated the lockfile.
+
 ## [December 23, 2025]
 
 ### 1. LangExtract Caching & MinerU Integration
 
+- **EntityExtractor Integration**: Added full support for local, model-based entity extraction in the MinerU pipeline. Both base text nodes and image description nodes are now processed using the `lxyuan/span-marker-bert-base-multilingual-cased-multinerd` model on Apple Silicon (MPS).
 - **Metadata Caching**: Implemented `enrich_nodes_with_langextract_cached` in `langextract_integration.py`. This uses a local JSON cache (`_langextract_cache.json`) to store GPT-4o extraction results, significantly reducing API costs and ingestion time for repeated runs.
 - **MinerU LangExtract Support**: Integrated LangExtract enrichment into the `minerU.py` pipeline. Both base text nodes and image description nodes can now be enriched with structured semantic metadata.
 - **Dynamic Collection Naming**: Updated `utils.py` and `minerU.py` to include the `metadata` extraction method in the database collection names. This prevents data collisions when switching between different metadata extraction strategies (e.g., None vs. LangExtract).

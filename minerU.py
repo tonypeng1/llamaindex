@@ -1,10 +1,24 @@
 import os
+import warnings
 import logging
+
+# Silence warnings and logs
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message="Asking to truncate to max_length")
+os.environ['GRPC_VERBOSITY'] = 'ERROR'
+os.environ['GLOG_minloglevel'] = '2'
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Suppress transformers and huggingface logging
+import transformers
+transformers.logging.set_verbosity_error()
+
 from dotenv import load_dotenv
 load_dotenv()
 
 # Suppress absl (Google) logging
 logging.getLogger("absl").setLevel(logging.ERROR)
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
 import anthropic
 import base64
@@ -24,11 +38,14 @@ from llama_index.core import (
                         Settings,
                         VectorStoreIndex,
                         )
+from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import (
                                     SentenceSplitter
                                     )
 from llama_index.core.schema import TextNode
 from llama_index.embeddings.openai import OpenAIEmbedding
+from gliner_extractor import GLiNERExtractor
+from langextract_schemas import get_gliner_entity_labels
 from llama_index.llms.anthropic import Anthropic
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
 
@@ -307,9 +324,34 @@ def ingest_document_mineru(
     print(f"\n📂 Loading MinerU results from {content_list_path}...")
     docs = load_document_mineru(content_list_path)
     
+    # Initialize GLiNER entity extractor if needed
+    entity_extractor = None
+    if metadata_option in ["entity", "both"]:
+        print(f"\n🔍 Initializing GLiNER (local model)...")
+        
+        # Get domain-specific entity labels based on schema
+        entity_labels = get_gliner_entity_labels(schema_name=schema_name)
+        
+        print(f"    Using {len(entity_labels)} entity types for '{schema_name}' schema")
+        print(f"    Entity types: {entity_labels[:5]}... (showing first 5)")
+        
+        entity_extractor = GLiNERExtractor(
+            model_name="urchade/gliner_medium-v2.1",
+            entity_labels=entity_labels,
+            threshold=0.5,
+            device="mps"  # Use Apple Silicon
+        )
+
     # Use SentenceSplitter for MinerU documents
     node_parser = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    base_nodes = node_parser.get_nodes_from_documents(docs)
+    
+    if entity_extractor:
+        print(f"🚀 Running IngestionPipeline with GLiNER...")
+        pipeline = IngestionPipeline(transformations=[node_parser, entity_extractor])
+        base_nodes = pipeline.run(documents=docs)
+    else:
+        base_nodes = node_parser.get_nodes_from_documents(docs)
+        
     objects = [] # MinerU doesn't have separate objects like LlamaParse yet
     
     # Load image descriptions using the same Claude logic
@@ -319,6 +361,11 @@ def ingest_document_mineru(
         article_dictory, 
         article_name
     )
+
+    # Apply GLiNER to image nodes if needed
+    if entity_extractor and image_text_nodes:
+        print(f"🚀 Running GLiNER on {len(image_text_nodes)} image nodes...")
+        image_text_nodes = entity_extractor(image_text_nodes)
 
     # Enrich with LangExtract metadata if requested
     if metadata_option in ["langextract", "both"]:
@@ -773,6 +820,7 @@ keyphrase_tool = rag_factory.get_keyphrase_tool(
     rag_settings,
     enable_entity_filtering=enable_entity_filtering,
     metadata_option=metadata if metadata else None,
+    schema_name=schema_name,
 )
 
 page_filter_tool = rag_factory.get_page_filter_tool(
@@ -800,6 +848,10 @@ sub_question_engine = rag_factory.build_sub_question_engine(
 )
 
 print(f"\n📝 QUERY: {query}\n")
+
+# Extract and display entities for the main query
+if metadata in ["entity", "langextract", "both"]:
+    rag_factory.extract_entities_from_query(query, schema_name=schema_name)
 
 # Execute query
 response = sub_question_engine.query(query)

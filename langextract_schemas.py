@@ -108,6 +108,152 @@ SCHEMA_DEFINITIONS: Dict[str, Dict[str, List[str]]] = {
 
 
 # =============================================================================
+# GLINER ENTITY DEFINITIONS (Domain-specific entity sets for GLiNER)
+# =============================================================================
+
+GLINER_ENTITY_SETS: Dict[str, List[str]] = {
+    # -------------------------------------------------------------------------
+    # Academic Papers - Research entities (20 types)
+    # -------------------------------------------------------------------------
+    "academic": [
+        # People and institutions
+        "author", "researcher", "institution", "university", "laboratory",
+        # Research artifacts
+        "model", "algorithm", "method", "framework", "architecture",
+        "dataset", "benchmark", "baseline", "metric",
+        # Research outputs
+        "experiment", "result", "finding", "theory", "technique",
+        # Meta
+        "publication"
+    ],
+    
+    # -------------------------------------------------------------------------
+    # Technical Documentation - Code and API entities (20 types)
+    # -------------------------------------------------------------------------
+    "technical": [
+        # Code elements
+        "function", "class", "method", "parameter", "variable",
+        "module", "package", "library", "framework",
+        # System elements
+        "command", "file", "directory", "config_option", "environment_variable",
+        # Technical concepts
+        "api", "endpoint", "protocol", "service", "dependency",
+        # Meta
+        "tool"
+    ],
+    
+    # -------------------------------------------------------------------------
+    # Financial Documents - Business and finance entities (20 types)
+    # -------------------------------------------------------------------------
+    "financial": [
+        # Organizations
+        "company", "corporation", "subsidiary", "competitor", "partner",
+        # People
+        "executive", "ceo", "cfo", "director", "analyst",
+        # Financial concepts
+        "revenue", "profit", "margin", "growth", "guidance",
+        # Regulatory
+        "regulator", "auditor", "regulation",
+        # Markets
+        "market", "sector"
+    ],
+    
+    # -------------------------------------------------------------------------
+    # General Documents - Broad-purpose entities (20 types)
+    # -------------------------------------------------------------------------
+    "general": [
+        # People and organizations
+        "person", "organization", "company", "institution", "government",
+        # Places and time
+        "location", "city", "country", "date", "time",
+        # Things and concepts
+        "product", "service", "technology", "concept", "topic",
+        # Events and media
+        "event", "publication", "award", "project", "initiative"
+    ],
+    
+    # -------------------------------------------------------------------------
+    # Paul Graham Essays - Startup and tech ecosystem entities (20 types)
+    # -------------------------------------------------------------------------
+    "paul_graham": [
+        # People and roles
+        "person", "founder", "entrepreneur", "investor", "colleague",
+        "friend", "programmer", "artist",
+        # Organizations
+        "company", "startup", "organization", "institution", "university",
+        # Tech and products
+        "product", "technology", "programming_language", "software",
+        # Locations
+        "location", "city",
+        # Time and events
+        "date", "event"
+    ],
+    
+    # -------------------------------------------------------------------------
+    # Career/Self-Help - Career development and advice entities (20 types)
+    # -------------------------------------------------------------------------
+    "career": [
+        # People and roles
+        "person", "mentor", "executive", "manager", "colleague",
+        "recruiter", "founder",
+        # Organizations and places
+        "company", "startup", "institution", "university", "industry",
+        # Career elements
+        "role", "job_title", "skill", "technology", "certification",
+        # Resources and meta
+        "resource", "tool", "platform"
+    ],
+}
+
+
+def get_gliner_entity_labels(schema_name: str = None, schema_type: str = None) -> List[str]:
+    """
+    Get optimized GLiNER entity labels based on document schema type.
+    
+    Returns domain-specific entity set (20 types) for optimal GLiNER performance.
+    
+    Args:
+        schema_name (str): Schema name like "paul_graham_detailed", "academic", etc.
+        schema_type (str): Direct schema type like "academic", "technical", "financial", "general"
+    
+    Returns:
+        List[str]: List supported types
+    type_mapping = {
+        "academic": "academic",
+        "technical": "technical",
+        "financial": "financial",
+        "paul_graham": "paul_graham",  # Paul Graham has dedicated entity set
+        "career": "career",           # Career has dedicated entity set
+        "general": "general"
+    }
+    
+    Example:
+        labels = get_gliner_entity_labels(schema_type="technical")
+        # Returns ['function', 'class', 'method', ...]
+    """
+    # Determine schema type
+    if schema_type:
+        lookup_type = schema_type
+    elif schema_name:
+        lookup_type = get_schema_type_from_name(schema_name)
+    else:
+        lookup_type = "general"
+    
+    # Map to one of the supported types
+    type_mapping = {
+        "academic": "academic",
+        "technical": "technical",
+        "financial": "financial",
+        "paul_graham": "paul_graham",  # Paul Graham has dedicated entity set
+        "career": "career",           # Career has dedicated entity set
+        "general": "general"
+    }
+    
+    final_type = type_mapping.get(lookup_type, "general")
+    return GLINER_ENTITY_SETS[final_type]
+
+
+# =============================================================================
 # CACHE FOR DYNAMIC SCHEMA LOADING
 # =============================================================================
 

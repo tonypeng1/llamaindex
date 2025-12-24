@@ -44,6 +44,7 @@ dependencies = [
     "flatbuffers==24.3.25",
     "frozenlist==1.8.0",
     "fsspec==2024.6.1",
+    "gliner",
     "google-auth==2.35.0",
     "google-genai>=1.2.0",
     "greenlet==3.0.3",

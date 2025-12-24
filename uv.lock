@@ -796,6 +796,23 @@ http = [
 ]
 
 [[package]]
+name = "gliner"
+version = "0.2.22"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "onnxruntime" },
+    { name = "sentencepiece" },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "transformers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7f/46/352218ca26dd1b485980a3ce81af47da6bb3f78f5bbcc1754fe854636ab5/gliner-0.2.22.tar.gz", hash = "sha256:29202a4ce4f7ee3d7cd0a579dfc977e716e38263a8b41371576af0406b3081db", size = 65782 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/33/36869c9cb2d059d20b3fcaf5ec61879099d6ca6f14c2ad023a7914ebc188/gliner-0.2.22-py3-none-any.whl", hash = "sha256:9d12298db26d53b95c49d684ec5d768fbd20833501612bb9865c95e6ec4359c1", size = 76299 },
+]
+
+[[package]]
 name = "google-auth"
 version = "2.35.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1694,6 +1711,7 @@ dependencies = [
     { name = "flatbuffers" },
     { name = "frozenlist" },
     { name = "fsspec" },
+    { name = "gliner" },
     { name = "google-auth" },
     { name = "google-genai" },
     { name = "greenlet" },
@@ -1865,6 +1883,7 @@ requires-dist = [
     { name = "flatbuffers", specifier = "==24.3.25" },
     { name = "frozenlist", specifier = "==1.8.0" },
     { name = "fsspec", specifier = "==2024.6.1" },
+    { name = "gliner" },
     { name = "google-auth", specifier = "==2.35.0" },
     { name = "google-genai", specifier = ">=1.2.0" },
     { name = "greenlet", specifier = "==3.0.3" },

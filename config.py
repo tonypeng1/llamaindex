@@ -30,8 +30,8 @@ from queries import get_query_for_article
 # Change this to switch which article is being processed
 # Must be a key from ARTICLE_CONFIGS
 
-ACTIVE_ARTICLE = "RAG_Anything"
-# ACTIVE_ARTICLE = "paul_graham_essay"
+# ACTIVE_ARTICLE = "RAG_Anything"
+ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"
@@ -150,7 +150,7 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "paul_graham_essay": {
         "chunk_size": 256,
         "chunk_overlap": 64,
-        "metadata": "langextract",  # Use LangExtract schema
+        "metadata": "entity",  # Use LangExtract schema
         "use_entity_filtering": True,
         "similarity_top_k_fusion": 48,
         "fusion_top_n": 35,

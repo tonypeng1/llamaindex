@@ -7,6 +7,7 @@ from llama_index.core import (
     PromptTemplate,
     VectorStoreIndex,
 )
+from llama_index.core.callbacks import CallbackManager
 from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core.question_gen import LLMQuestionGenerator
 from llama_index.core.response_synthesizers.factory import get_response_synthesizer
@@ -14,12 +15,14 @@ from llama_index.core.response_synthesizers.type import ResponseMode
 from llama_index.core.prompts.prompt_type import PromptType
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core.vector_stores import MetadataFilters
-from llama_index.core.schema import Document
+from llama_index.core.schema import Document, TextNode
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
 
 from langextract_integration import extract_query_metadata_filters
+from gliner_extractor import GLiNERExtractor
+from langextract_schemas import get_gliner_entity_labels
 from utils import (
     get_fusion_tree_page_filter_sort_detail_engine,
     get_fusion_tree_keyphrase_filter_sort_detail_engine,
@@ -296,55 +299,36 @@ def get_page_filter_tool(
 
 def extract_entities_from_query(
     query_str: str,
-    llm=None
+    llm=None,
+    schema_name: str = "general"
 ) -> Dict[str, List[str]]:
-    """Extract named entities from a query string using EntityExtractor."""
-    from llama_index.extractors.entity import EntityExtractor
+    """Extract named entities from a query string using GLiNER."""
     
-    entity_extractor = EntityExtractor(
-        model_name="lxyuan/span-marker-bert-base-multilingual-cased-multinerd",
-        prediction_threshold=0.5,
-        label_entities=True,
+    # Use provided schema or fallback to general
+    entity_labels = get_gliner_entity_labels(schema_name=schema_name)
+    
+    entity_extractor = GLiNERExtractor(
+        model_name="urchade/gliner_medium-v2.1",
+        entity_labels=entity_labels,
+        threshold=0.5,
         device="mps",
     )
     
-    temp_doc = Document(text=query_str)
+    node = TextNode(text=query_str)
     try:
-        from llama_index.core.node_parser import SentenceSplitter
-        node_parser = SentenceSplitter(chunk_size=512)
-        nodes = node_parser.get_nodes_from_documents([temp_doc])
-        processed_nodes = entity_extractor.process_nodes(nodes)
+        # GLiNERExtractor handles extraction and metadata update
+        entity_extractor([node])
         
-        entities = {
-            'PER': [], 'ORG': [], 'LOC': [], 'ANIM': [], 'BIO': [], 'CEL': [], 
-            'DIS': [], 'EVE': [], 'FOOD': [], 'INST': [], 'MEDIA': [], 
-            'PLANT': [], 'MYTH': [], 'TIME': [], 'VEHI': []
-        }
+        # Collect entities from metadata (uppercase keys)
+        entities = {k: v for k, v in node.metadata.items() if k.isupper()}
         
-        key_mappings = {
-            'PER': ['PER', 'persons'], 'ORG': ['ORG', 'organizations'], 'LOC': ['LOC', 'locations'],
-            'ANIM': ['ANIM', 'animals'], 'BIO': ['BIO', 'biologicals'], 'CEL': ['CEL', 'celestial_bodies'],
-            'DIS': ['DIS', 'diseases'], 'EVE': ['EVE', 'events'], 'FOOD': ['FOOD', 'foods'],
-            'INST': ['INST', 'instruments'], 'MEDIA': ['MEDIA', 'media'], 'PLANT': ['PLANT', 'plants'],
-            'MYTH': ['MYTH', 'myths'], 'TIME': ['TIME', 'times'], 'VEHI': ['VEHI', 'vehicles'],
-        }
-        
-        for node in processed_nodes:
-            for standard_key, possible_keys in key_mappings.items():
-                for entity_type in possible_keys:
-                    if entity_type in node.metadata and node.metadata[entity_type]:
-                        for entity in node.metadata[entity_type]:
-                            if entity not in entities[standard_key]:
-                                entities[standard_key].append(entity)
-        
-        entities = {k: v for k, v in entities.items() if v}
         if entities:
-            print(f"\n📌 Entities extracted from query:")
+            print(f"📌 GLiNER Entities extracted from query:")
             for entity_type, entity_list in entities.items():
                 print(f"   {entity_type}: {entity_list}")
         return entities
     except Exception as e:
-        print(f"Warning: Entity extraction failed: {e}")
+        print(f"Warning: GLiNER entity extraction failed: {e}")
         return {}
 
 def create_entity_metadata_filters(
@@ -388,22 +372,24 @@ def create_entity_metadata_filters(
 
 class DynamicFilterQueryEngine:
     """Query engine wrapper that extracts filters per sub-question."""
-    def __init__(self, vector_index, vector_docstore, rag_settings, reranker, metadata_option):
-        from llama_index.core.callbacks import CallbackManager
+    def __init__(self, vector_index, vector_docstore, rag_settings, reranker, metadata_option, schema_name=None):
         self.vector_index = vector_index
         self.vector_docstore = vector_docstore
         self.rag_settings = rag_settings
         self.reranker = reranker
         self.metadata_option = metadata_option
+        self.schema_name = schema_name
         self.callback_manager = CallbackManager([])
         
     def _build_engine_for_query(self, query_str: str):
         top_k = self.rag_settings["similarity_top_k_fusion"]
-        extracted_entities = extract_entities_from_query(query_str)
+        extracted_entities = extract_entities_from_query(query_str, schema_name=self.schema_name)
         entity_filters = create_entity_metadata_filters(extracted_entities, self.metadata_option, query_str)
         
         if entity_filters:
-            print(f"\n🔍 Created {len(entity_filters.filters)} LangExtract filters for this sub-question")
+            print(f"\n🔍 Dynamic filtering for query: '{query_str}'")
+            for f in entity_filters.filters:
+                print(f"   - {f.key} {f.operator} {f.value}")
         
         text_nodes = get_text_nodes_from_query_keyphrase(self.vector_docstore, top_k, query_str)
         bm25_retriever = BM25Retriever.from_defaults(similarity_top_k=top_k, nodes=text_nodes)
@@ -431,6 +417,7 @@ def get_keyphrase_tool(
     rag_settings: Dict[str, Any],
     enable_entity_filtering: bool = False,
     metadata_option: Optional[str] = None,
+    schema_name: str = "general",
 ) -> QueryEngineTool:
     """Unified builder for the keyphrase fusion tool."""
     
@@ -438,7 +425,7 @@ def get_keyphrase_tool(
         if enable_entity_filtering and metadata_option in ["entity", "langextract", "both"]:
             print(f"\n🔄 Dynamic Entity Filtering: Enabled for {metadata_option}")
             return DynamicFilterQueryEngine(
-                vector_index, vector_docstore, rag_settings, reranker, metadata_option
+                vector_index, vector_docstore, rag_settings, reranker, metadata_option, schema_name=schema_name
             )
 
         top_k = rag_settings["similarity_top_k_fusion"]

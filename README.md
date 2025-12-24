@@ -62,7 +62,8 @@ uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
 |---------|-------------|
 | **Dual Storage** | Milvus (vectors) + MongoDB (documents) with deduplication |
 | **Multi-Tool Query** | `keyphrase_tool` (facts), `page_filter_tool` (pages), `summary_tool` (summaries) |
-| **Dynamic Filtering** | Extracts semantic filters (LangExtract) and entities per sub-question for precise retrieval |
+| **GLiNER Entities** | Zero-shot, domain-specific entity extraction (Academic, Technical, Financial, etc.) on Apple Silicon |
+| **Dynamic Filtering** | Extracts semantic filters (LangExtract) and entities (GLiNER) per sub-question for precise retrieval |
 | **Metadata Caching** | Local JSON caching for LangExtract results to minimize API costs and ingestion time |
 | **Hybrid Retrieval** | Vector similarity + BM25 keyword search with reciprocal rank fusion |
 | **Neural Re-ranking** | ColBERT for fine-grained relevance scoring |
@@ -84,6 +85,7 @@ This system uses a dual-database architecture to balance search speed with conte
 ### Multimodal Handling (MinerU)
 The pipeline explicitly handles complex document elements to ensure high-fidelity retrieval:
 
+*   **Entities (GLiNER):** Uses zero-shot NER to extract domain-specific entities (e.g., `MODEL`, `ALGORITHM`, `REVENUE`) based on the document type. This enables precise filtering during retrieval.
 *   **Tables:** Extracted as HTML and converted to **Markdown**. This allows the LLM to reason about structured data naturally.
 *   **Figures:** Uses a dual-path approach. The caption is included in the page text, while a **Claude Vision** agent generates a detailed visual description (labels, trends, diagrams) stored as a separate node.
 *   **Equations:** Explicitly captured as **LaTeX** strings. This preserves mathematical precision for technical queries.

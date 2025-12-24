@@ -73,9 +73,10 @@ def stitch_prev_next_relationships(nodes: List[TextNode]) -> List[TextNode]:
     sortable_nodes = []
     for node in nodes:
         # Best-effort ordering: fall back to start_char_idx when page metadata is missing
-        source = node.metadata.get("source") if node.metadata else None
+        # Try 'page' first (LlamaParse/MinerU), then 'source' (PyMuPDF)
+        page_val = node.metadata.get("page", node.metadata.get("source")) if node.metadata else None
         try:
-            page_num = int(source)
+            page_num = int(page_val)
         except (TypeError, ValueError):
             page_num = float("inf")
 
