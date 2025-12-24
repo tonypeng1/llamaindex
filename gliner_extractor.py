@@ -223,7 +223,7 @@ def print_extraction_summary(nodes: List[BaseNode], max_nodes: int = 3):
 if __name__ == "__main__":
     from llama_index.core.schema import Document
     from llama_index.core.node_parser import SentenceSplitter
-    from langextract_schemas import get_gliner_entity_labels
+    from extraction_schemas import get_gliner_entity_labels
     
     print("\n🧪 GLiNER Extractor Test\n")
     

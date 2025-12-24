@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, '/Users/tony3/Documents/llamaindex')
 
 from gliner_extractor import GLiNERExtractor, print_extraction_summary
-from langextract_schemas import get_gliner_entity_labels
+from extraction_schemas import get_gliner_entity_labels
 from llama_index.core.schema import Document
 from llama_index.core.node_parser import SentenceSplitter
 

@@ -408,7 +408,7 @@ use_entity_filtering = True
 
 - **`langextract_simple.py`** - Main RAG implementation
 - **`langextract_integration.py`** - LangExtract integration functions
-- **`langextract_schemas.py`** - Extraction schemas
+- **`extraction_schemas.py`** - Extraction schemas
 - **`utils.py`** - Utility functions including entity filtering
 - **`test_entity_filtering.py`** - Entity filtering tests
 - **`EXAMPLES_METADATA.py`** - Code examples and quick-start guide

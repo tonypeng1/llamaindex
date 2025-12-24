@@ -16,7 +16,7 @@ from llama_index.core.schema import TextNode
 from llama_index.core import Settings
 from llama_index.llms.openai import OpenAI
 
-from langextract_schemas import (
+from extraction_schemas import (
     get_schema, 
     get_paul_graham_schema_definitions,
     get_schema_definitions,

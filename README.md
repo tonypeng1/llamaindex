@@ -48,7 +48,7 @@ uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
 4. **Run**:
    ```bash
    # Index the document (MinerU)
-   python minerU.py
+   python main.py
    
    # Query the system
    python langextract_simple.py
@@ -81,6 +81,12 @@ This system uses a dual-database architecture to balance search speed with conte
 2.  **MongoDB (The "Bookshelf"):** Stores the **full text** and **node relationships** (prev/next). Once Milvus finds the relevant IDs, the system "checks out" the full text from MongoDB.
 3.  **Context Expansion:** If enabled, the system automatically retrieves neighboring nodes from MongoDB to provide the LLM with surrounding context.
 4.  **Summary Path:** A separate MongoDB collection stores summary nodes, used exclusively by the `summary_tool` for "big picture" questions, bypassing the vector search entirely.
+
+### Metadata Pipeline (Two-Stage Filtering)
+The system applies metadata filters in two distinct phases:
+
+1.  **Ingestion Stage (Extraction):** During `main.py` execution, **GLiNER** extracts named entities and **LangExtract** enriches nodes with structured semantic metadata (e.g., categories, advice types). This metadata is stored in both Milvus and MongoDB.
+2.  **Retrieval Stage (Filtering):** When a query is processed in `rag_factory.py`, the `DynamicFilterQueryEngine` analyzes the query to extract relevant entities and semantic filters. These are applied as `MetadataFilters` to the vector search, ensuring the retriever only considers nodes matching the query's specific context.
 
 ### Multimodal Handling (MinerU)
 The pipeline explicitly handles complex document elements to ensure high-fidelity retrieval:
@@ -117,7 +123,7 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 
 ### Centralized Configuration (`config.py`)
 
-`config.py` is the **single source of truth** for the entire pipeline. Both the **Indexer** (`minerU.py`) and the **Retriever** (`langextract_simple.py`) import their settings from here to ensure database consistency.
+`config.py` is the **single source of truth** for the entire pipeline. Both the **Indexer** (`main.py`) and the **Retriever** (`langextract_simple.py`) import their settings from here to ensure database consistency.
 
 #### 1. Select Active Article
 Switch the entire system to a different document by changing one variable:
@@ -147,7 +153,7 @@ DEFAULT_RAG_SETTINGS = {
 
 ## LangExtract Schema System
 
-Schema definitions specify allowed metadata values. Managed in `langextract_schemas.py`.
+Schema definitions specify allowed metadata values. Managed in `extraction_schemas.py`.
 
 ### Operating Modes
 
@@ -170,7 +176,7 @@ Schema definitions specify allowed metadata values. Managed in `langextract_sche
 ### Key Functions
 
 ```python
-# langextract_schemas.py
+# extraction_schemas.py
 get_paul_graham_schema_definitions(use_dynamic_loading=True)
 get_schema(schema_name)  # "paul_graham_detailed" or "paul_graham_simple"
 
@@ -231,7 +237,7 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Gra
 
 | Category | Files |
 |----------|-------|
-| **Core** | `langextract_simple.py`, `config.py`, `langextract_integration.py`, `langextract_schemas.py`, `utils.py`, `db_operation.py` |
+| **Core** | `langextract_simple.py`, `config.py`, `langextract_integration.py`, `extraction_schemas.py`, `utils.py`, `db_operation.py` |
 | **Docs** | `README_GUIDE.md`, `EXAMPLES_METADATA.py` |
 | **Tests** | `test/test_entity_filtering.py`, `test/test_langextract_install.py`, `test/test_langextract_schema.py`, `test/test_mongo_entity_metadata.py`, `test/demo_metadata_comparison.py`, `test/check_node_in_milvus.py`, `test/check_node_in_mongo.py`, `test/get_inclusive_schema.py` |
 

@@ -1,24 +1,7 @@
 import os
+import sys
 import warnings
 import logging
-
-# Silence warnings and logs
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", message="Asking to truncate to max_length")
-os.environ['GRPC_VERBOSITY'] = 'ERROR'
-os.environ['GLOG_minloglevel'] = '2'
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-# Suppress transformers and huggingface logging
-import transformers
-transformers.logging.set_verbosity_error()
-
-from dotenv import load_dotenv
-load_dotenv()
-
-# Suppress absl (Google) logging
-logging.getLogger("absl").setLevel(logging.ERROR)
-logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
 
 import anthropic
 import base64
@@ -33,6 +16,10 @@ from PIL import Image
 import re
 from typing import List, Dict, Optional, Tuple, Any
 
+from llama_index.core.callbacks import (
+                        CallbackManager,
+                        LlamaDebugHandler,
+                        )
 from llama_index.core import (
                         Document,
                         Settings,
@@ -45,7 +32,7 @@ from llama_index.core.node_parser import (
 from llama_index.core.schema import TextNode
 from llama_index.embeddings.openai import OpenAIEmbedding
 from gliner_extractor import GLiNERExtractor
-from langextract_schemas import get_gliner_entity_labels
+from extraction_schemas import get_gliner_entity_labels
 from llama_index.llms.anthropic import Anthropic
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
 
@@ -65,6 +52,30 @@ from utils import (
                 get_llamaparse_vector_store_docstore_and_storage_context,
                 stitch_prev_next_relationships,
                 )                
+
+
+# Silence warnings and logs
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message="Asking to truncate to max_length")
+os.environ['GRPC_VERBOSITY'] = 'ERROR'
+os.environ['GLOG_minloglevel'] = '2'
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Suppress transformers and huggingface logging
+import transformers
+transformers.logging.set_verbosity_error()
+
+from dotenv import load_dotenv
+load_dotenv()
+
+# Suppress absl (Google) logging
+logging.getLogger("absl").setLevel(logging.ERROR)
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
+# Silence the verbose HTTP request logs from Anthropic/OpenAI
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# Fix sys.excepthook error by ensuring a clean exception hook
+sys.excepthook = sys.__excepthook__
 
 
 def build_section_index_mineru(content_list: List[Dict]) -> Dict[str, Dict]:
@@ -628,6 +639,7 @@ def create_and_save_vector_index_to_milvus_database(_base_nodes, _objects, _imag
     _recursive_index = VectorStoreIndex(
         nodes=_base_nodes + _objects + _image_text_nodes,
         storage_context=storage_context_vector,
+        callback_manager=Settings.callback_manager,
     )
     return _recursive_index
 
@@ -649,6 +661,12 @@ embed_model = OpenAIEmbedding(
     model_name=EMBEDDING_CONFIG["model_name"],
     embed_batch_size=10  # Reduce batch size to avoid hitting 300k token limit
 )
+
+# Create debug handler
+llama_debug = LlamaDebugHandler(print_trace_on_end=False)
+callback_manager = CallbackManager([llama_debug])
+Settings.callback_manager = callback_manager
+
 Settings.embed_model = embed_model
 embed_model_dim = EMBEDDING_CONFIG["dimension"]
 embed_model_name = EMBEDDING_CONFIG["short_name"]
@@ -794,9 +812,9 @@ if add_document_summary == True:
 
 similarity_top_k_fusion = rag_settings["similarity_top_k_fusion"]
 fusion_top_n = rag_settings["fusion_top_n"]
-num_queries_fusion = rag_settings["num_queries"]
+num_queries = rag_settings["num_queries"]
 rerank_top_n = rag_settings["rerank_top_n"]
-num_nodes_prev_next = rag_settings["num_nodes"]
+num_nodes = rag_settings["num_nodes"]
 
 reranker = ColbertRerank(
     top_n=rerank_top_n,

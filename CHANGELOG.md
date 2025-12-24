@@ -1,11 +1,28 @@
 # Changelog
 
+## [December 24, 2025] - Schema Reorganization & File Rename
+
+### 1. Major Refactoring
+
+- **File Renamed**: `minerU.py` → `main.py` for clearer entry point semantics. All README and documentation updated accordingly.
+- **Schema Module Expansion**: Renamed and significantly expanded `langextract_schemas.py` → `extraction_schemas.py` with:
+  - Multi-domain support: Paul Graham essays, Academic papers, Technical docs, Financial reports, Career guides, and General documents
+  - Domain-specific GLiNER entity sets (~20 types per domain) for optimized entity extraction
+  - Unified schema registry with backward-compatible functions
+  - Dynamic schema loading from MongoDB for query-time validation
+- **Updated Imports**: Propagated `extraction_schemas` import across `rag_factory.py`, `test_gliner_mineru.py`, `test_gliner_query.py`, and `test_langextract_schema.py`.
+- **Query Configuration**: Updated default test query in `queries.py` to focus on actionable career advice.
+
+### 2. Documentation Updates
+
+- Updated README with `python main.py` instead of `python minerU.py` (3 locations)
+
 ## [December 24, 2025]
 
 ### 1. GLiNER Entity Extraction Integration
 
 - **GLiNER Transition**: Replaced the `span-marker` based `EntityExtractor` with a custom `GLiNERExtractor` in [gliner_extractor.py](gliner_extractor.py). This enables zero-shot, domain-specific entity extraction using the `urchade/gliner_medium-v2.1` model on Apple Silicon (MPS).
-- **Domain-Specific Entity Sets**: Defined six specialized entity sets (Academic, Technical, Financial, General, Paul Graham, and Career) in [langextract_schemas.py](langextract_schemas.py), each containing ~20 optimized entity types for better retrieval precision.
+- **Domain-Specific Entity Sets**: Defined six specialized entity sets (Academic, Technical, Financial, General, Paul Graham, and Career) in [extraction_schemas.py](extraction_schemas.py), each containing ~20 optimized entity types for better retrieval precision.
 - **MinerU Ingestion Integration**: Integrated GLiNER into the [minerU.py](minerU.py) pipeline. Both base text nodes and image description nodes are now enriched with domain-specific entities during ingestion.
 - **Dynamic Query Filtering**: Updated [rag_factory.py](rag_factory.py) to use GLiNER for query-time entity extraction. This allows the `DynamicFilterQueryEngine` to apply precise metadata filters to sub-questions based on the detected entities.
 

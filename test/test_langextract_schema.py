@@ -19,7 +19,7 @@ import langextract as lx
 from dotenv import load_dotenv
 from llama_index.readers.file import PyMuPDFReader
 
-from langextract_schemas import get_schema
+from extraction_schemas import get_schema
 
 
 # Load environment variables from .env file
@@ -322,7 +322,7 @@ def main():
     print("\nNext steps:")
     print("1. Review the extracted metadata above")
     print("2. Open extraction_visualization.html in your browser to see highlights")
-    print("3. Adjust schema if needed (langextract_schemas.py)")
+    print("3. Adjust schema if needed (extraction_schemas.py)")
     print("4. Integrate with your existing pipeline (bm25_simple.py)")
     
     return 0

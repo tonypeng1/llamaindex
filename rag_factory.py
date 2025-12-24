@@ -22,7 +22,7 @@ from llama_index.storage.docstore.mongodb import MongoDocumentStore
 
 from langextract_integration import extract_query_metadata_filters
 from gliner_extractor import GLiNERExtractor
-from langextract_schemas import get_gliner_entity_labels
+from extraction_schemas import get_gliner_entity_labels
 from utils import (
     get_fusion_tree_page_filter_sort_detail_engine,
     get_fusion_tree_keyphrase_filter_sort_detail_engine,

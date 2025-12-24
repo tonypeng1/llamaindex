@@ -48,7 +48,7 @@ QUERY = get_query_for_article(ACTIVE_ARTICLE)
 # Add new articles here. Each article needs:
 # - directory: Folder name under ./data/
 # - filename: PDF filename
-# - schema: LangExtract schema to use (see langextract_schemas.py)
+# - schema: LangExtract schema to use (see extraction_schemas.py)
 # - description: Human-readable description
 # - sample_queries: Example queries for this document (optional)
 
@@ -150,12 +150,12 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "paul_graham_essay": {
         "chunk_size": 256,
         "chunk_overlap": 64,
-        "metadata": "entity",  # Use LangExtract schema
+        "metadata": "both",  # Metadata extraction: "entity", "langextract", "both"
         "use_entity_filtering": True,
         "similarity_top_k_fusion": 48,
-        "fusion_top_n": 35,
-        "rerank_top_n": 25,
-        "num_nodes": 1,  # For PrevNextNodePostprocessor
+        "fusion_top_n": 35, # 38
+        "rerank_top_n": 25, # 28
+        "num_nodes": 2,  # For PrevNextNodePostprocessor
     },
     # Example: Use different settings for academic papers
     "attention_all": {

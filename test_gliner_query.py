@@ -1,6 +1,6 @@
 
 from gliner_extractor import GLiNERExtractor
-from langextract_schemas import get_gliner_entity_labels
+from extraction_schemas import get_gliner_entity_labels
 
 def test_query_extraction():
     queries = [
