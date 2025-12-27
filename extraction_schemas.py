@@ -1,17 +1,28 @@
 """
-LangExtract extraction schemas for multiple document types.
+Unified Extraction Schema System for LangExtract and GLiNER.
 
-This module defines extraction schemas for various document types:
-- Paul Graham essays (personal narratives, startup advice, life lessons)
-- Academic papers (methodology, results, citations)
-- Technical documentation (features, APIs, examples)
-- General documents (topics, entities, key points)
+This module serves as the central coordination hub for document extraction. It maps 
+high-level document types (e.g., "academic", "paul_graham") to specific configurations 
+for two different extraction technologies:
+
+1. LangExtract (LLM-based): Uses SCHEMA_DEFINITIONS and generator functions 
+   (e.g., get_academic_paper_schema) to create complex prompts and examples.
+2. GLiNER (NER-based): Uses GLINER_ENTITY_SETS to provide optimized, 
+   domain-specific entity labels (e.g., "algorithm", "dataset").
+
+Key Components:
+- SCHEMAS: The central registry mapping schema names (and aliases) to generator functions.
+- SCHEMA_DEFINITIONS: Static attribute defaults for LangExtract prompts.
+- GLINER_ENTITY_SETS: Optimized entity label sets for GLiNER.
+- Dynamic Loading: Support for fetching distinct metadata values from MongoDB to 
+  ensure extraction attributes stay synchronized with the database.
 
 To add a new document type:
-1. Define schema defaults in SCHEMA_DEFINITIONS
-2. Create a schema function (e.g., get_my_schema())
-3. Register it in SCHEMAS dict
-4. Add to config.py ARTICLE_CONFIGS with the schema name
+1. Add base attribute categories to SCHEMA_DEFINITIONS.
+2. Add optimized entity labels to GLINER_ENTITY_SETS.
+3. Create a generator function (e.g., get_my_schema()) using the definitions.
+4. Register the function in the SCHEMAS registry (include aliases if needed).
+5. Update config.py ARTICLE_CONFIGS with the new schema name.
 """
 
 import textwrap

@@ -1,5 +1,24 @@
 # Changelog
 
+## [December 27, 2025] - RAG Synthesis Optimization & Schema Expansion
+
+### 1. RAG Engine Enhancements
+
+- **Node Sorting & Deduplication**: Introduced `SortedResponseSynthesizer` in [rag_factory.py](rag_factory.py). This wrapper deduplicates retrieved nodes by ID and sorts them by page number before synthesis, ensuring more coherent and chronologically accurate responses.
+- **Sorted Sub-Question Engine**: Implemented `SortedSubQuestionQueryEngine` to automatically apply the sorting and deduplication logic to the final response synthesis of multi-step queries.
+- **Diagnostic Logging**: Added better visibility into GLiNER entity extraction results and LangExtract filter matching during the query process.
+
+### 2. Unified Extraction Schema System
+
+- **GLiNER Integration**: Significantly expanded [extraction_schemas.py](extraction_schemas.py) to serve as a central hub for both LangExtract and GLiNER. Added `GLINER_ENTITY_SETS` with optimized labels for Academic, Technical, Financial, and Career domains.
+- **Expanded Domain Support**: Added static definitions for `financial`, `career`, `technical`, and `general` document types to the unified schema registry.
+- **Dynamic Loading**: Enhanced support for fetching distinct metadata values from MongoDB to keep extraction attributes synchronized with the database.
+
+### 3. Configuration & Query Updates
+
+- **Active Query Update**: Updated the default test query for Paul Graham essays in [queries.py](queries.py) to focus on location-based event extraction.
+- **LangExtract Logging**: Added explicit logging in [langextract_integration.py](langextract_integration.py) to indicate when no metadata filters are found for a query.
+
 ## [December 24, 2025] - Schema Reorganization & File Rename
 
 ### 1. Major Refactoring

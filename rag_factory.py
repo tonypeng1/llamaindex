@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 from llama_index.core import (
     PromptTemplate,
     VectorStoreIndex,
+    QueryBundle,
 )
 from llama_index.core.callbacks import CallbackManager
 from llama_index.core.query_engine import SubQuestionQueryEngine
@@ -15,7 +16,7 @@ from llama_index.core.response_synthesizers.type import ResponseMode
 from llama_index.core.prompts.prompt_type import PromptType
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core.vector_stores import MetadataFilters
-from llama_index.core.schema import Document, TextNode
+from llama_index.core.schema import Document, TextNode, NodeWithScore
 from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.storage.docstore.mongodb import MongoDocumentStore
@@ -27,7 +28,70 @@ from utils import (
     get_fusion_tree_page_filter_sort_detail_engine,
     get_fusion_tree_keyphrase_filter_sort_detail_engine,
     get_text_nodes_from_query_keyphrase,
+    PageSortNodePostprocessor,
 )
+
+
+class SortedResponseSynthesizer:
+    """
+    A wrapper for response synthesizers that deduplicates and sorts nodes 
+    by page number before synthesis.
+    """
+    def __init__(self, base_synthesizer):
+        self._base = base_synthesizer
+    
+    def synthesize(self, query, nodes, additional_source_nodes=None, **kwargs):
+        if additional_source_nodes:
+            # Deduplicate by node_id
+            unique_nodes_dict = {}
+            for n in additional_source_nodes:
+                unique_nodes_dict[n.node.node_id] = n
+            unique_nodes = list(unique_nodes_dict.values())
+            
+            # Sort by page number
+            postprocessor = PageSortNodePostprocessor()
+            additional_source_nodes = postprocessor.postprocess_nodes(unique_nodes, query)
+            
+        return self._base.synthesize(query, nodes, additional_source_nodes=additional_source_nodes, **kwargs)
+
+    async def asynthesize(self, query, nodes, additional_source_nodes=None, **kwargs):
+        if additional_source_nodes:
+            # Deduplicate by node_id
+            unique_nodes_dict = {}
+            for n in additional_source_nodes:
+                unique_nodes_dict[n.node.node_id] = n
+            unique_nodes = list(unique_nodes_dict.values())
+            
+            # Sort by page number
+            postprocessor = PageSortNodePostprocessor()
+            additional_source_nodes = postprocessor.postprocess_nodes(unique_nodes, query)
+            
+        return await self._base.asynthesize(query, nodes, additional_source_nodes=additional_source_nodes, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+
+class SortedSubQuestionQueryEngine(SubQuestionQueryEngine):
+    """
+    A SubQuestionQueryEngine that ensures nodes are deduplicated and sorted 
+    by page number before the final response synthesis.
+    """
+    def _query(self, query_bundle: QueryBundle):
+        original_synth = self._response_synthesizer
+        self._response_synthesizer = SortedResponseSynthesizer(original_synth)
+        try:
+            return super()._query(query_bundle)
+        finally:
+            self._response_synthesizer = original_synth
+
+    async def _aquery(self, query_bundle: QueryBundle):
+        original_synth = self._response_synthesizer
+        self._response_synthesizer = SortedResponseSynthesizer(original_synth)
+        try:
+            return await super()._aquery(query_bundle)
+        finally:
+            self._response_synthesizer = original_synth
 
 
 class LazyQueryEngine:
@@ -326,6 +390,8 @@ def extract_entities_from_query(
             print(f"📌 GLiNER Entities extracted from query:")
             for entity_type, entity_list in entities.items():
                 print(f"   {entity_type}: {entity_list}")
+        else:
+            print(f"\n📌 No GLiNER entities extracted from query")
         return entities
     except Exception as e:
         print(f"Warning: GLiNER entity extraction failed: {e}")
@@ -470,7 +536,7 @@ def build_sub_question_engine(
     
     synth = get_detailed_response_synthesizer(response_mode)
     
-    return SubQuestionQueryEngine.from_defaults(
+    return SortedSubQuestionQueryEngine.from_defaults(
         question_gen=question_gen,
         query_engine_tools=tools,
         response_synthesizer=synth,

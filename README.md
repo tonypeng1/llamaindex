@@ -62,12 +62,13 @@ uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
 |---------|-------------|
 | **Dual Storage** | Milvus (vectors) + MongoDB (documents) with deduplication |
 | **Multi-Tool Query** | `keyphrase_tool` (facts), `page_filter_tool` (pages), `summary_tool` (summaries) |
-| **GLiNER Entities** | Zero-shot, domain-specific entity extraction (Academic, Technical, Financial, etc.) on Apple Silicon |
-| **Dynamic Filtering** | Extracts semantic filters (LangExtract) and entities (GLiNER) per sub-question for precise retrieval |
-| **Metadata Caching** | Local JSON caching for LangExtract results to minimize API costs and ingestion time |
+| **Chronological Synthesis** | Automatic node deduplication and page-based sorting for coherent, sequential responses |
+| **Unified Schemas** | Centralized hub for LangExtract and GLiNER with domain-specific sets (Academic, Financial, etc.) |
+| **GLiNER Entities** | Zero-shot, domain-specific entity extraction on Apple Silicon |
+| **Dynamic Filtering** | Extracts semantic filters (LangExtract) and entities (GLiNER) per sub-question |
+| **Metadata Caching** | Local JSON caching for LangExtract results to minimize API costs |
 | **Hybrid Retrieval** | Vector similarity + BM25 keyword search with reciprocal rank fusion |
 | **Neural Re-ranking** | ColBERT for fine-grained relevance scoring |
-| **KeyBERT** | Keyphrase extraction reduces BM25 noise |
 | **MinerU Support** | Isolated PDF parsing pipeline optimized for Apple Silicon |
 
 ---
@@ -80,12 +81,13 @@ This system uses a dual-database architecture to balance search speed with conte
 1.  **Milvus (The "Librarian"):** Stores mathematical **embeddings** and **Node IDs**. When you ask a question, Milvus identifies the most relevant IDs. It does *not* store or send the full text to the LLM.
 2.  **MongoDB (The "Bookshelf"):** Stores the **full text** and **node relationships** (prev/next). Once Milvus finds the relevant IDs, the system "checks out" the full text from MongoDB.
 3.  **Context Expansion:** If enabled, the system automatically retrieves neighboring nodes from MongoDB to provide the LLM with surrounding context.
-4.  **Summary Path:** A separate MongoDB collection stores summary nodes, used exclusively by the `summary_tool` for "big picture" questions, bypassing the vector search entirely.
+4.  **Chronological Synthesis:** Before the final response is generated, the `SortedResponseSynthesizer` deduplicates all retrieved nodes and sorts them by page number. This ensures the LLM receives context in a logical, sequential order, which is critical for multi-page summaries and timeline-based queries.
+5.  **Summary Path:** A separate MongoDB collection stores summary nodes, used exclusively by the `summary_tool` for "big picture" questions, bypassing the vector search entirely.
 
 ### Metadata Pipeline (Two-Stage Filtering)
 The system applies metadata filters in two distinct phases:
 
-1.  **Ingestion Stage (Extraction):** During `main.py` execution, **GLiNER** extracts named entities and **LangExtract** enriches nodes with structured semantic metadata (e.g., categories, advice types). This metadata is stored in both Milvus and MongoDB.
+1.  **Ingestion Stage (Extraction):** During `main.py` execution, **GLiNER** extracts named entities and **LangExtract** enriches nodes with structured semantic metadata (e.g., categories, advice types). The system uses a **Unified Schema Registry** in `extraction_schemas.py` to apply domain-specific configurations (Academic, Financial, Technical, etc.).
 2.  **Retrieval Stage (Filtering):** When a query is processed in `rag_factory.py`, the `DynamicFilterQueryEngine` analyzes the query to extract relevant entities and semantic filters. These are applied as `MetadataFilters` to the vector search, ensuring the retriever only considers nodes matching the query's specific context.
 
 ### Multimodal Handling (MinerU)

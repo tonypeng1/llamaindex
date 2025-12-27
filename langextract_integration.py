@@ -475,12 +475,15 @@ def extract_query_metadata_filters(query_str: str, schema_name: str = "paul_grah
         
         # Handle empty or whitespace-only response
         if not response_text or response_text.isspace():
+            print("\n🔍 No LangExtract match found.")
             return {}
             
         filters = json.loads(response_text)
         
         if filters:
             print(f"\n🔍 LangExtract Extracted Query Filters: {filters}")
+        else:
+            print("\n🔍 No LangExtract match found.")
             
         return filters
         
