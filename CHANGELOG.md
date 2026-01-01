@@ -1,5 +1,21 @@
 # Changelog
 
+## [January 1, 2026] - New Article Integration: Laser_coprop_RA
+
+### 1. Configuration Updates
+
+- Added support for new academic paper "Laser_coprop_RA" (Furukawa team's iGM laser for DRA) in [config.py](config.py) and [queries.py](queries.py).
+- Configured the article with academic schema, both metadata extraction (GLiNER + LangExtract), and entity filtering enabled.
+- Set optimized RAG settings: 256-token chunks, 64-token overlap, and 1 prev/next node for context.
+
+### 2. Query Addition
+
+- Added active query for "Laser_coprop_RA": "What is the signal wavelength and pump wavelength used in the experiments described in the paper? Infer from contents in figures if necessary."
+
+### 3. File Requirement
+
+- Requires adding `Laser_coprop_RA.pdf` to `/data/DRA/` folder for ingestion.
+
 ## [December 27, 2025] - RAG Synthesis Optimization & Schema Expansion
 
 ### 1. RAG Engine Enhancements

@@ -225,7 +225,7 @@ def get_detailed_response_synthesizer(response_mode: str = "TREE_SUMMARIZE"):
         "You are an expert assistant. Provide a detailed, structured, and thorough answer "
         "to the query below. Include key points, important details, any equations or "
         "examples present in the context, and list steps or components when applicable. "
-        "Be explicit and avoid omitting technical specifics.\n\n"
+        "Be explicit and include technical specifics such as figure numbers, table numbers, or equation numbers when applicable.\n\n"
         "=== MATHEMATICAL FORMULAS ===\n"
         "For any mathematical equations or formulas in your response:\n"
         "1. Use $$ ... $$ delimiters for standalone/display equations (centered on their own line).\n"

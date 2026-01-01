@@ -54,7 +54,14 @@ uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
    python langextract_simple.py
    ```
 
----
+### Adding a New PDF Article
+
+To add a new PDF article to the RAG pipeline:
+
+1. **Place the PDF**: Add the PDF file to the appropriate subdirectory under `./data/` (e.g., `./data/new_article/new_article.pdf`).
+2. **Update config.py**: Assign the new article key to `ACTIVE_ARTICLE`. Add a new entry to `ARTICLE_CONFIGS` with `directory`, `filename`, `schema`, and `description`. Optionally add RAG overrides in `ARTICLE_RAG_OVERRIDES`.
+3. **Update queries.py**: Add the new active queries and map it in `ACTIVE_QUERIES` dictonary.
+4. **Index and Query**: Run `python main.py` to index and query.
 
 ## Features
 

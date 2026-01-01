@@ -31,7 +31,8 @@ from queries import get_query_for_article
 # Must be a key from ARTICLE_CONFIGS
 
 # ACTIVE_ARTICLE = "RAG_Anything"
-ACTIVE_ARTICLE = "paul_graham_essay"
+# ACTIVE_ARTICLE = "paul_graham_essay"
+ACTIVE_ARTICLE = "Laser_coprop_RA"
 # ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"
@@ -114,6 +115,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "schema": "academic",
         "description": "RAG Anything - A multimodal RAG system paper",
     },
+    "Laser_coprop_RA": {
+        "directory": "DRA",
+        "filename": "Laser_coprop_RA.pdf",
+        "schema": "academic",
+        "description": "Furukawa team proposed a new inner-grating multimode (iGM) laser for DRA",
+    },
 }
 
 
@@ -177,6 +184,13 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "RAG_Anything": {
         "metadata": "langextract",
         "use_entity_filtering": True,
+    },
+    "Laser_coprop_RA": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
 }
 

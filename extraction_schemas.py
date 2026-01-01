@@ -34,7 +34,7 @@ from typing import Dict, List, Any, Optional
 
 
 # =============================================================================
-# SCHEMA DEFINITIONS (Static defaults for each document type)
+# SCHEMA DEFINITIONS for LangExtract (Static defaults for each document type)
 # =============================================================================
 
 SCHEMA_DEFINITIONS: Dict[str, Dict[str, List[str]]] = {

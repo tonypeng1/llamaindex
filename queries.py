@@ -153,6 +153,18 @@ RAG_ANYTHING_ACTIVE = "Does the paper mention an example of a merged graph for c
 
 
 # =============================================================================
+# 7. Laser_coprop_RA
+# =============================================================================
+
+# LASER_COPROP_ACTIVE = "Summarize the introduction section."
+# LASER_COPROP_ACTIVE = "What are the most effective dithering frequencies for stimulated Brillouin scattering (SBS) suppression as reported in the paper?"
+# LASER_COPROP_ACTIVE = "What is the signal wavelength and pump wavelength used in the experiments described in the paper?"
+# LASER_COPROP_ACTIVE = "Describe the content in Figure 4."
+LASER_COPROP_ACTIVE = "What is the signal wavelength and pump wavelength used in the experiments described in the paper? Infer from contents in figures if necessary."
+# LASER_COPROP_ACTIVE = "Using the formula in Equation (2), calculate the fiber length (L) when the effective length (Leff) is 20 km and the attenuation coefficient (α) is 0.21 dB/km."
+
+
+# =============================================================================
 # MAPPINGS (Used by config.py)
 # =============================================================================
 
@@ -164,6 +176,7 @@ ACTIVE_QUERIES: Dict[str, str] = {
     "uber_10q_march_2022": UBER_ACTIVE,
     "eBook-How-to-Build-a-Career-in-AI": CAREER_ACTIVE,
     "RAG_Anything": RAG_ANYTHING_ACTIVE,
+    "Laser_coprop_RA": LASER_COPROP_ACTIVE,
 }
 
 def get_query_for_article(article_key: str) -> str:
