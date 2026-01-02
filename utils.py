@@ -970,6 +970,22 @@ class DynamicFilterQueryEngine:
             self.similarity_top_k_fusion,
             query_str,
         )
+
+        # If the query contains a figure reference (e.g., 'fig. 4.1'), ensure image nodes with that
+        # figure_label are included in the BM25 node pool so they can be retrieved by BM25 as well.
+        try:
+            for ents in extracted_entities.values():
+                for ent in ents:
+                    m_fig = re.search(r"fig(?:ure)?\.?\s*(\d+(?:\.\d+)*)", ent, re.IGNORECASE)
+                    if m_fig:
+                        fig_val = m_fig.group(1)
+                        for _, node in self.vector_docstore.docs.items():
+                            fig_meta = node.metadata.get('figure_label')
+                            if fig_meta and str(fig_meta) == str(fig_val):
+                                if node.node not in text_nodes:
+                                    text_nodes.append(node.node)
+        except Exception:
+            pass
         
         bm25_keyphrase_retriever = BM25Retriever.from_defaults(
             similarity_top_k=self.similarity_top_k_fusion,
@@ -1290,6 +1306,7 @@ def change_summary_engine_prompt_to_in_detail(engine):
 
 def get_database_and_llamaparse_collection_name(
         article_directory: str, 
+        article_key: str,
         chunk_method: str, 
         embed_model_name: str,
         parse_method: str,
@@ -1302,6 +1319,7 @@ def get_database_and_llamaparse_collection_name(
 
     Parameters:
     article_directory (str): The directory where the article is stored.
+    article_key (str): The key identifying the specific article.
     chunk_method (str): The method used for chunking (e.g., "llamaparse").
     embed_model_name (str): The name of the embedding model.
     parse_method (str): The parsing method used (e.g., "jason", "markdown").
@@ -1313,7 +1331,7 @@ def get_database_and_llamaparse_collection_name(
     Returns:
     tuple: A tuple containing (database_name, collection_name, collection_name_summary).
     """
-    database_name = f"{article_directory}_{chunk_method}"
+    database_name = f"{article_directory}_{article_key}_{chunk_method}"
     
     base_name = f"{embed_model_name}_parse_method_{parse_method}"
     if chunk_size is not None and chunk_overlap is not None:

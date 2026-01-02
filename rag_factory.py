@@ -1,7 +1,67 @@
+import re
 import json
 import asyncio
 import tiktoken
 from typing import List, Dict, Any, Optional
+
+# Normalization utilities for matching queries and references
+NUM_MAP = {
+    'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+    'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+    'ten': '10', 'eleven': '11', 'twelve': '12'
+}
+
+
+def normalize_for_matching(q: str) -> str:
+    """Normalize query text for deterministic matching and reference detection."""
+    q = q.lower()
+    # Expand abbreviations
+    q = re.sub(r"\bsec\.?\b", "section", q)
+    q = re.sub(r"\bfig\.?\b", "figure", q)
+    q = re.sub(r"\beq\.?\b", "equation", q)
+    # Map number words
+    for word, digit in NUM_MAP.items():
+        q = re.sub(rf"\b{word}\b", digit, q)
+    # Remove punctuation that interferes
+    q = re.sub(r"[\.,;:\(\)\[\]']", " ", q)
+    # Collapse spaces
+    q = re.sub(r"\s+", " ", q).strip()
+    return q
+
+
+def _find_pages_for_reference(kind: str, num: str, vector_docstore) -> List[int]:
+    """
+    Search the docstore nodes to find pages containing a given figure or equation number.
+    kind: 'figure' or 'equation'
+    """
+    pages = set()
+    num = str(num)
+    for _, node in getattr(vector_docstore, 'docs', {}).items():
+        txt = getattr(node, 'text', '') or ''
+        txt_l = txt.lower()
+        # Figure detection (support decimal labels like 4.1)
+        if kind == 'figure':
+            # 1) Check explicit metadata first
+            fig_meta = node.metadata.get('figure_label') if hasattr(node, 'metadata') else None
+            if fig_meta:
+                # normalized compare (e.g., '4' == '4' or '4.1' == '4.1')
+                if str(fig_meta) == str(num):
+                    pages.add(node.metadata.get('page'))
+                    continue
+            # 2) Fallback to text search (handles 'figure 4.1', 'fig. 4.1')
+            if re.search(rf'figure\s*[:\s]*{re.escape(str(num))}\b', txt_l) or re.search(rf'fig\.?\s*{re.escape(str(num))}\b', txt_l):
+                pages.add(node.metadata.get('page'))
+        elif kind == 'equation':
+            # direct eq markers
+            if re.search(rf'equation\s*[:\s]*{re.escape(str(num))}\b', txt_l) or re.search(rf'eq\.?\s*{re.escape(str(num))}\b', txt_l):
+                pages.add(node.metadata.get('page'))
+            else:
+                # parenthesis match but only if 'equation' nearby or parentheses at line start
+                if re.search(rf'\(\s*{re.escape(str(num))}\s*\)', txt_l):
+                    # accept if 'equation' in text or parentheses appears at start
+                    if 'equation' in txt_l or txt_l.strip().startswith(f'({num})'):
+                        pages.add(node.metadata.get('page'))
+    return sorted(pages)
 
 from llama_index.core import (
     PromptTemplate,
@@ -259,16 +319,41 @@ def get_page_filter_tool(
         # 1. Resolve Page Numbers
         page_numbers = []
         
-        # Deterministic section match if index exists
+        # Deterministic and reference-based matching if index exists
         if section_index:
-            q_lower = query_str.lower()
-            sorted_keys = sorted(section_index.keys(), key=len, reverse=True)
-            for key in sorted_keys:
-                if len(key) >= 3 and key in q_lower:
-                    info = section_index[key]
-                    page_numbers = list(range(info['start_page'], info['end_page'] + 1))
-                    if verbose: print(f"Deterministic section match for '{key}' -> pages {page_numbers}")
-                    break
+            # Normalize query for matching
+            q_norm = normalize_for_matching(query_str)
+
+            # 1) Figure reference detection (e.g., 'Fig. 2', 'figure 2')
+            m_fig = re.search(r"\bfig(?:ure)?\s*(\d+(?:\.\d+)*)\b", q_norm)
+            if m_fig:
+                num = m_fig.group(1)
+                page_numbers = _find_pages_for_reference('figure', num, vector_docstore)
+                fig_num = num
+                if page_numbers and verbose:
+                    print(f"Deterministic figure match for 'figure {num}' -> pages {page_numbers}")
+            else:
+                fig_num = None
+
+            # 2) Equation reference detection (e.g., 'Eq. 3', 'equation 3', or '(3)' with 'equation' context)
+            if not page_numbers:
+                m_eq = re.search(r"\bequation\s*(\d{1,3})\b", q_norm) or re.search(r"\b\( *([0-9]{1,3}) *\)\b", query_str)
+                if m_eq:
+                    num = m_eq.group(1)
+                    page_numbers = _find_pages_for_reference('equation', num, vector_docstore)
+                    if page_numbers and verbose:
+                        print(f"Deterministic equation match for 'equation {num}' -> pages {page_numbers}")
+
+            # 3) Deterministic section match (fallback) if still unknown
+            if not page_numbers:
+                sorted_keys = sorted(section_index.keys(), key=len, reverse=True)
+                for key in sorted_keys:
+                    key_lower = key.lower()
+                    if ((len(key_lower) >= 3 or key_lower.isdigit() or key_lower.startswith('section ')) and key_lower in q_norm):
+                        info = section_index[key]
+                        page_numbers = list(range(info['start_page'], info['end_page'] + 1))
+                        if verbose: print(f"Deterministic section match for '{key}' -> pages {page_numbers}")
+                        break
 
         # LLM Fallback for page extraction
         if not page_numbers:
@@ -313,15 +398,51 @@ def get_page_filter_tool(
                 if isinstance(result, list):
                     page_numbers = result
                 elif result.get('type') == 'section':
-                    section_key = result.get('section', '').lower().strip()
+                    # Normalize and attempt robust lookups for section keys
+                    def _normalize_section_key(k: str) -> str:
+                        k = k.lower().strip()
+                        k = re.sub(r"\bsec\.?\b", "section", k)
+                        # Map simple number words to digits
+                        num_map = {
+                            'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+                            'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+                            'ten': '10'
+                        }
+                        for word, digit in num_map.items():
+                            k = re.sub(rf"\b{word}\b", digit, k)
+                        k = re.sub(r"[\.,;:\(\)\[\]']", " ", k)
+                        return k.strip()
+
+                    section_key_raw = result.get('section', '')
+                    section_key = _normalize_section_key(section_key_raw)
+
+                    # Try direct lookup
                     info = section_index.get(section_key)
+
+                    # Try stripping leading 'section '
+                    if not info and section_key.startswith('section '):
+                        info = section_index.get(section_key[len('section '):])
+
+                    # Try numeric extraction
+                    if not info:
+                        m = re.search(r"\b(\d{1,3})\b", section_key)
+                        if m:
+                            info = section_index.get(m.group(1)) or section_index.get(f"section {m.group(1)}")
+
+                    # Try matching by title substring
+                    if not info:
+                        for k, v in section_index.items():
+                            if k in section_key or section_key in k:
+                                info = v
+                                break
+
                     if info:
                         page_numbers = list(range(info['start_page'], info['end_page'] + 1))
                     else:
                         page_numbers = [1]
                 else:
                     page_numbers = result.get('pages', [1])
-            except:
+            except Exception:
                 page_numbers = [1]
 
         if verbose: print(f"Resolved page numbers: {page_numbers}")
@@ -337,6 +458,14 @@ def get_page_filter_tool(
                         text_nodes.append(node)
                 except:
                     if str(val) in [str(p) for p in page_numbers]:
+                        text_nodes.append(node)
+
+        # If we detected a specific figure number (like 4.1), ensure image nodes with that figure_label are included
+        if 'fig_num' in locals() and fig_num is not None:
+            for _, node in vector_docstore.docs.items():
+                fig_meta = node.metadata.get('figure_label')
+                if fig_meta and str(fig_meta) == str(fig_num):
+                    if node not in text_nodes:
                         text_nodes.append(node)
 
         # 3. Build Engine
@@ -418,6 +547,16 @@ def create_entity_metadata_filters(
                 db_key = key_mapping.get(entity_type, entity_type)
                 for entity in entity_list:
                     filters.append({"key": db_key, "value": entity, "operator": "=="})
+                    # If the extracted entity looks like a figure reference (e.g., 'fig. 4.1'),
+                    # add a filter on the image node's figure_label metadata so image descriptions
+                    # can be selected directly when the query references a figure.
+                    try:
+                        m_fig = re.search(r"fig(?:ure)?\.?\s*(\d+(?:\.\d+)*)", entity, re.IGNORECASE)
+                        if m_fig:
+                            fig_val = m_fig.group(1)
+                            filters.append({"key": "figure_label", "value": fig_val, "operator": "=="})
+                    except Exception:
+                        pass
         
         if metadata_option in ["langextract", "both"]:
             all_entities = [e for l in entities.values() for e in l]

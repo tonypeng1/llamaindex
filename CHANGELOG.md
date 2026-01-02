@@ -1,5 +1,15 @@
 # Changelog
 
+## [January 2, 2026] - Figure & Image Retrieval Improvements
+
+### Highlights
+
+- Image description nodes now include the original image caption in the node text and a normalized `figure_label` metadata field when a figure label is detected (e.g., `4.1`).
+- Deterministic figure reference detection now supports decimal labels (e.g., `fig. 4.1`) and `_find_pages_for_reference` prefers `figure_label` metadata for reliable page resolution.
+- Queries that reference figures will include matching image nodes in BM25 and vector retrieval (via `figure_label` filters and BM25 pool injection), reducing omissions during synthesis.
+- Minor API/config updates: added `ACTIVE_ARTICLE` usage in `main.py`, and `get_database_and_llamaparse_collection_name()` now accepts `article_key` for deterministic collection names.
+- Added `check_node_ids.py` debug helper to inspect vector/summary docstores for node presence.
+
 ## [January 1, 2026] - New Article Integration: Laser_coprop_RA
 
 ### 1. Configuration Updates

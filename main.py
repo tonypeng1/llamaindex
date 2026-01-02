@@ -42,7 +42,7 @@ from db_operation import (
                 handle_split_brain_state
                 )
 
-from config import get_article_info, DATABASE_CONFIG, EMBEDDING_CONFIG, QUERY
+from config import get_article_info, DATABASE_CONFIG, EMBEDDING_CONFIG, QUERY, ACTIVE_ARTICLE
 import rag_factory
 from utils import (
                 get_article_link,
@@ -183,6 +183,8 @@ def build_section_index_mineru(content_list: List[Dict]) -> Dict[str, Dict]:
         
         if section['section_num']:
             section_index[section['section_num'].lower()] = section_info
+            # Add 'section {num}' alias so queries like 'Section 4' match deterministically
+            section_index[f"section {section['section_num']}".lower()] = section_info
         
         title_key = section['title'].lower()
         if title_key not in section_index:
@@ -552,15 +554,34 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
         # Check cache first
         if image_name in descriptions_cache:
             description = descriptions_cache[image_name]["description"]
+
+            # Include original caption in the node text so figure refs are detectable
+            caption_text = image_dict.get("caption", "")
+            full_text = f"{caption_text}\n\n{description}" if caption_text else description
+
+            # Extract figure label (e.g., 'fig 4.1' or 'figure 4') from the caption if present
+            fig_label = None
+            try:
+                m_fig = re.search(r"fig(?:ure)?\.?\s*(\d+(?:\.\d+)*)", caption_text, re.IGNORECASE)
+                if m_fig:
+                    fig_label = m_fig.group(1)
+            except Exception:
+                fig_label = None
+
+            metadata = {
+                "path": image_path,
+                "image_name": image_name,
+                "page": image_dict.get("page_number", 0),
+                "type": "image_description",
+                "parser": "mineru",
+            }
+            if fig_label:
+                metadata["figure_label"] = fig_label
+                metadata["image_caption"] = caption_text
+
             text_node = TextNode(
-                text=description,
-                metadata={
-                    "path": image_path,
-                    "image_name": image_name,
-                    "page": image_dict.get("page_number", 0),
-                    "type": "image_description",
-                    "parser": "mineru"
-                }
+                text=full_text,
+                metadata=metadata
             )
             img_text_nodes.append(text_node)
             continue
@@ -610,18 +631,36 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
             description = message.content[0].text
             descriptions_cache[image_name] = {"description": description}
             
+            # Attach caption to description so the node contains any figure label
+            caption_text = image_dict.get("caption", "")
+            full_text = f"{caption_text}\n\n{description}" if caption_text else description
+
+            # Try to extract figure label from caption (handles decimals like 4.1)
+            fig_label = None
+            try:
+                m_fig = re.search(r"fig(?:ure)?\.?\s*(\d+(?:\.\d+)*)", caption_text, re.IGNORECASE)
+                if m_fig:
+                    fig_label = m_fig.group(1)
+            except Exception:
+                fig_label = None
+
+            metadata = {
+                "path": image_path,
+                "image_name": image_name,
+                "page": image_dict.get("page_number", 0),
+                "type": "image_description",
+                "parser": "mineru",
+            }
+            if fig_label:
+                metadata["figure_label"] = fig_label
+                metadata["image_caption"] = caption_text
+
             text_node = TextNode(
-                text=description,
-                metadata={
-                    "path": image_path,
-                    "image_name": image_name,
-                    "page": image_dict.get("page_number", 0),
-                    "type": "image_description",
-                    "parser": "mineru"
-                }
+                text=full_text,
+                metadata=metadata
             )
             img_text_nodes.append(text_node)
-            
+
             # Save cache periodically
             with open(cache_file, "w") as f:
                 json.dump(descriptions_cache, f)
@@ -711,6 +750,7 @@ page_filter_verbose = rag_settings.get("page_filter_verbose", False)
 collection_name_vector,
 collection_name_summary) = get_database_and_llamaparse_collection_name(
                                                             article_dictory, 
+                                                            ACTIVE_ARTICLE,
                                                             chunk_method, 
                                                             embed_model_name, 
                                                             "mineru", # parse_method

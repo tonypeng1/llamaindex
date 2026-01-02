@@ -165,6 +165,14 @@ LASER_COPROP_ACTIVE = "What is the signal wavelength and pump wavelength used in
 
 
 # =============================================================================
+# 7. Noise_in_DRA
+# =============================================================================
+
+# NOISE_IN_DRA_ACTIVE = "Does this paper distinguish Rayleigh-reflected signal and Rayleigh-reflected pump? If so, how are they different?"
+# NOISE_IN_DRA_ACTIVE = "Please summarize the content of Section 4."
+NOISE_IN_DRA_ACTIVE = "Please describe the contents of fig. 4.1 and fig. 4.3 in detail and examine how they differ in trends."
+
+# =============================================================================
 # MAPPINGS (Used by config.py)
 # =============================================================================
 
@@ -177,6 +185,7 @@ ACTIVE_QUERIES: Dict[str, str] = {
     "eBook-How-to-Build-a-Career-in-AI": CAREER_ACTIVE,
     "RAG_Anything": RAG_ANYTHING_ACTIVE,
     "Laser_coprop_RA": LASER_COPROP_ACTIVE,
+    "Noise_in_DRA": NOISE_IN_DRA_ACTIVE,
 }
 
 def get_query_for_article(article_key: str) -> str:

@@ -32,7 +32,8 @@ from queries import get_query_for_article
 
 # ACTIVE_ARTICLE = "RAG_Anything"
 # ACTIVE_ARTICLE = "paul_graham_essay"
-ACTIVE_ARTICLE = "Laser_coprop_RA"
+# ACTIVE_ARTICLE = "Laser_coprop_RA"
+ACTIVE_ARTICLE = "Noise_in_DRA"
 # ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"
@@ -79,6 +80,24 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "schema": "academic",  # Uses academic paper schema
         "description": "Attention Is All You Need - Transformer architecture paper",
     },
+        "RAG_Anything": {
+        "directory": "Rag_anything",
+        "filename": "RAG_Anything.pdf",
+        "schema": "academic",
+        "description": "RAG Anything - A multimodal RAG system paper",
+    },
+        "Laser_coprop_RA": {
+        "directory": "DRA",
+        "filename": "Laser_coprop_RA.pdf",
+        "schema": "academic",
+        "description": "Furukawa team proposed a new inner-grating multimode (iGM) laser for DRA",
+    },
+    "Noise_in_DRA": {
+        "directory": "DRA",
+        "filename": "Noise_in_DRA.pdf",
+        "schema": "academic",
+        "description": "Investigation of noise characteristics in distributed Raman amplifiers",
+    },
     
     # -------------------------------------------------------------------------
     # Technical Documents (uses technical schema)
@@ -108,18 +127,6 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "eBook-How-to-Build-a-Career-in-AI.pdf",
         "schema": "career",  # Uses career advice schema
         "description": "Andrew Ng's guide on building a career in AI",
-    },
-    "RAG_Anything": {
-        "directory": "Rag_anything",
-        "filename": "RAG_Anything.pdf",
-        "schema": "academic",
-        "description": "RAG Anything - A multimodal RAG system paper",
-    },
-    "Laser_coprop_RA": {
-        "directory": "DRA",
-        "filename": "Laser_coprop_RA.pdf",
-        "schema": "academic",
-        "description": "Furukawa team proposed a new inner-grating multimode (iGM) laser for DRA",
     },
 }
 
@@ -192,8 +199,14 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "chunk_overlap": 64,
         "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
+    "Noise_in_DRA": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
+    },
 }
-
 
 # =============================================================================
 # EMBEDDING MODEL SETTINGS
