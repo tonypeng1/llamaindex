@@ -1,6 +1,6 @@
-# RAG using LlamaIndex
+# Advanced Hybrid RAG for Multi-Domain Document Analysis
 
-A hybrid RAG system using LlamaIndex with sub-question decomposition, multi-tool query routing, and flexible metadata extraction for PDF document Q&A.
+A high-performance hybrid RAG (Retrieval-Augmented Generation) system using LlamaIndex, designed for precision Q&A over complex PDF documents. It combines **MinerU** for structural parsing with **GLiNER** and **LangExtract** for deep metadata enrichment, enabling dynamic query routing via a **Sub-Question Query Engine**. The pipeline supports advanced retrieval strategies including BM25-Vector fusion, page-range filtering, and LaTeX-enabled response synthesis for technical and academic content.
 
 ## Quick Start
 
@@ -19,49 +19,43 @@ cd llamaindex
 pip install uv && uv pip install -e .
 ```
 
-#### MinerU Setup (Optional)
-To use the MinerU parsing pipeline, create the isolated environment to avoid dependency conflicts:
+#### MinerU Setup
+To use the MinerU parsing pipeline, create an isolated environment to avoid dependency conflicts:
 ```bash
 uv venv .mineru_env
-uv pip install -r requirements_mineru.txt --python ./.mineru_env/bin/python
+source .mineru_env/bin/activate
+uv pip install -r requirements_mineru.txt
+deactivate
 ```
 
 ### Setup
 
-1. **Document**: Download [Paul Graham's essay](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing) → `./data/paul_graham/paul_graham_essay.pdf`
+1. **Document**: Add your PDF to the appropriate subdirectory under `./data/` (e.g., `./data/paul_graham/paul_graham_essay.pdf`).
 
-2. **API Keys**: Create `.env`:
+2. **API Keys**: Configure your `.env` file:
    ```
    OPENAI_API_KEY=your_key
    ANTHROPIC_API_KEY=your_key
    ```
 
-3. **Configure**: Edit `config.py` to select article and `queries.py` to select the active query:
+3. **Configure**: Select the active article in `config.py`. The system automatically retrieves the corresponding query from `queries.py`:
    ```python
    # In config.py
-   ACTIVE_ARTICLE = "paul_graham_essay"  # or other configured articles
-   
-   # In queries.py
-   PG_ACTIVE = "What did the author do after handing off Y Combinator to Sam Altman?"
+   ACTIVE_ARTICLE = "paul_graham_essay"  # Options defined in ARTICLE_CONFIGS
    ```
 
 4. **Run**:
+   The `main.py` script is the primary entry point. It automatically detects if the document needs indexing (parsing via **MinerU**, enriching with **GLiNER**/**LangExtract**) and then executes the query:
    ```bash
-   # Index the document (MinerU)
    python main.py
-   
-   # Query the system
-   python langextract_simple.py
    ```
 
 ### Adding a New PDF Article
 
-To add a new PDF article to the RAG pipeline:
-
-1. **Place the PDF**: Add the PDF file to the appropriate subdirectory under `./data/` (e.g., `./data/new_article/new_article.pdf`).
-2. **Update config.py**: Assign the new article key to `ACTIVE_ARTICLE`. Add a new entry to `ARTICLE_CONFIGS` with `directory`, `filename`, `schema`, and `description`. Optionally add RAG overrides in `ARTICLE_RAG_OVERRIDES`.
-3. **Update queries.py**: Add the new active queries and map it in `ACTIVE_QUERIES` dictonary.
-4. **Index and Query**: Run `python main.py` to index and query.
+1. **Place the PDF**: Add the file to `./data/new_article/new_article.pdf`.
+2. **Update config.py**: Add a new entry to `ARTICLE_CONFIGS` with its directory, filename, and preferred `schema` (e.g., `"academic"`, `"technical"`). Set `ACTIVE_ARTICLE` to your new key.
+3. **Update queries.py**: Add your queries to the file and map them in the `ACTIVE_QUERIES` dictionary.
+4. **Execute**: Run `python main.py`.
 
 ## Features
 

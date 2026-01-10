@@ -33,7 +33,9 @@ from queries import get_query_for_article
 # ACTIVE_ARTICLE = "RAG_Anything"
 # ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "Laser_coprop_RA"
-ACTIVE_ARTICLE = "Noise_in_DRA"
+# ACTIVE_ARTICLE = "Noise_in_DRA"
+ACTIVE_ARTICLE = "ASE_noise_pump_depletion"
+# ACTIVE_ARTICLE = "Pump_depletion_FRA"
 # ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"
@@ -97,6 +99,18 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "Noise_in_DRA.pdf",
         "schema": "academic",
         "description": "Investigation of noise characteristics in distributed Raman amplifiers",
+    },
+    "ASE_noise_pump_depletion": {
+        "directory": "DRA",
+        "filename": "ASE_noise_pump_depletion.pdf",
+        "schema": "academic",
+        "description": "Analysis of ASE noise in distributed Raman amplifiers with pump depletion",
+    },
+    "Pump_depletion_FRA": {
+        "directory": "DRA",
+        "filename": "Pump_depletion_FRA.pdf",
+        "schema": "academic",
+        "description": "Analysis of pump depletion in fiber Raman amplifiers",
     },
     
     # -------------------------------------------------------------------------
@@ -189,8 +203,11 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "use_entity_filtering": True,
     },
     "RAG_Anything": {
-        "metadata": "langextract",
+        "metadata": "both",
         "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
     "Laser_coprop_RA": {
         "metadata": "both",
@@ -200,6 +217,20 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
     "Noise_in_DRA": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
+    },
+    "ASE_noise_pump_depletion": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
+    },
+    "Pump_depletion_FRA": {
         "metadata": "both",
         "use_entity_filtering": True,
         "chunk_size": 256,

@@ -124,7 +124,9 @@ CAREER_ACTIVE = "What skills are needed for an AI career?"
 # 7. RAG ANYTHING
 # =============================================================================
 # RAG_ANYTHING_ACTIVE = "Describe Figure 1 in detail. What visual elements and workflow does it show?"
+# RAG_ANYTHING_ACTIVE = "Describe the content in Figure 4 in detail."
 # RAG_ANYTHING_ACTIVE = "In the Accuracy (%) on DocBench Dataset table (table 2), what methods are being compared and what is the worst performing method?"
+RAG_ANYTHING_ACTIVE = "In Table 2, what methods are being compared and what is the worst performing method?"
 # RAG_ANYTHING_ACTIVE = "In the Accuracy (%) on MMLongBench Dataset table (table 3), what methods are being compared, and what is the best performing method?"
 # RAG_ANYTHING_ACTIVE = "Please summarize the content in the Introduction section."
 # RAG_ANYTHING_ACTIVE = "Please summarize the content from pages 1 to 2."
@@ -149,7 +151,7 @@ CAREER_ACTIVE = "What skills are needed for an AI career?"
 # RAG_ANYTHING_ACTIVE = "How graphs are used in RAG-Anything's retrieval process as described in the paper?"
 # RAG_ANYTHING_ACTIVE = "Did the paper mention about any tool used to parse mathematical equations from the PDF? If so, what is the name of the tool?"
 # RAG_ANYTHING_ACTIVE = "What are the specific challenges mentioned regarding text-centric retrieval bias?"
-RAG_ANYTHING_ACTIVE = "Does the paper mention an example of a merged graph for cross-modal hybrid retrieval? If so, describe the example in detail."
+# RAG_ANYTHING_ACTIVE = "Does the paper mention an example of a merged graph for cross-modal hybrid retrieval? If so, describe the example in detail."
 
 
 # =============================================================================
@@ -165,12 +167,34 @@ LASER_COPROP_ACTIVE = "What is the signal wavelength and pump wavelength used in
 
 
 # =============================================================================
-# 7. Noise_in_DRA
+# 8. Noise_in_DRA
 # =============================================================================
 
 # NOISE_IN_DRA_ACTIVE = "Does this paper distinguish Rayleigh-reflected signal and Rayleigh-reflected pump? If so, how are they different?"
 # NOISE_IN_DRA_ACTIVE = "Please summarize the content of Section 4."
-NOISE_IN_DRA_ACTIVE = "Please describe the contents of fig. 4.1 and fig. 4.3 in detail and examine how they differ in trends."
+# NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 5.1 in detail. There are three sub-figures in it: (a) the DRB crosstalk coefficient, (b) the ASE enhancement factor and (c) the Q penalty. Explain what each parameter means and how they are related."
+# NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 6.1 in detail. Explain what each transfer function (i.e. SOP transfer and RIN transfer) means and how they are related."
+NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 6.2 (a) and (b) in detail. Explain what each axis represents and what is shown in the figures means."
+# NOISE_IN_DRA_ACTIVE = "Please describe the contents of fig. 4.1 and fig. 4.3 in detail and examine how they differ in trends."
+
+
+# =============================================================================
+# 9. ASE_noise_pump_depletion
+# =============================================================================
+
+# ASE_NOISE_PUMP_DEPL_ACTIVE = "Summarize the introduction section."
+ASE_NOISE_PUMP_DEPL_ACTIVE = "What is the relationship between signal power and ASE power as described in the paper?"
+
+
+# =============================================================================
+# 10. Pump_depletion_FRA
+# =============================================================================
+
+# PUMP_DEPLETION_FRA_ACTIVE = "How does pump depletion dependent on fiber length, input pump power, and input signal power?"
+# PUMP_DEPLETION_FRA_ACTIVE = "What is the definition of unity gain length (Lu(fw)) as given in the paper?"
+# PUMP_DEPLETION_FRA_ACTIVE = "Please describe Figure 6 (a) and (b) in detail. How do the two sub-figures contrast with each other?"
+# PUMP_DEPLETION_FRA_ACTIVE = "Please describe Figure 5 in detail. How do the threshold depletion pump power Pp(dep) vary with input signal power?"
+PUMP_DEPLETION_FRA_ACTIVE = "Please describe Figure 8 in detail. What is the definition of safe fiber length (y-axis) as given in the paper? Why is safe fiber length only define in backward pumping case?"
 
 # =============================================================================
 # MAPPINGS (Used by config.py)
@@ -186,6 +210,8 @@ ACTIVE_QUERIES: Dict[str, str] = {
     "RAG_Anything": RAG_ANYTHING_ACTIVE,
     "Laser_coprop_RA": LASER_COPROP_ACTIVE,
     "Noise_in_DRA": NOISE_IN_DRA_ACTIVE,
+    "ASE_noise_pump_depletion": ASE_NOISE_PUMP_DEPL_ACTIVE,
+    "Pump_depletion_FRA": PUMP_DEPLETION_FRA_ACTIVE,
 }
 
 def get_query_for_article(article_key: str) -> str:
