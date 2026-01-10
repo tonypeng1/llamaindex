@@ -57,6 +57,11 @@ deactivate
 3. **Update queries.py**: Add your queries to the file and map them in the `ACTIVE_QUERIES` dictionary.
 4. **Execute**: Run `python main.py`.
 
+## Documentation
+
+- [User & Architecture Guide](README_GUIDE.md): Detailed metadata selection decision tree, entity-filtering architecture, and parameter tuning.
+- [Prompt Engineering](extraction_schemas.py): View the SQL-like schemas used for structured extraction.
+
 ## Features
 
 | Feature | Description |
@@ -103,10 +108,10 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 
 ## Performance & Robustness
 
-- **Split-Brain Protection** — Automatic detection and recovery from inconsistent database states (e.g., missing Milvus collection but existing MongoDB docstore) to ensure Node ID synchronization across all stores.
-- **Metadata stripping** — utilizes the `MetadataStripperPostprocessor` during retrieval to strip large enriched metadata (e.g., entity lists, image descriptions) before context synthesis, preventing LLM token limit blowups; the ingestion pipeline natively uses "lean" metadata for MinerU/LlamaParse to ensure Milvus compatibility.
-- **Optimized node splitting** — uses a 512-token chunk size (aligned with ColBERT's limit) to ensure the reranker sees the entire context of every retrieved node.
-- **Image processing & caching** — resizes large images, chooses appropriate format, base64-encodes payloads, and caches generated descriptions to avoid repeated vision API calls.
+- **Metadata caching & persistence** — Results from **LangExtract** (LLM-based) and **Claude Vision** (image descriptions) are persistently cached in local JSON files. High-cost API enrichment is performed only once per content chunk or image; subsequent runs recover metadata instantly from the cache.
+- **Split-Brain Protection** — Automatic detection and recovery from inconsistent database states (e.g., missing Milvus collection but existing MongoDB docstore). The system ensures Node ID synchronization and only processes ingestion when necessary, making the pipeline idempotent.
+- **Metadata stripping** — utilizes the `MetadataStripperPostprocessor` during retrieval to strip large enriched metadata (e.g., entity lists, image descriptions) before context synthesis, preventing LLM token limit blowups; the ingestion pipeline natively uses "lean" metadata for MinerU to ensure Milvus compatibility.
+- **Optimized node splitting** — uses a 512-token default chunk size (configurable in `config.py` and aligned with ColBERT's limit) to ensure the reranker sees the entire context of every retrieved node.
 - **Safer embedding & lazy init** — reduced embedding batch sizes and deferred query-engine initialization to lower failure rates and startup cost.
 - **Robust Sub-Question Generation** — uses `LLMQuestionGenerator` with a 3-attempt retry mechanism to handle transient JSON parsing failures during query decomposition.
 - **Optional detailed responses** — set `RESPONSE_MODE=TREE_SUMMARIZE` for verbose structured answers (higher token use).
@@ -120,7 +125,7 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 | Option | Speed | Cost | Use Case |
 |--------|-------|------|----------|
 | `None` | ⚡⚡⚡ | Free | Quick testing |
-| `"entity"` | ⚡⚡ | Free | Named entity recognition (local HuggingFace model) |
+| `"entity"` | ⚡⚡ | Free | **GLiNER** (Zero-shot NER via local HuggingFace model) |
 | `"langextract"` | ⚡ | API | Rich semantic metadata (concepts, advice, experiences) |
 | `"both"` | ⚡ | API | Maximum metadata richness |
 
@@ -158,14 +163,12 @@ DEFAULT_RAG_SETTINGS = {
 
 ## LangExtract Schema System
 
-Schema definitions specify allowed metadata values. Managed in `extraction_schemas.py`.
+Managed in `extraction_schemas.py`, the system ensures metadata consistency across the pipeline through two operational modes:
 
-### Operating Modes
-
-| Mode | When | Source | Purpose |
-|------|------|--------|---------|
-| **Static** | Ingestion | Hardcoded | Guides extraction LLM |
-| **Dynamic** | Query time | MongoDB | Ensures filters match stored values |
+| Mode | Phase | Source | Function |
+|------|-------|--------|----------|
+| **Static** | Ingestion | Hardcoded | Injects predefined categories into the LLM prompt to guide structured extraction. |
+| **Dynamic** | Query Time | MongoDB | Queries `distinct()` values from the database to align search filters with actual stored metadata. |
 
 ### Schema Attributes
 
@@ -180,14 +183,11 @@ Schema definitions specify allowed metadata values. Managed in `extraction_schem
 
 ### Key Functions
 
-```python
-# extraction_schemas.py
-get_paul_graham_schema_definitions(use_dynamic_loading=True)
-get_schema(schema_name)  # "paul_graham_detailed" or "paul_graham_simple"
-
-# langextract_integration.py
-extract_query_metadata_filters(query_str, schema_name)
-```
+| Function | Source | Description |
+|----------|--------|-------------|
+| `get_schema_definitions()` | `extraction_schemas.py` | Retrieves attribute lists in either Static (hardcoded) or Dynamic (MongoDB) mode. |
+| `get_schema()` | `extraction_schemas.py` | Registry fetcher for full LLM extraction prompts (e.g., `"academic"`, `"technical"`). |
+| `extract_query_metadata_filters()` | `langextract_integration.py` | Extracts semantic filters from a user query to enable precise metadata-based retrieval. |
 
 ---
 
@@ -242,16 +242,16 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Gra
 
 | Category | Files |
 |----------|-------|
-| **Core Execution** | `main.py`, `config.py`, `queries.py` |
-| **Parsing & Extraction** | `mineru_wrapper.py`, `gliner_extractor.py`, `langextract_integration.py`, `extraction_schemas.py` |
-| **RAG Logic** | `rag_factory.py`, `utils.py`, `db_operation.py` |
-| **Testing** | `test/test_entity_filtering.py`, `test/test_langextract_install.py`, `test/test_langextract_schema.py`, `test/test_mongo_entity_metadata.py`, `test/demo_metadata_comparison.py`, `test/check_node_in_milvus.py`, `test/check_node_in_mongo.py` |
-| **Documentation** | `README.md`, `README_GUIDE.md`, `CHANGELOG.md` |
+| **Core Execution** | [main.py](main.py), [config.py](config.py), [queries.py](queries.py) |
+| **Parsing & Enrichment** | [mineru_wrapper.py](mineru_wrapper.py), [gliner_extractor.py](gliner_extractor.py), [langextract_integration.py](langextract_integration.py), [extraction_schemas.py](extraction_schemas.py) |
+| **RAG & Storage** | [rag_factory.py](rag_factory.py), [utils.py](utils.py), [db_operation.py](db_operation.py) |
+| **Testing** | [test/](test/) (Evaluation and validation scripts) |
+| **Setup** | [pyproject.toml](pyproject.toml), [requirements_mineru.txt](requirements_mineru.txt) |
 
 ---
 
 ## Resources
 
-- [Medium article](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c) with examples
-- `README_GUIDE.md` for detailed documentation
-- `EXAMPLES_METADATA.py` for code snippets
+- [Medium Article](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c): Implementation walkthrough and design patterns.
+- [Advanced Guide](README_GUIDE.md): Deep dive into architecture, metadata selection, and parameter tuning.
+- [Test Suite](test/): Comprehensive validation for metadata, equations, and filtering.

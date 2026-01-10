@@ -1,97 +1,47 @@
-# LlamaIndex RAG Implementation Guide
+# Advanced User & Architecture Guide
+
+This guide provides a deep dive into the selection logic for metadata extraction, the hybrid retrieval architecture, and how to optimize the pipeline for different document types.
 
 ## Table of Contents
-- [Quick Start](#quick-start)
-    - [Requirements](#requirements)
-    - [Setup & Run](#setup--run)
-    - [Configuration](#configuration)
+- [Metadata Selection Strategy](#metadata-selection-strategy)
     - [Decision Tree](#decision-tree)
-- [Metadata Extraction Options](#metadata-extraction-options)
     - [Option 1: None (Basic)](#option-1-none-basic)
     - [Option 2: EntityExtractor](#option-2-entityextractor)
     - [Option 3: LangExtract](#option-3-langextract)
-    - [Option 4: Both](#option-4-both-entityextractor--langextract)
-- [Entity-Based Filtering](#entity-based-filtering)
-    - [Overview](#overview)
-    - [Architecture](#architecture)
-    - [How It Works](#how-it-works)
-    - [Configuration](#configuration-1)
-    - [Advanced Configuration](#advanced-configuration)
+    - [Option 4: Both](#option-4-both)
+- [Entity-Based Filtering & Fusion](#entity-based-filtering--fusion)
+    - [Architecture Overview](#architecture-overview)
+    - [Dual-Retriever Flow](#dual-retriever-flow)
     - [Supported Entities](#supported-entities)
-    - [Query Examples](#query-examples)
-    - [Processing Pipeline](#processing-pipeline)
-- [Testing](#testing)
-    - [Test Entity Filtering](#test-entity-filtering)
-    - [Test Workflow](#test-workflow)
-    - [Query Examples by Type](#query-examples-by-type)
-- [Files in This Implementation](#files-in-this-implementation)
+- [Configuration & Tuning](#configuration--tuning)
+- [Testing & Validation](#testing--validation)
 
 ---
 
-## Quick Start
+## Metadata Selection Strategy
 
-### Requirements
+Choosing the right metadata extraction level is a balance between **retrieval precision**, **cost**, and **processing time**.
 
-- Python 3.11.1+ (see `pyproject.toml`)
-- Access to Milvus 2.x at `http://localhost:19530`
-- Access to MongoDB at `mongodb://localhost:27017/`
-- Paul Graham PDF placed at `./data/paul_graham/paul_graham_essay.pdf`
-- `.env` containing `OPENAI_API_KEY` (LangExtract or both) and `ANTHROPIC_API_KEY`
+### Decision Tree
 
-### Setup & Run
+```
+Do you need metadata?
+    ├─ NO  → metadata = None (Fast, FREE)
+    └─ YES → Do you have budget for GPT-4 API?
+         ├─ NO  → metadata = "entity" (Fast, FREE)
+         └─ YES → Need semantic metadata?
+              ├─ NO  → metadata = "entity"
+              └─ YES → Need both entities & semantic?
+                   ├─ NO  → metadata = "langextract"
+                   └─ YES → metadata = "both"
+```
 
-1. Install dependencies (`uv pip install -e .` or `pip install -e .`).
-2. Start Milvus and MongoDB (update URIs in `config.py` → `DATABASE_CONFIG` if your endpoints differ).
-3. Download the article and place it under `data/paul_graham/` as shown above.
-4. Create/update `.env` with required API keys.
-5. (Optional) Select article in `config.py`:
-    ```python
-    ACTIVE_ARTICLE = "paul_graham_essay"  # Change to switch articles
-    ```
-6. Run the pipeline:
-    ```bash
-    python langextract_simple.py
-    ```
-
-### Configuration
-
-All configuration is centralized in `config.py`:
-
-```python
-# Select active article
-ACTIVE_ARTICLE = "paul_graham_essay"
-
-# Available articles (pre-configured):
-# - paul_graham_essay, How_to_do_great_work (Paul Graham essays)
-# - attention_all, metagpt, uber_10q_march_2022, eBook-How-to-Build-a-Career-in-AI
-
-# Default RAG settings (applied to all articles)
-DEFAULT_RAG_SETTINGS = {
-    "metadata": "None",             # None, "entity", "langextract", "both"
-    "use_entity_filtering": False,
-    "chunk_size": 512,
-    "chunk_overlap": 128,
-    "similarity_top_k_fusion": 35,
-    "rerank_top_n": 15,
-}
-
-# Per-article overrides (optional)
-ARTICLE_RAG_OVERRIDES = {
-    "attention_all": {"metadata": "entity", "chunk_size": 512},
-}
+---
 
 # Database endpoints
 DATABASE_CONFIG = {
     "milvus_uri": "http://localhost:19530",
     "mongo_uri": "mongodb://localhost:27017/",
-}
-```
-
-**Helper functions:**
-```python
-from config import get_active_config, get_rag_settings, print_article_summary
-```
-
 ### Decision Tree
 
 ```
@@ -347,70 +297,38 @@ OPTION 4: Both
 Load PDF → Split Chunks → Entity Extractor → LangExtract → Combined Metadata → Store to DB
 ```
 
-## Testing
+## Testing & Validation
 
-### Test Entity Filtering
+### Validate Entity Filtering
+Verify that the dual-retriever system correctly filters semantic results while keeping keyword results via:
 ```bash
-python test_entity_filtering.py
+python test/test_entity_filtering.py
 ```
 
-### Test Workflow
-```python
-# Step 1: Start with None or EntityExtractor
-metadata = None  # or "entity"
-use_entity_filtering = False # or True
+### End-to-End Workflow Testing
+1.  **Baseline**: Set `metadata="None"` in `config.py` and run `python main.py`.
+2.  **Schema Check**: Verify your desired schema in `extraction_schemas.py`.
+3.  **Enrichment**: Update `config.py` to `metadata="both"` and run `main.py` again. The system will use local cache if possible, otherwise it will call LangExtract.
+4.  **Query Verification**: Use one of the entity-based or semantic queries from the list below.
 
-# Step 2: Test LangExtract on small sample (2-3 pages)
-metadata = "langextract"
-schema_name = "paul_graham_simple"
-use_entity_filtering = True
+### Query Examples by Metadata Type
 
-# Step 3: Scale up to full document
-metadata = "langextract"
-schema_name = "paul_graham_detailed"
-use_entity_filtering = True
-
-# Step 4: Choose for production based on requirements
-```
-
-### Query Examples by Type
-
-**Basic Queries (None):**
-```python
-"What is on page 5?"
-"Summarize the entire document"
-```
-
-**Entity-Based Queries (EntityExtractor):**
-```python
-"What companies are mentioned?"
-"List all people mentioned on pages 10-15"
-"Where did the author work?"
-```
-
-**Semantic Queries (LangExtract):**
-```python
-"What strategic advice is given about startups?"
-"What experiences from the 1990s are described?"
-"What programming concepts are discussed?"
-```
-
-**Complex Queries (Both):**
-```python
-"What did Paul Graham advise about startup culture?"
-"How do the entities relate to the advice given in the 2000s?"
-"What experiences led to strategic advice about product development?"
-```
+| Type | Metadata Setting | Example Queries |
+|------|------------------|-----------------|
+| **Basic** | `None` | "What is on page 5?", "Summarize the entire document" |
+| **Entity** | `"entity"` | "What companies are mentioned?", "List people on pages 1-10" |
+| **Semantic** | `"langextract"` | "What strategic advice is given?", "What are the key concepts?" |
+| **Hybrid** | `"both"` | "What did Paul Graham advise about YC culture?" |
 
 ---
 
-## Files in This Implementation
+## Core Components
 
-- **`langextract_simple.py`** - Main RAG implementation
-- **`langextract_integration.py`** - LangExtract integration functions
-- **`extraction_schemas.py`** - Extraction schemas
-- **`utils.py`** - Utility functions including entity filtering
-- **`test_entity_filtering.py`** - Entity filtering tests
-- **`EXAMPLES_METADATA.py`** - Code examples and quick-start guide
-- **`README_GUIDE.md`** - This comprehensive guide
+- **`main.py`**: Unified entry point for ingestion and Q&A.
+- **`config.py`**: Centralized RAG and document configuration.
+- **`rag_factory.py`**: Construction of tools, retrievers, and query engines.
+- **`utils.py`**: Hybrid fusion retrievers, postprocessors, and storage initialization.
+- **`extraction_schemas.py`**: Registry for LangExtract and GLiNER schemas.
+- **`langextract_integration.py`**: Logic for LLM-based metadata enrichment.
+- **`gliner_extractor.py`**: Local zero-shot NER processing.
 
