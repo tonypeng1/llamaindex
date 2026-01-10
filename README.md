@@ -53,7 +53,7 @@ deactivate
 ### Adding a New PDF Article
 
 1. **Place the PDF**: Add the file to `./data/new_article/new_article.pdf`.
-2. **Update config.py**: Add a new entry to `ARTICLE_CONFIGS` with its directory, filename, and preferred `schema` (e.g., `"academic"`, `"technical"`). Set `ACTIVE_ARTICLE` to your new key.
+2. **Update config.py**: Add a new entry to `ARTICLE_CONFIGS` with its directory, filename, and preferred `schema` (e.g., `"academic"`, `"technical"`). Set `ACTIVE_ARTICLE` to your new key. Add `ARTICLE_RAG_OVERRIDES` if needed.
 3. **Update queries.py**: Add your queries to the file and map them in the `ACTIVE_QUERIES` dictionary.
 4. **Execute**: Run `python main.py`.
 
@@ -104,7 +104,7 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 ## Performance & Robustness
 
 - **Split-Brain Protection** — Automatic detection and recovery from inconsistent database states (e.g., missing Milvus collection but existing MongoDB docstore) to ensure Node ID synchronization across all stores.
-- **Metadata stripping** — strips large parser metadata (e.g., MinerU or LlamaParse OCR data) before saving to Milvus to avoid dynamic-field size and token-serialization blowups; full metadata is retained in MongoDB docstores.
+- **Metadata stripping** — utilizes the `MetadataStripperPostprocessor` during retrieval to strip large enriched metadata (e.g., entity lists, image descriptions) before context synthesis, preventing LLM token limit blowups; the ingestion pipeline natively uses "lean" metadata for MinerU/LlamaParse to ensure Milvus compatibility.
 - **Optimized node splitting** — uses a 512-token chunk size (aligned with ColBERT's limit) to ensure the reranker sees the entire context of every retrieved node.
 - **Image processing & caching** — resizes large images, chooses appropriate format, base64-encodes payloads, and caches generated descriptions to avoid repeated vision API calls.
 - **Safer embedding & lazy init** — reduced embedding batch sizes and deferred query-engine initialization to lower failure rates and startup cost.
@@ -126,10 +126,10 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 
 ### Centralized Configuration (`config.py`)
 
-`config.py` is the **single source of truth** for the entire pipeline. Both the **Indexer** (`main.py`) and the **Retriever** (`langextract_simple.py`) import their settings from here to ensure database consistency.
+`config.py` is the **single source of truth** for the entire pipeline. Both the **Indexer** and the **Retriever** components import their settings from here to ensure database consistency.
 
 #### 1. Select Active Article
-Switch the entire system to a different document by changing one variable:
+Switch the entire system to a different document by changing one variable. This automatically updates the database names, storage paths, and metadata schemas:
 
 ```python
 # config.py
@@ -148,6 +148,8 @@ DEFAULT_RAG_SETTINGS = {
     "metadata": "None",        # Options: "None", "entity", "langextract", "both"
     "use_entity_filtering": False,
     "similarity_top_k_fusion": 35,
+    "num_queries": 1,          # Number of generated queries for fusion
+    "fusion_top_n": 25,
     "rerank_top_n": 15,
 }
 ```
@@ -240,9 +242,11 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Gra
 
 | Category | Files |
 |----------|-------|
-| **Core** | `langextract_simple.py`, `config.py`, `langextract_integration.py`, `extraction_schemas.py`, `utils.py`, `db_operation.py` |
-| **Docs** | `README_GUIDE.md`, `EXAMPLES_METADATA.py` |
-| **Tests** | `test/test_entity_filtering.py`, `test/test_langextract_install.py`, `test/test_langextract_schema.py`, `test/test_mongo_entity_metadata.py`, `test/demo_metadata_comparison.py`, `test/check_node_in_milvus.py`, `test/check_node_in_mongo.py`, `test/get_inclusive_schema.py` |
+| **Core Execution** | `main.py`, `config.py`, `queries.py` |
+| **Parsing & Extraction** | `mineru_wrapper.py`, `gliner_extractor.py`, `langextract_integration.py`, `extraction_schemas.py` |
+| **RAG Logic** | `rag_factory.py`, `utils.py`, `db_operation.py` |
+| **Testing** | `test/test_entity_filtering.py`, `test/test_langextract_install.py`, `test/test_langextract_schema.py`, `test/test_mongo_entity_metadata.py`, `test/demo_metadata_comparison.py`, `test/check_node_in_milvus.py`, `test/check_node_in_mongo.py` |
+| **Documentation** | `README.md`, `README_GUIDE.md`, `CHANGELOG.md` |
 
 ---
 
