@@ -59,7 +59,6 @@ deactivate
 
 ## Documentation
 
-- [User & Architecture Guide](README_GUIDE.md): Detailed metadata selection decision tree, entity-filtering architecture, and parameter tuning.
 - [Prompt Engineering](extraction_schemas.py): View the SQL-like schemas used for structured extraction.
 
 ## Features
@@ -181,14 +180,6 @@ Managed in `extraction_schemas.py`, the system ensures metadata consistency acro
 | `entity_roles` | founder, colleague, investor |
 | `time_decades` | 1970s, 1980s, 1990s, 2000s |
 
-### Key Functions
-
-| Function | Source | Description |
-|----------|--------|-------------|
-| `get_schema_definitions()` | `extraction_schemas.py` | Retrieves attribute lists in either Static (hardcoded) or Dynamic (MongoDB) mode. |
-| `get_schema()` | `extraction_schemas.py` | Registry fetcher for full LLM extraction prompts (e.g., `"academic"`, `"technical"`). |
-| `extract_query_metadata_filters()` | `langextract_integration.py` | Extracts semantic filters from a user query to enable precise metadata-based retrieval. |
-
 ---
 
 ## Architecture
@@ -253,5 +244,4 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Gra
 ## Resources
 
 - [Medium Article](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c): Implementation walkthrough and design patterns.
-- [Advanced Guide](README_GUIDE.md): Deep dive into architecture, metadata selection, and parameter tuning.
 - [Test Suite](test/): Comprehensive validation for metadata, equations, and filtering.
