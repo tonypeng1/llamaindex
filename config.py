@@ -34,7 +34,8 @@ from queries import get_query_for_article
 # ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "Laser_coprop_RA"
 # ACTIVE_ARTICLE = "Noise_in_DRA"
-ACTIVE_ARTICLE = "ASE_noise_pump_depletion"
+# ACTIVE_ARTICLE = "ASE_noise_pump_depletion"
+ACTIVE_ARTICLE = "NF_Analysis_DFRA"
 # ACTIVE_ARTICLE = "Pump_depletion_FRA"
 # ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
@@ -111,6 +112,12 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "Pump_depletion_FRA.pdf",
         "schema": "academic",
         "description": "Analysis of pump depletion in fiber Raman amplifiers",
+    },
+    "NF_Analysis_DFRA": {
+        "directory": "DRA",
+        "filename": "NF_Analysis_DFRA.pdf",
+        "schema": "academic",
+        "description": "Analysis of noise figure in distributed fiber Raman amplifiers",
     },
     
     # -------------------------------------------------------------------------
@@ -231,6 +238,13 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
     "Pump_depletion_FRA": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
+    },
+    "NF_Analysis_DFRA": {
         "metadata": "both",
         "use_entity_filtering": True,
         "chunk_size": 256,

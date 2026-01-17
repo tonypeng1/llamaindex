@@ -7,7 +7,7 @@ A high-performance hybrid RAG (Retrieval-Augmented Generation) system using Llam
 ### Prerequisites
 
 - Python 3.11.1+
-- Milvus 2.x (`http://localhost:19530`)
+- **Docker Desktop** (For Milvus and Attu)
 - MongoDB (`mongodb://localhost:27017/`)
 - OpenAI and Anthropic API keys
 
@@ -18,6 +18,26 @@ git clone https://github.com/tonypeng1/llamaindex.git
 cd llamaindex
 pip install uv && uv pip install -e .
 ```
+
+### Database & GUI Management
+
+This project uses **Milvus** as a vector database and **Attu** as a management GUI. You can manage them easily using the included script (you will be prompted for your machine password as the script requires `sudo` for Docker commands):
+
+- **Start Milvus & Attu**:
+  ```bash
+  bash standalone_embed.sh start_all
+  ```
+- **Access Attu (GUI)**: [http://localhost:3000](http://localhost:3000) (Connect to Milvus at `127.0.0.1:19530`)
+- **Stop services**:
+  ```bash
+  bash standalone_embed.sh stop_all
+  ```
+
+#### MongoDB Setup
+This project expects MongoDB at `localhost:27017`.
+- **Choice A (Native/Homebrew)**: `brew install mongodb-community && brew services start mongodb-community`
+- **Choice B (Docker)**: `docker run -d --name mongo-rag -p 27017:27017 mongo:latest`
+- **GUI Management**: Use [MongoDB Compass](https://www.mongodb.com/products/tools/compass) to visually manage your data. Connect using the string: `mongodb://localhost:27017`.
 
 #### MinerU Setup
 To use the MinerU parsing pipeline, create an isolated environment to avoid dependency conflicts:

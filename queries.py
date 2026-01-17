@@ -196,6 +196,16 @@ ASE_NOISE_PUMP_DEPL_ACTIVE = "What is the relationship between signal power and 
 # PUMP_DEPLETION_FRA_ACTIVE = "Please describe Figure 5 in detail. How do the threshold depletion pump power Pp(dep) vary with input signal power?"
 PUMP_DEPLETION_FRA_ACTIVE = "Please describe Figure 8 in detail. What is the definition of safe fiber length (y-axis) as given in the paper? Why is safe fiber length only define in backward pumping case?"
 
+
+# =============================================================================
+# 11. NF_Analysis_DFRA
+# =============================================================================
+
+# NF_Analysis_DFRA_ACTIVE = "Does anywhere in this paper mention the signal power used in the analysis/experiments?"
+# NF_Analysis_DFRA_ACTIVE = "How does NF dependent on fiber length and pump power?"
+NF_Analysis_DFRA_ACTIVE = "What is the definition of NF (noise figure)? How does NF dependent on fiber length and pump power?"
+
+
 # =============================================================================
 # MAPPINGS (Used by config.py)
 # =============================================================================
@@ -212,6 +222,7 @@ ACTIVE_QUERIES: Dict[str, str] = {
     "Noise_in_DRA": NOISE_IN_DRA_ACTIVE,
     "ASE_noise_pump_depletion": ASE_NOISE_PUMP_DEPL_ACTIVE,
     "Pump_depletion_FRA": PUMP_DEPLETION_FRA_ACTIVE,
+    "NF_Analysis_DFRA": NF_Analysis_DFRA_ACTIVE,
 }
 
 def get_query_for_article(article_key: str) -> str:
