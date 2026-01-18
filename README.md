@@ -266,3 +266,9 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Gra
 
 - [Medium Article](https://medium.com/@tony3t3t/rag-with-sub-question-and-tool-selecting-query-engines-using-llamaindex-05349cb4120c): Implementation walkthrough and design patterns.
 - [Test Suite](test/): Comprehensive validation for metadata, equations, and filtering.
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
