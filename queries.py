@@ -172,10 +172,14 @@ LASER_COPROP_ACTIVE = "What is the signal wavelength and pump wavelength used in
 
 # NOISE_IN_DRA_ACTIVE = "Does this paper distinguish Rayleigh-reflected signal and Rayleigh-reflected pump? If so, how are they different?"
 # NOISE_IN_DRA_ACTIVE = "Please summarize the content of Section 4."
+# NOISE_IN_DRA_ACTIVE = "Please clarify that when the term frequecy is mentioned in Section 4, does it refer to signal frequency or pump frequency? Especially in the context of Figure 4.1 and Figure 4.3."
 # NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 5.1 in detail. There are three sub-figures in it: (a) the DRB crosstalk coefficient, (b) the ASE enhancement factor and (c) the Q penalty. Explain what each parameter means and how they are related."
+NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 5.1 (c) the Q penalty in deial, including the test conditions and major trends. Is the input signal power -10 dBm per channel? Could you predict what will happen to the trends if the input signal power per channel is reduced by 30 dB (to about -40 dBm) only in the backward pumping case?"
+# NOISE_IN_DRA_ACTIVE = "In the caption of Fig 5.1 it is stated that the plots are as a function of the percentage of the forward pumping. Is it the percentage of the total gain contributed by the forward pump compared to the backward pump, or is it something else?"
 # NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 6.1 in detail. Explain what each transfer function (i.e. SOP transfer and RIN transfer) means and how they are related."
-NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 6.2 (a) and (b) in detail. Explain what each axis represents and what is shown in the figures means."
+# NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 6.2 (a) and (b) in detail. Explain what each axis represents and what is shown in the figures means."
 # NOISE_IN_DRA_ACTIVE = "Please describe the contents of fig. 4.1 and fig. 4.3 in detail and examine how they differ in trends."
+# NOISE_IN_DRA_ACTIVE = "Please explain Equation 2.18 and its importance."
 
 
 # =============================================================================
@@ -183,7 +187,9 @@ NOISE_IN_DRA_ACTIVE = "Please explain the contents in Fig 6.2 (a) and (b) in det
 # =============================================================================
 
 # ASE_NOISE_PUMP_DEPL_ACTIVE = "Summarize the introduction section."
-ASE_NOISE_PUMP_DEPL_ACTIVE = "What is the relationship between signal power and ASE power as described in the paper?"
+# ASE_NOISE_PUMP_DEPL_ACTIVE = "What is the dependence of ASE noise power on pump power, pump depletion, and fiber length as described in the paper?"
+# ASE_NOISE_PUMP_DEPL_ACTIVE = "What is the dependence of OSNR on pump depletion, input signal power, and fiber length as described in the paper?"
+ASE_NOISE_PUMP_DEPL_ACTIVE = "What is the dependence of NF on pump depletion, input signal power, and fiber length as described in the paper?"
 
 
 # =============================================================================

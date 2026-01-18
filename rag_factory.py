@@ -22,8 +22,9 @@ def normalize_for_matching(q: str) -> str:
     # Map number words
     for word, digit in NUM_MAP.items():
         q = re.sub(rf"\b{word}\b", digit, q)
-    # Remove punctuation that interferes
-    q = re.sub(r"[\.,;:\(\)\[\]']", " ", q)
+    # Remove punctuation that interferes, but keep decimal points in numbers
+    q = re.sub(r"(?<!\d)\.|\.(?!\d)", " ", q)
+    q = re.sub(r"[,;:\(\)\[\]']", " ", q)
     # Collapse spaces
     q = re.sub(r"\s+", " ", q).strip()
     return q
@@ -324,25 +325,32 @@ def get_page_filter_tool(
             # Normalize query for matching
             q_norm = normalize_for_matching(query_str)
 
-            # 1) Figure reference detection (e.g., 'Fig. 2', 'figure 2')
-            m_fig = re.search(r"\bfig(?:ure)?\s*(\d+(?:\.\d+)*)\b", q_norm)
-            if m_fig:
-                num = m_fig.group(1)
-                page_numbers = _find_pages_for_reference('figure', num, vector_docstore)
-                fig_num = num
+            # 1) Figure reference detection (e.g., 'Fig. 2', 'figure 2', 'figures 4.1 and 4.3')
+            fig_nums = re.findall(r"\bfig(?:ure)?s?\s*(\d+(?:\.\d+)*)\b", q_norm)
+            if fig_nums:
+                page_numbers = []
+                for num in fig_nums:
+                    pages = _find_pages_for_reference('figure', num, vector_docstore)
+                    page_numbers.extend(pages)
+                page_numbers = sorted(list(set(page_numbers)))
                 if page_numbers and verbose:
-                    print(f"Deterministic figure match for 'figure {num}' -> pages {page_numbers}")
-            else:
-                fig_num = None
-
+                    print(f"Deterministic figure match for figures {fig_nums} -> pages {page_numbers}")
+            
             # 2) Equation reference detection (e.g., 'Eq. 3', 'equation 3', or '(3)' with 'equation' context)
             if not page_numbers:
-                m_eq = re.search(r"\bequation\s*(\d{1,3})\b", q_norm) or re.search(r"\b\( *([0-9]{1,3}) *\)\b", query_str)
-                if m_eq:
-                    num = m_eq.group(1)
-                    page_numbers = _find_pages_for_reference('equation', num, vector_docstore)
+                eq_nums = re.findall(r"\bequations?\s*(\d+(?:\.\d+)*)\b", q_norm)
+                # Fallback for parenthesized equations like (1) or (4.1)
+                if not eq_nums:
+                    eq_nums = re.findall(r"\b\( *(\d+(?:\.\d+)*) *\)\b", query_str)
+                
+                if eq_nums:
+                    page_numbers = []
+                    for num in eq_nums:
+                        pages = _find_pages_for_reference('equation', num, vector_docstore)
+                        page_numbers.extend(pages)
+                    page_numbers = sorted(list(set(page_numbers)))
                     if page_numbers and verbose:
-                        print(f"Deterministic equation match for 'equation {num}' -> pages {page_numbers}")
+                        print(f"Deterministic equation match for equations {eq_nums} -> pages {page_numbers}")
 
             # 3) Deterministic section match (fallback) if still unknown
             if not page_numbers:
@@ -460,11 +468,12 @@ def get_page_filter_tool(
                     if str(val) in [str(p) for p in page_numbers]:
                         text_nodes.append(node)
 
-        # If we detected a specific figure number (like 4.1), ensure image nodes with that figure_label are included
-        if 'fig_num' in locals() and fig_num is not None:
+        # Ensure image nodes for detected figures or equations are included
+        detected_nums = (fig_nums if 'fig_nums' in locals() else []) + (eq_nums if 'eq_nums' in locals() else [])
+        if detected_nums:
             for _, node in vector_docstore.docs.items():
-                fig_meta = node.metadata.get('figure_label')
-                if fig_meta and str(fig_meta) == str(fig_num):
+                fig_label = node.metadata.get('figure_label')
+                if fig_label and str(fig_label) in [str(n) for n in detected_nums]:
                     if node not in text_nodes:
                         text_nodes.append(node)
 
@@ -533,32 +542,41 @@ def create_entity_metadata_filters(
 ) -> Optional[MetadataFilters]:
     """Create MetadataFilters for entity-based and semantic filtering."""
     filters = []
-    if entities:
-        key_mapping = {
-            'PER': 'persons', 'ORG': 'organizations', 'LOC': 'locations',
-            'ANIM': 'animals', 'BIO': 'biologicals', 'CEL': 'celestial_bodies',
-            'DIS': 'diseases', 'EVE': 'events', 'FOOD': 'foods',
-            'INST': 'instruments', 'MEDIA': 'media', 'PLANT': 'plants',
-            'MYTH': 'myths', 'TIME': 'times', 'VEHI': 'vehicles',
-        }
+    
+    key_mapping = {
+        'PER': 'persons', 'ORG': 'organizations', 'LOC': 'locations',
+        'ANIM': 'animals', 'BIO': 'biologicals', 'CEL': 'celestial_bodies',
+        'DIS': 'diseases', 'EVE': 'events', 'FOOD': 'foods',
+        'INST': 'instruments', 'MEDIA': 'media', 'PLANT': 'plants',
+        'MYTH': 'myths', 'TIME': 'times', 'VEHI': 'vehicles',
+    }
+
+    # 1. Process technical references from raw query (Figure, Equation)
+    if (metadata_option in ["entity", "both"]) and query_str:
+        q_norm = normalize_for_matching(query_str)
         
-        if metadata_option in ["entity", "both"]:
-            for entity_type, entity_list in entities.items():
-                db_key = key_mapping.get(entity_type, entity_type)
-                for entity in entity_list:
-                    filters.append({"key": db_key, "value": entity, "operator": "=="})
-                    # If the extracted entity looks like a figure reference (e.g., 'fig. 4.1'),
-                    # add a filter on the image node's figure_label metadata so image descriptions
-                    # can be selected directly when the query references a figure.
-                    try:
-                        m_fig = re.search(r"fig(?:ure)?\.?\s*(\d+(?:\.\d+)*)", entity, re.IGNORECASE)
-                        if m_fig:
-                            fig_val = m_fig.group(1)
-                            filters.append({"key": "figure_label", "value": fig_val, "operator": "=="})
-                    except Exception:
-                        pass
+        # Figures
+        fig_nums = re.findall(r"\bfig(?:ure)?s?\s*(\d+(?:\.\d+)*)\b", q_norm)
+        for num in fig_nums:
+            filters.append({"key": "figure_label", "value": num, "operator": "=="})
         
-        if metadata_option in ["langextract", "both"]:
+        # Equations
+        eq_nums = re.findall(r"\bequations?\s*(\d+(?:\.\d+)*)\b", q_norm)
+        if not eq_nums:
+            eq_nums = re.findall(r"\b\( *(\d+(?:\.\d+)*) *\)\b", query_str)
+        for num in eq_nums:
+            # We don't have a specific equation_label metadata yet, but could add it.
+            pass
+
+    # 2. Process GLiNER entities
+    if entities and (metadata_option in ["entity", "both"]):
+        for entity_type, entity_list in entities.items():
+            db_key = key_mapping.get(entity_type, entity_type)
+            for entity in entity_list:
+                filters.append({"key": db_key, "value": entity, "operator": "=="})
+
+    # 3. Process semantic filters
+    if metadata_option in ["langextract", "both"] and query_str:
             all_entities = [e for l in entities.values() for e in l]
             for entity in all_entities:
                 filters.append({"key": "entity_names", "value": entity, "operator": "=="})
