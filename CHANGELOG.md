@@ -1,5 +1,19 @@
 # Changelog
 
+## [January 18, 2026] - Robust Technical Retrieval & Multi-Reference Tooling
+
+### RAG Retrieval Improvements
+
+- **Preserved Decimals in Normalization**: Updated `normalize_for_matching` in [rag_factory.py](rag_factory.py) to keep decimal points between digits (e.g., "4.3"), ensuring exact matches for technical figure and equation labels.
+- **Multi-Reference Page Detection**: Enhanced `page_filter_tool` to use `re.findall`, allowing it to identify and resolve multiple figure/equation references (e.g., "Figure 4.1 and 4.3") into a single set of page filters.
+- **Regex Filter Fallback**: Added manual regex extraction for `figure_label` and `equation_label` in `DynamicFilterQueryEngine`. This provides a reliable fallback for metadata filtering when the NER model (GLiNER) fails to identify specific figure/equation entities in the query.
+- **Improved Metadata Filtering**: Ensured that identified figure labels are consistently applied as metadata filters (`FilterOperator.EQ`) during vector retrieval, leading to more accurate context for specific technical queries.
+
+### Bug Fixes
+
+- Fixed an issue where "Figure 4.3" was omitted from retrieval because the decimal point was being stripped during the normalization process.
+- Resolved a limitation in `page_filter_tool` where only the first figure reference in a query was being used to filter page context.
+
 ## [January 2, 2026] - Figure & Image Retrieval Improvements
 
 ### Highlights
