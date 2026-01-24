@@ -19,7 +19,8 @@ echo "📦 Setting up main Python environment using uv..."
 if ! command -v uv &> /dev/null; then
     echo "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    source $HOME/.cargo/env
+    # Ensure uv is in the path for the rest of this script
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
 if [ ! -d .venv ]; then
@@ -58,5 +59,7 @@ echo ""
 echo "✨ Setup complete!"
 echo "Next steps:"
 echo "1. Edit .env and add your API keys."
-echo "2. Start all databases:  bash db.sh start_all"
-echo "3. Run the RAG system:  python main.py"
+echo "2. Start all databases:    bash db.sh start_all"
+echo "3. Run the RAG system:      uv run main.py"
+echo ""
+echo "Note: You can also use '.venv/bin/python main.py' or activate the environment first."

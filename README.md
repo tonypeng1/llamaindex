@@ -59,7 +59,7 @@ The parsing pipeline requires an isolated environment, which is automatically cr
 4. **Run**:
    The `main.py` script is the primary entry point. It automatically detects if the document needs indexing (parsing via **MinerU**, enriching with **GLiNER**/**LangExtract**) and then executes the query:
    ```bash
-   python main.py
+   uv run main.py
    ```
 
 ### Adding a New PDF Article
@@ -67,7 +67,7 @@ The parsing pipeline requires an isolated environment, which is automatically cr
 1. **Place the PDF**: Add the file to `./data/new_article/new_article.pdf`.
 2. **Update config.py**: Add a new entry to `ARTICLE_CONFIGS` with its directory, filename, and preferred `schema` (e.g., `"academic"`, `"technical"`). Set `ACTIVE_ARTICLE` to your new key. Add `ARTICLE_RAG_OVERRIDES` if needed.
 3. **Update queries.py**: Add your queries to the file and map them in the `ACTIVE_QUERIES` dictionary.
-4. **Execute**: Run `python main.py`.
+4. **Execute**: Run `uv run main.py`.
 
 ## Documentation
 
