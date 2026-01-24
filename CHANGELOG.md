@@ -1,8 +1,8 @@
 # Changelog
 
-## [January 24, 2026] - Simplified Onboarding & Automated Infrastructure
+## [0.2.0] - 2026-01-24
 
-### Setup & Onboarding
+### Simplified Onboarding & Automated Infrastructure
 - **Automated setup script**: Introduced [setup.sh](setup.sh) to handle one-click environment creation, including `.env` generation from a template and automatic creation of the isolated `.mineru_env` virtual environment.
 - **Environment template**: Added [.env.example](.env.example) to provide a clear starting point for API keys and database configurations.
 - **Safe environment updates**: Configured [setup.sh](setup.sh) to detect and skip existing virtual environments (`.venv`, `.mineru_env`) to prevent accidental overwrites for active developers.
