@@ -6,10 +6,11 @@ A high-performance hybrid RAG (Retrieval-Augmented Generation) system using Llam
 
 ### Prerequisites
 
-- Python 3.11.1+
-- **Docker Desktop** (For Milvus and Attu)
-- MongoDB (`mongodb://localhost:27017/`)
-- OpenAI and Anthropic API keys
+- **Apple Silicon Mac** (M1/M2/M3/M4): The pipeline is optimized for macOS with MPS (Metal Performance Shaders) acceleration for local parsing (**MinerU**) and entity extraction (**GLiNER**).
+- **Python 3.11.1+**: The system is developed and tested on Python 3.11.
+- **uv**: Astral's fast Python package manager is used for environment isolation and execution (auto-installed by `setup.sh` if missing).
+- **Docker Desktop**: Required to host the database stack (**Milvus**, **MongoDB**, **Attu**) via the provided `db.sh` script (requires `sudo` privileges).
+- **API Keys**: Both **OpenAI** (for embeddings) and **Anthropic** (for Claude LLM) keys are required in your `.env`.
 
 ### Installation
 
@@ -41,8 +42,8 @@ The parsing pipeline requires an isolated environment, which is automatically cr
 
 ### Setup
 
-1. **Document**: Add your PDF to the appropriate subdirectory under `./data/` (e.g., `./data/paul_graham/paul_graham_essay.pdf`).
-   - *Demo Paper*: You can download the Paul Graham essay PDF from [here](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing).
+1. **Document**: Add your PDF to the appropriate subdirectory under `./data/` (e.g., `./data/new_article/new_article.pdf`).
+   - *Demo Paper*: The **Paul Graham essay** is automatically downloaded to `./data/paul_graham/` during the `bash setup.sh` step.
 
 2. **API Keys**: Configure your `.env` file:
    ```
