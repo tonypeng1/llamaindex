@@ -4,7 +4,9 @@
 
 ### Simplified Onboarding & Automated Infrastructure
 - **Automated setup script**: Introduced [setup.sh](setup.sh) to handle one-click environment creation, including `.env` generation from a template and automatic creation of the isolated `.mineru_env` virtual environment.
+- **One-click Demo**: Enhanced [setup.sh](setup.sh) to automatically download a demo PDF (Paul Graham essay) and create the required directory structure, making the project runnable immediately after setup.
 - **Environment template**: Added [.env.example](.env.example) to provide a clear starting point for API keys and database configurations.
+- **Safe onboarding logic**: Updated [main.py](main.py) to detect missing PDFs and provide direct download links, ensuring a smooth experience for first-time users.
 - **Safe environment updates**: Configured [setup.sh](setup.sh) to detect and skip existing virtual environments (`.venv`, `.mineru_env`) to prevent accidental overwrites for active developers.
 
 ### Database & Docker Management
