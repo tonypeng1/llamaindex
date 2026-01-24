@@ -321,8 +321,22 @@ def ingest_document_mineru(
     """
     Runs MinerU if needed, loads documents, parses them into nodes, and extracts image descriptions.
     """
+    # 1. Ensure the article directory exists
+    article_path = f"./data/{article_dictory}"
+    os.makedirs(article_path, exist_ok=True)
+
+    # 2. Check if the PDF file exists
+    input_pdf_path = os.path.join(article_path, article_name)
+    if not os.path.exists(input_pdf_path):
+        print(f"\n❌ ERROR: PDF file not found at: {input_pdf_path}")
+        if article_name == "paul_graham_essay.pdf":
+            print(f"👉 The demo PDF should have been downloaded by setup.sh.")
+            print(f"👉 If it's missing, download it here: https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing")
+        print(f"👉 Please place your '{article_name}' file in that folder and try again.")
+        sys.exit(1)
+
     # MinerU output path
-    mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
+    mineru_base_dir = f"{article_path}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
     content_list_path = os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json")
     
     if not os.path.exists(content_list_path):

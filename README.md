@@ -42,6 +42,7 @@ The parsing pipeline requires an isolated environment, which is automatically cr
 ### Setup
 
 1. **Document**: Add your PDF to the appropriate subdirectory under `./data/` (e.g., `./data/paul_graham/paul_graham_essay.pdf`).
+   - *Demo Paper*: You can download the Paul Graham essay PDF from [here](https://drive.google.com/file/d/1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-/view?usp=sharing).
 
 2. **API Keys**: Configure your `.env` file:
    ```

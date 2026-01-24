@@ -43,6 +43,17 @@ else
     echo "✅ MinerU environment already exists."
 fi
 
+# 4. Setup Data Directory and Download Demo
+echo "📁 Setting up data directory..."
+mkdir -p data/paul_graham
+if [ ! -f data/paul_graham/paul_graham_essay.pdf ]; then
+    echo "📥 Downloading demo PDF (Paul Graham Essay)..."
+    curl -L "https://drive.google.com/uc?export=download&id=1YzCscCmQXn2IcGS-omcAc8TBuFrpiN4-" -o data/paul_graham/paul_graham_essay.pdf
+    echo "✅ Downloaded demo PDF to ./data/paul_graham/"
+else
+    echo "✅ Demo PDF already exists."
+fi
+
 echo ""
 echo "✨ Setup complete!"
 echo "Next steps:"
