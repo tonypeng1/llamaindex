@@ -16,6 +16,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+check_docker() {
+    if ! docker info >/dev/null 2>&1; then
+        echo "❌ Docker is not running."
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "🚀 Attempting to start Docker Desktop..."
+            open -a Docker
+            echo "⏳ Waiting for Docker to start (this may take a minute)..."
+            until docker info >/dev/null 2>&1; do
+                sleep 5
+            done
+            echo "✅ Docker is now running."
+        else
+            echo "Please start Docker Desktop manually before running this script."
+            exit 1
+        fi
+    fi
+}
+
 run_embed() {
     cat << EOF > embedEtcd.yaml
 listen-client-urls: http://0.0.0.0:2379
@@ -109,6 +127,33 @@ start_attu() {
     echo "Attu started successfully. Access it at http://localhost:3000"
 }
 
+start_mongo() {
+    # Check if port 27017 is already in use by a local process (like Homebrew)
+    if lsof -Pi :27017 -sTCP:LISTEN -t >/dev/null ; then
+        echo "Port 27017 is already in use (likely by Homebrew MongoDB). Skipping Docker MongoDB."
+        return 0
+    fi
+
+    res=`sudo docker ps|grep mongo-rag|wc -l`
+    if [ $res -eq 1 ]
+    then
+        echo "MongoDB container is already running."
+        return 0
+    fi
+
+    res=`sudo docker ps -a|grep mongo-rag|wc -l`
+    if [ $res -eq 1 ]
+    then
+        sudo docker start mongo-rag 1> /dev/null
+    else
+        sudo docker run -d \
+            --name mongo-rag \
+            -p 27017:27017 \
+            mongo:latest 1> /dev/null
+    fi
+    echo "MongoDB started successfully at localhost:27017"
+}
+
 stop() {
     sudo docker stop milvus-standalone 1> /dev/null
 
@@ -125,16 +170,22 @@ stop_attu() {
     echo "Attu stopped successfully."
 }
 
+stop_mongo() {
+    sudo docker stop mongo-rag 1> /dev/null
+    echo "MongoDB stopped successfully."
+}
+
 # Delete containers
 delete() {
-    res=`sudo docker ps|grep -E "milvus-standalone|milvus-attu"|wc -l`
+    res=`sudo docker ps|grep -E "milvus-standalone|milvus-attu|mongo-rag"|wc -l`
     if [ $res -ge 1 ]
     then
-        echo "Please stop Milvus and Attu services before delete."
+        echo "Please stop Milvus, Attu, and MongoDB services before delete."
         exit 1
     fi
     sudo docker rm milvus-standalone 1> /dev/null 2>&1
     sudo docker rm milvus-attu 1> /dev/null 2>&1
+    sudo docker rm mongo-rag 1> /dev/null 2>&1
     
     # Remove the local config file
     rm -f "$PWD/embedEtcd.yaml"
@@ -143,32 +194,43 @@ delete() {
     echo "To delete data, run: sudo docker volume rm milvus-volume"
 }
 
-
 case $1 in
     start)
+        check_docker
         start
         ;;
     stop)
         stop
         ;;
     start_attu)
+        check_docker
         start_attu
         ;;
     stop_attu)
         stop_attu
         ;;
+    start_mongo)
+        check_docker
+        start_mongo
+        ;;
+    stop_mongo)
+        stop_mongo
+        ;;
     start_all)
+        check_docker
         start
         start_attu
+        start_mongo
         ;;
     stop_all)
         stop_attu
         stop
+        stop_mongo
         ;;
     delete)
         delete
         ;;
     *)
-        echo "please use bash standalone_embed.sh start|stop|start_attu|stop_attu|start_all|stop_all|delete"
+        echo "please use bash db.sh start|stop|start_attu|stop_attu|start_mongo|stop_mongo|start_all|stop_all|delete"
         ;;
 esac

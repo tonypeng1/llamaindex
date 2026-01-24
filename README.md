@@ -14,39 +14,30 @@ A high-performance hybrid RAG (Retrieval-Augmented Generation) system using Llam
 ### Installation
 
 ```bash
-git clone https://github.com/tonypeng1/llamaindex.git
+git clone -b v0.2.0 https://github.com/tonypeng1/llamaindex.git
 cd llamaindex
-pip install uv && uv pip install -e .
+bash setup.sh
 ```
 
 ### Database & GUI Management
 
-This project uses **Milvus** as a vector database and **Attu** as a management GUI. You can manage them easily using the included script (you will be prompted for your machine password as the script requires `sudo` for Docker commands):
+This project uses **Milvus** (vector storage), **MongoDB** (document storage), and **Attu** (GUI). You can manage the entire stack using the included script (requires **Docker Desktop**; on macOS, the script will attempt to start Docker automatically if it's not running):
 
-- **Start Milvus & Attu**:
+- **Start all services**:
   ```bash
-  bash standalone_embed.sh start_all
+  bash db.sh start_all
   ```
 - **Access Attu (GUI)**: [http://localhost:3000](http://localhost:3000) (Connect to Milvus at `127.0.0.1:19530`)
-- **Stop services**:
+- **Stop all services**:
   ```bash
-  bash standalone_embed.sh stop_all
+  bash db.sh stop_all
   ```
 
-#### MongoDB Setup
-This project expects MongoDB at `localhost:27017`.
-- **Choice A (Native/Homebrew)**: `brew install mongodb-community && brew services start mongodb-community`
-- **Choice B (Docker)**: `docker run -d --name mongo-rag -p 27017:27017 mongo:latest`
-- **GUI Management**: Use [MongoDB Compass](https://www.mongodb.com/products/tools/compass) to visually manage your data. Connect using the string: `mongodb://localhost:27017`.
+#### MongoDB Connectivity
+The `start_all` command automatically runs a MongoDB container. **However**, if you have a native MongoDB installation (e.g., via Homebrew) already running on port `27017`, the script will detect it and gracefully skip starting the Docker version to avoid conflicts.
 
 #### MinerU Setup
-To use the MinerU parsing pipeline, create an isolated environment to avoid dependency conflicts:
-```bash
-uv venv .mineru_env
-source .mineru_env/bin/activate
-uv pip install -r requirements_mineru.txt
-deactivate
-```
+The parsing pipeline requires an isolated environment, which is automatically created by `setup.sh` in `.mineru_env`. The main script manages this environment internally.
 
 ### Setup
 

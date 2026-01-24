@@ -1,5 +1,18 @@
 # Changelog
 
+## [January 24, 2026] - Simplified Onboarding & Automated Infrastructure
+
+### Setup & Onboarding
+- **Automated setup script**: Introduced [setup.sh](setup.sh) to handle one-click environment creation, including `.env` generation from a template and automatic creation of the isolated `.mineru_env` virtual environment.
+- **Environment template**: Added [.env.example](.env.example) to provide a clear starting point for API keys and database configurations.
+- **Safe environment updates**: Configured [setup.sh](setup.sh) to detect and skip existing virtual environments (`.venv`, `.mineru_env`) to prevent accidental overwrites for active developers.
+
+### Database & Docker Management
+- **Unified database stack**: Updated [db.sh](db.sh) to include a managed **MongoDB** container, providing a complete local infrastructure (Milvus + MongoDB + Attu) in one command.
+- **Homebrew compatibility**: Implemented automatic port detection for port `27017`. The script now detects and respects native Homebrew MongoDB installations, gracefully skipping the Docker version to avoid conflicts.
+- **Zero-touch Docker**: Added macOS auto-launch logic. The script now automatically starts Docker Desktop and waits for the daemon to be ready if it finds it's not running.
+- **Start/Stop All Commands**: Consolidated daily operations under `start_all` and `stop_all` arguments in [db.sh](db.sh).
+
 ## [January 18, 2026] - Robust Technical Retrieval & Multi-Reference Tooling
 
 ### RAG Retrieval Improvements

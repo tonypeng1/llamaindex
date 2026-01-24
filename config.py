@@ -268,9 +268,16 @@ EMBEDDING_CONFIG: Dict[str, Any] = {
 # DATABASE SETTINGS
 # =============================================================================
 
+import os
+
+# Get database connection settings from environment variables with local defaults
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
+MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
+
 DATABASE_CONFIG: Dict[str, str] = {
-    "milvus_uri": "http://localhost:19530",
-    "mongo_uri": "mongodb://localhost:27017/",
+    "milvus_uri": f"http://{MILVUS_HOST}:{MILVUS_PORT}",
+    "mongo_uri": MONGO_URI,
 }
 
 
