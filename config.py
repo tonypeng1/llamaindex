@@ -30,8 +30,8 @@ from queries import get_query_for_article
 # Change this to switch which article is being processed
 # Must be a key from ARTICLE_CONFIGS
 
-# ACTIVE_ARTICLE = "RAG_Anything"
-ACTIVE_ARTICLE = "paul_graham_essay"
+ACTIVE_ARTICLE = "RAG_Anything"
+# ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "Laser_coprop_RA"
 # ACTIVE_ARTICLE = "Noise_in_DRA"
 # ACTIVE_ARTICLE = "ASE_noise_pump_depletion"

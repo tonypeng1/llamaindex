@@ -6,5 +6,6 @@ logs/
 *.pyc
 llamaindex.egg-info/
 data/
-images/
+images/*
+!images/rag_anything_framework.png
 embedEtcd.yaml

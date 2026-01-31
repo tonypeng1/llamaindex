@@ -2,6 +2,7 @@ import os
 import sys
 import warnings
 import logging
+import time
 
 import anthropic
 import base64
@@ -10,6 +11,9 @@ import json
 import subprocess
 import nest_asyncio
 nest_asyncio.apply()
+
+from google import genai
+from google.genai import types
 
 from pathlib import Path
 from PIL import Image
@@ -25,11 +29,11 @@ from llama_index.core import (
                         Settings,
                         VectorStoreIndex,
                         )
+from llama_index.core.schema import TextNode
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import (
                                     SentenceSplitter
                                     )
-from llama_index.core.schema import TextNode
 from llama_index.embeddings.openai import OpenAIEmbedding
 from gliner_extractor import GLiNERExtractor
 from extraction_schemas import get_gliner_entity_labels
@@ -530,7 +534,7 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
         print("📷 No images found in MinerU output.")
         return []
 
-    # Prepare image_dicts in the format expected by the Claude logic
+    # Prepare image_dicts in the format expected by the logic
     image_dicts = []
     for item in image_items:
         # MinerU img_path is relative to the output dir
@@ -541,8 +545,8 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
             "caption": " ".join(item.get('image_caption', []))
         })
 
-    # Initialize Anthropic client
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    # Initialize Gemini client with Agentic Vision (code execution enabled)
+    client = genai.Client(api_key=GOOGLE_API_KEY)
     
     # Cache file - use a different suffix for MinerU to avoid collision
     cache_file = Path(f"./data/{article_dir}/{article_name.replace('.pdf', '_mineru_image_descriptions.json')}")
@@ -557,7 +561,7 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
         except:
             descriptions_cache = {}
     
-    print(f"\n📷 Processing {len(image_dicts)} MinerU images with Claude Vision...")
+    print(f"\n📷 Processing {len(image_dicts)} MinerU images with Gemini 3 Flash Agentic Vision...")
     
     img_text_nodes = []
     
@@ -567,6 +571,7 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
         
         # Check cache first
         if image_name in descriptions_cache:
+            print(f"   ✅ [{i+1}/{len(image_dicts)}] {image_name} (cached)")
             description = descriptions_cache[image_name]["description"]
 
             # Include original caption in the node text so figure refs are detectable
@@ -601,48 +606,62 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
             continue
         
         try:
-            # Load image and check dimensions
-            with Image.open(image_path) as img:
-                width, height = img.size
-                max_dimension = 8000
-                if width > max_dimension or height > max_dimension:
-                    scale = min(max_dimension / width, max_dimension / height)
-                    img = img.resize((int(width * scale), int(height * scale)), Image.Resampling.LANCZOS)
-                
-                buffer = BytesIO()
-                ext = os.path.splitext(image_path)[1].lower()
-                img_format = "PNG" if ext == ".png" else "JPEG"
-                img.save(buffer, format=img_format)
-                image_data = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
+            print(f"   🔄 [{i+1}/{len(image_dicts)}] Processing {image_name}...")
             
-            media_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
+            # Call Gemini 3 Flash Agentic Vision API with code execution
+            # Load image as bytes for the native SDK
+            with open(image_path, "rb") as img_file:
+                image_bytes = img_file.read()
             
-            # Call Claude Vision API
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": image_data,
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": f"Describe this image in detail. Caption: {image_dict['caption']}. Include all visual elements, labels, arrows, diagrams, charts, or any text visible in the image."
-                            }
-                        ],
-                    }
-                ]
+            # Determine mime type
+            ext = os.path.splitext(image_path)[1].lower()
+            mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
+            
+            image_part = types.Part.from_bytes(
+                data=image_bytes,
+                mime_type=mime_type,
             )
             
-            description = message.content[0].text
+            prompt = f"Describe this image in detail. Caption: {image_dict['caption']}. Include all visual elements, labels, arrows, diagrams, charts, or any text visible in the image. If there are fine details, zoom in to inspect them."
+            
+            # Retry logic with exponential backoff for transient errors
+            max_retries = 3
+            retry_delay = 5  # seconds
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model="gemini-3-flash-preview",
+                        contents=[image_part, prompt],
+                        config=types.GenerateContentConfig(
+                            tools=[types.Tool(code_execution=types.ToolCodeExecution())]
+                        ),
+                    )
+                    break  # Success, exit retry loop
+                except Exception as api_error:
+                    error_str = str(api_error)
+                    if "503" in error_str or "UNAVAILABLE" in error_str or "Deadline" in error_str:
+                        if attempt < max_retries - 1:
+                            print(f"   ⏳ Retry {attempt + 1}/{max_retries} for {image_name} after {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                        else:
+                            raise  # Re-raise on final attempt
+                    else:
+                        raise  # Non-retryable error
+            
+            if response is None:
+                raise Exception("Failed to get response after retries")
+            
+            # Extract text from all parts (Agentic Vision returns multiple parts including code execution)
+            text_parts = []
+            for candidate in response.candidates:
+                for part in candidate.content.parts:
+                    if part.text:
+                        text_parts.append(part.text)
+            description = "\n".join(text_parts) if text_parts else "No description generated."
+            
             descriptions_cache[image_name] = {"description": description}
             
             # Attach caption to description so the node contains any figure label
@@ -699,6 +718,7 @@ def create_and_save_vector_index_to_milvus_database(_base_nodes, _objects, _imag
 
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
 # Set OpenAI API key, LLM, and embedding model
 llm = Anthropic(

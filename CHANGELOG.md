@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.1] - 2026-01-31
+
+### Vision Model Upgrade: Gemini 3 Flash Agentic Vision
+
+- **New Vision API**: Migrated image description from Claude Sonnet (Anthropic) to **Gemini 3 Flash Agentic Vision** (Google) in [main.py](main.py). The new model uses Google's native `google-genai` SDK with code execution enabled, allowing the model to zoom, crop, and programmatically analyze fine image details.
+- **Agentic Vision Support**: Enabled Gemini's Think-Act-Observe loop for image analysis, which generates and executes Python code server-side for detailed inspection of figures, diagrams, and charts.
+- **Multi-Part Response Handling**: Added logic to parse Agentic Vision's multi-part responses (which include `executable_code`, `code_execution_result`, and `text` parts), extracting only the textual description.
+- **Retry Logic with Exponential Backoff**: Implemented robust error handling for transient 503 UNAVAILABLE errors from the Gemini API (3 retries with 5s/10s/20s delays).
+- **Progress Indicators**: Added emoji-based progress logging during image processing: `✅` for cached, `🔄` for processing, `⏳` for retries.
+- **New Environment Variable**: Added `GOOGLE_API_KEY` to [.env.example](.env.example) and updated [README.md](README.md) prerequisites.
+
+### Documentation
+
+- **README Showcase Section**: Added a new "Showcase: Multimodal Understanding in Action" section to [README.md](README.md) demonstrating the pipeline's ability to describe complex technical diagrams using Gemini 3 Flash Agentic Vision.
+- **RAG-Anything Example**: Included a detailed use case analyzing Figure 1 from the [RAG-Anything paper](https://arxiv.org/abs/2510.12323), showcasing the system's multimodal comprehension capabilities.
+- **Framework Image**: Added `images/rag_anything_framework.png` and updated [.gitignore](.gitignore) to selectively track this image while ignoring other files in the `images/` folder.
+
+### Dependencies
+
+- Added `google-generativeai>=0.8.6` and `llama-index-multi-modal-llms-gemini>=0.6.1` to [pyproject.toml](pyproject.toml).
+- Relaxed `pillow` constraint from `==12.0.0` to `>=10.2.0,<13.0.0` to resolve dependency conflicts.
+
 ## [0.2.0] - 2026-01-24
 
 ### Simplified Onboarding & Automated Infrastructure
