@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0] - 2026-02-04
+
+### Retrieval & Filtering Improvements
+- **Enhanced Page Resolution**: Updated `page_filter_tool` prompt in [rag_factory.py](rag_factory.py) to reliably extract page ranges (e.g., "pages 17 to 19" → `[17, 18, 19]`).
+- **Robust JSON Handling**: Added auto-cleaning for LLM responses in [rag_factory.py](rag_factory.py) to strip markdown code blocks and handle verbose output during page resolution.
+- **Type-Safe Metadata Filtering**: Fixed a bug where page nodes were skipped due to string vs integer type mismatches in MongoDB filters.
+- **Improved Retrieval Logging**: Added detailed logs for resolved page numbers and node counts to improve transparency of the page-filtering pipeline.
+
+### System Architecture
+- **Safe Pipeline Imports**: Wrapped [main.py](main.py) execution logic in `if __name__ == "__main__":` to allow safe importation of utility functions without triggering the full RAG pipeline or causing nested async errors.
+
+### Configuration
+- **Active Article Management**: Switched [config.py](config.py) to process the Paul Graham essay for debugging and updated [queries.py](queries.py) with targeted page-specific test queries.
+
 ## [0.2.1] - 2026-01-31
 
 ### Vision Model Upgrade: Gemini 3 Flash Agentic Vision

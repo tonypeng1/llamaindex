@@ -15,7 +15,7 @@ A high-performance hybrid RAG (Retrieval-Augmented Generation) system using Llam
 ### Installation
 
 ```bash
-git clone -b v0.2.0 https://github.com/tonypeng1/llamaindex.git
+git clone -b v0.3.0 https://github.com/tonypeng1/llamaindex.git
 cd llamaindex
 bash setup.sh
 ```

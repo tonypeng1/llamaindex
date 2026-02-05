@@ -720,248 +720,249 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
-# Set OpenAI API key, LLM, and embedding model
-llm = Anthropic(
-            model="claude-sonnet-4-0",
-            temperature=0.0,
-            max_tokens=2500,
-            api_key=ANTHROPIC_API_KEY,
-            )
-Settings.llm = llm
+if __name__ == "__main__":
+    # Set OpenAI API key, LLM, and embedding model
+    llm = Anthropic(
+                model="claude-sonnet-4-0",
+                temperature=0.0,
+                max_tokens=2500,
+                api_key=ANTHROPIC_API_KEY,
+                )
+    Settings.llm = llm
 
-# Create embedding model with smaller batch size to avoid token limits
-embed_model = OpenAIEmbedding(
-    model_name=EMBEDDING_CONFIG["model_name"],
-    embed_batch_size=10  # Reduce batch size to avoid hitting 300k token limit
-)
-
-# Create debug handler
-llama_debug = LlamaDebugHandler(print_trace_on_end=False)
-callback_manager = CallbackManager([llama_debug])
-Settings.callback_manager = callback_manager
-
-Settings.embed_model = embed_model
-embed_model_dim = EMBEDDING_CONFIG["dimension"]
-embed_model_name = EMBEDDING_CONFIG["short_name"]
-
-# =============================================================================
-# Get ALL settings from config.py and set up variables
-# NOTE: Set ACTIVE_ARTICLE in config.py to choose which document is processed
-# =============================================================================
-
-# Get configuration from config.py
-article_info = get_article_info()
-rag_settings = article_info["rag_settings"]
-
-# Article details
-article_dictory = article_info["directory"]
-article_name = article_info["filename"]
-schema_name = article_info["schema"]
-
-# Create database link
-article_link = get_article_link(article_dictory,
-                                article_name
-                                )
-
-# Parser Configuration: MinerU
-chunk_method = "mineru"
-
-# Global chunking configuration (from config.py)
-chunk_size = rag_settings["chunk_size"]
-chunk_overlap = rag_settings["chunk_overlap"]
-
-# Metadata extraction options:
-# None, "entity", "langextract", and "both"
-metadata = rag_settings.get("metadata")
-
-# Entity-based filtering configuration
-use_entity_filtering = rag_settings.get("use_entity_filtering", False)
-
-page_filter_verbose = rag_settings.get("page_filter_verbose", False)
-
-# Create database name and colleciton names
-(database_name, 
-collection_name_vector,
-collection_name_summary) = get_database_and_llamaparse_collection_name(
-                                                            article_dictory, 
-                                                            ACTIVE_ARTICLE,
-                                                            chunk_method, 
-                                                            embed_model_name, 
-                                                            "mineru", # parse_method
-                                                            chunk_size,
-                                                            chunk_overlap,
-                                                            metadata # Pass metadata to collection name
-                                                            )
-
-# Initiate Milvus and MongoDB database (from config.py)
-uri_milvus = DATABASE_CONFIG["milvus_uri"]
-uri_mongo = DATABASE_CONFIG["mongo_uri"]
-
-# Initialize storage contexts and check for existing collections
-(save_index_vector,
- add_document_vector,
- add_document_summary,
- vector_store,
- vector_docstore,
- storage_context_vector,
- storage_context_summary) = get_storage_contexts(
-                                                uri_milvus,
-                                                uri_mongo,
-                                                database_name,
-                                                collection_name_vector,
-                                                collection_name_summary,
-                                                embed_model_dim
-                                                )
-
-# Always load JSON (from cache if available) to build section index
-mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
-json_cache_path = Path(os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json"))
-
-# Build section index from the JSON
-section_index = get_section_index_mineru(json_cache_path)
-
-# Initialize nodes
-base_nodes = []
-objects = []
-image_text_nodes = []
-
-# Load documnet nodes if either vector index or docstore not saved.
-if save_index_vector or add_document_vector or add_document_summary: 
-    base_nodes, objects, image_text_nodes = ingest_document_mineru(
-                                                                article_dictory,
-                                                                article_name,
-                                                                chunk_size,
-                                                                chunk_overlap,
-                                                                metadata,
-                                                                schema_name
-                                                                )
-
-if save_index_vector == True:
-    recursive_index = create_and_save_vector_index_to_milvus_database(
-                                                                base_nodes,
-                                                                objects, 
-                                                                image_text_nodes
-                                                                )                                 
-else:
-    # Load from Milvus database
-    recursive_index = VectorStoreIndex.from_vector_store(
-        vector_store=vector_store,
-        storage_context=storage_context_vector
-        )
-
-summary_tool_description = (
-    "Useful for summarization or full context questions related to the ENTIRE document. "
-    "Use this function ONLY when user asks a question that requires understanding the "
-    "FULL context or storyline of the WHOLE document, for example when user asks "
-    "'What is this document about?', 'Give me an overview of the entire paper', "
-    "'What are the main themes throughout the document?', or when the query involves "
-    "comparing across ALL sections of the document. "
-    "DO NOT use this tool for questions about SPECIFIC SECTIONS like 'Introduction', "
-    "'Conclusion', 'Evaluation', 'Methodology', etc. - use page_filter_tool instead. "
-    "NEVER use this tool for questions about EQUATIONS, FORMULAS, FIGURES, or TABLES - "
-    "use keyphrase_tool instead for those. Even if asking about multiple equations "
-    "collectively (e.g., 'What do equations 1-4 represent?'), use keyphrase_tool. "
+    # Create embedding model with smaller batch size to avoid token limits
+    embed_model = OpenAIEmbedding(
+        model_name=EMBEDDING_CONFIG["model_name"],
+        embed_batch_size=10  # Reduce batch size to avoid hitting 300k token limit
     )
 
-summary_tool = get_summary_tree_detail_tool(
-                                        summary_tool_description,
-                                        storage_context_summary
-                                        )
+    # Create debug handler
+    llama_debug = LlamaDebugHandler(print_trace_on_end=False)
+    callback_manager = CallbackManager([llama_debug])
+    Settings.callback_manager = callback_manager
 
-if add_document_vector == True:
-    all_nodes_vector = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
-    storage_context_vector.docstore.add_documents(all_nodes_vector)
-    print(f"\n✅ Stitched prev/next relationships in document for {len(all_nodes_vector)} nodes")
+    Settings.embed_model = embed_model
+    embed_model_dim = EMBEDDING_CONFIG["dimension"]
+    embed_model_name = EMBEDDING_CONFIG["short_name"]
 
-if add_document_summary == True:
-    all_nodes_summary = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
-    storage_context_summary.docstore.add_documents(all_nodes_summary)
-    print(f"\n✅ Stitched prev/next relationships in summary for {len(all_nodes_summary)} nodes")
+    # =============================================================================
+    # Get ALL settings from config.py and set up variables
+    # NOTE: Set ACTIVE_ARTICLE in config.py to choose which document is processed
+    # =============================================================================
 
-# Hhybrid retrieval approach with fusion and reranking:
-# 1. BM25 (keyword/lexical search) - good for exact matches like "equation (1)"
-# 2. Vector embeddings (semantic search) - good for meaning-based retrieval
-# 3. QueryFusionRetriever with reciprocal rank fusion
-# 4. ColBERT reranking for final ranking
+    # Get configuration from config.py
+    article_info = get_article_info()
+    rag_settings = article_info["rag_settings"]
 
-similarity_top_k_fusion = rag_settings["similarity_top_k_fusion"]
-fusion_top_n = rag_settings["fusion_top_n"]
-num_queries = rag_settings["num_queries"]
-rerank_top_n = rag_settings["rerank_top_n"]
-num_nodes = rag_settings["num_nodes"]
+    # Article details
+    article_dictory = article_info["directory"]
+    article_name = article_info["filename"]
+    schema_name = article_info["schema"]
 
-reranker = ColbertRerank(
-    top_n=rerank_top_n,
-    model="colbert-ir/colbertv2.0",
-    tokenizer="colbert-ir/colbertv2.0",
-    keep_retrieval_score=True,
-)
+    # Create database link
+    article_link = get_article_link(article_dictory,
+                                    article_name
+                                    )
 
-query = QUERY
+    # Parser Configuration: MinerU
+    chunk_method = "mineru"
 
-# Enable entity filtering when using entity metadata extraction AND use_entity_filtering is True
-enable_entity_filtering = use_entity_filtering and metadata in ["entity", "langextract", "both"]
+    # Global chunking configuration (from config.py)
+    chunk_size = rag_settings["chunk_size"]
+    chunk_overlap = rag_settings["chunk_overlap"]
 
-# Build tools using the factory
-keyphrase_tool = rag_factory.get_keyphrase_tool(
-    query,
-    recursive_index,
-    storage_context_vector.docstore,
-    reranker,
-    llm,
-    rag_settings,
-    enable_entity_filtering=enable_entity_filtering,
-    metadata_option=metadata if metadata else None,
-    schema_name=schema_name,
-)
+    # Metadata extraction options:
+    # None, "entity", "langextract", and "both"
+    metadata = rag_settings.get("metadata")
 
-page_filter_tool = rag_factory.get_page_filter_tool(
-    query,
-    reranker,
-    recursive_index,
-    storage_context_vector.docstore,
-    llm,
-    section_index=section_index,
-    metadata_key="page",
-    verbose=page_filter_verbose,
-)
+    # Entity-based filtering configuration
+    use_entity_filtering = rag_settings.get("use_entity_filtering", False)
 
-tools = [
-    keyphrase_tool,
-    summary_tool,
-    page_filter_tool
-]
+    page_filter_verbose = rag_settings.get("page_filter_verbose", False)
 
-# Build and run the engine
-sub_question_engine = rag_factory.build_sub_question_engine(
-    tools,
-    llm,
-    verbose=True
-)
+    # Create database name and colleciton names
+    (database_name, 
+    collection_name_vector,
+    collection_name_summary) = get_database_and_llamaparse_collection_name(
+                                                                article_dictory, 
+                                                                ACTIVE_ARTICLE,
+                                                                chunk_method, 
+                                                                embed_model_name, 
+                                                                "mineru", # parse_method
+                                                                chunk_size,
+                                                                chunk_overlap,
+                                                                metadata # Pass metadata to collection name
+                                                                )
 
-print(f"\n📝 QUERY: {query}\n")
+    # Initiate Milvus and MongoDB database (from config.py)
+    uri_milvus = DATABASE_CONFIG["milvus_uri"]
+    uri_mongo = DATABASE_CONFIG["mongo_uri"]
 
-# Extract and display entities for the main query
-if metadata in ["entity", "langextract", "both"]:
-    rag_factory.extract_entities_from_query(query, schema_name=schema_name)
+    # Initialize storage contexts and check for existing collections
+    (save_index_vector,
+     add_document_vector,
+     add_document_summary,
+     vector_store,
+     vector_docstore,
+     storage_context_vector,
+     storage_context_summary) = get_storage_contexts(
+                                                    uri_milvus,
+                                                    uri_mongo,
+                                                    database_name,
+                                                    collection_name_vector,
+                                                    collection_name_summary,
+                                                    embed_model_dim
+                                                    )
 
-# Execute query
-response = sub_question_engine.query(query)
+    # Always load JSON (from cache if available) to build section index
+    mineru_base_dir = f"./data/{article_dictory}/mineru_output/{article_name.replace('.pdf', '')}/vlm"
+    json_cache_path = Path(os.path.join(mineru_base_dir, f"{article_name.replace('.pdf', '')}_content_list.json"))
 
-if response is not None:
-    rag_factory.print_response_diagnostics(response)
-    print(f"\n📝 RESPONSE:\n{response}\n")
+    # Build section index from the JSON
+    section_index = get_section_index_mineru(json_cache_path)
 
-# Cleanup resources
-try:
-    if 'vector_store' in dir() and hasattr(vector_store, 'client'):
-        vector_store.client.release_collection(collection_name=collection_name_vector)
-        vector_store.client.close()
-except:
-    pass
+    # Initialize nodes
+    base_nodes = []
+    objects = []
+    image_text_nodes = []
 
-# Suppress warnings and force immediate exit
-import warnings
-warnings.filterwarnings('ignore')
-os._exit(0)
+    # Load documnet nodes if either vector index or docstore not saved.
+    if save_index_vector or add_document_vector or add_document_summary: 
+        base_nodes, objects, image_text_nodes = ingest_document_mineru(
+                                                                    article_dictory,
+                                                                    article_name,
+                                                                    chunk_size,
+                                                                    chunk_overlap,
+                                                                    metadata,
+                                                                    schema_name
+                                                                    )
+
+    if save_index_vector == True:
+        recursive_index = create_and_save_vector_index_to_milvus_database(
+                                                                    base_nodes,
+                                                                    objects, 
+                                                                    image_text_nodes
+                                                                    )                                 
+    else:
+        # Load from Milvus database
+        recursive_index = VectorStoreIndex.from_vector_store(
+            vector_store=vector_store,
+            storage_context=storage_context_vector
+            )
+
+    summary_tool_description = (
+        "Useful for summarization or full context questions related to the ENTIRE document. "
+        "Use this function ONLY when user asks a question that requires understanding the "
+        "FULL context or storyline of the WHOLE document, for example when user asks "
+        "'What is this document about?', 'Give me an overview of the entire paper', "
+        "'What are the main themes throughout the document?', or when the query involves "
+        "comparing across ALL sections of the document. "
+        "DO NOT use this tool for questions about SPECIFIC SECTIONS like 'Introduction', "
+        "'Conclusion', 'Evaluation', 'Methodology', etc. - use page_filter_tool instead. "
+        "NEVER use this tool for questions about EQUATIONS, FORMULAS, FIGURES, or TABLES - "
+        "use keyphrase_tool instead for those. Even if asking about multiple equations "
+        "collectively (e.g., 'What do equations 1-4 represent?'), use keyphrase_tool. "
+        )
+
+    summary_tool = get_summary_tree_detail_tool(
+                                            summary_tool_description,
+                                            storage_context_summary
+                                            )
+
+    if add_document_vector == True:
+        all_nodes_vector = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
+        storage_context_vector.docstore.add_documents(all_nodes_vector)
+        print(f"\n✅ Stitched prev/next relationships in document for {len(all_nodes_vector)} nodes")
+
+    if add_document_summary == True:
+        all_nodes_summary = stitch_prev_next_relationships(base_nodes + objects + image_text_nodes)
+        storage_context_summary.docstore.add_documents(all_nodes_summary)
+        print(f"\n✅ Stitched prev/next relationships in summary for {len(all_nodes_summary)} nodes")
+
+    # Hhybrid retrieval approach with fusion and reranking:
+    # 1. BM25 (keyword/lexical search) - good for exact matches like "equation (1)"
+    # 2. Vector embeddings (semantic search) - good for meaning-based retrieval
+    # 3. QueryFusionRetriever with reciprocal rank fusion
+    # 4. ColBERT reranking for final ranking
+
+    similarity_top_k_fusion = rag_settings["similarity_top_k_fusion"]
+    fusion_top_n = rag_settings["fusion_top_n"]
+    num_queries = rag_settings["num_queries"]
+    rerank_top_n = rag_settings["rerank_top_n"]
+    num_nodes = rag_settings["num_nodes"]
+
+    reranker = ColbertRerank(
+        top_n=rerank_top_n,
+        model="colbert-ir/colbertv2.0",
+        tokenizer="colbert-ir/colbertv2.0",
+        keep_retrieval_score=True,
+    )
+
+    query = QUERY
+
+    # Enable entity filtering when using entity metadata extraction AND use_entity_filtering is True
+    enable_entity_filtering = use_entity_filtering and metadata in ["entity", "langextract", "both"]
+
+    # Build tools using the factory
+    keyphrase_tool = rag_factory.get_keyphrase_tool(
+        query,
+        recursive_index,
+        storage_context_vector.docstore,
+        reranker,
+        llm,
+        rag_settings,
+        enable_entity_filtering=enable_entity_filtering,
+        metadata_option=metadata if metadata else None,
+        schema_name=schema_name,
+    )
+
+    page_filter_tool = rag_factory.get_page_filter_tool(
+        query,
+        reranker,
+        recursive_index,
+        storage_context_vector.docstore,
+        llm,
+        section_index=section_index,
+        metadata_key="page",
+        verbose=page_filter_verbose,
+    )
+
+    tools = [
+        keyphrase_tool,
+        summary_tool,
+        page_filter_tool
+    ]
+
+    # Build and run the engine
+    sub_question_engine = rag_factory.build_sub_question_engine(
+        tools,
+        llm,
+        verbose=True
+    )
+
+    print(f"\n📝 QUERY: {query}\n")
+
+    # Extract and display entities for the main query
+    if metadata in ["entity", "langextract", "both"]:
+        rag_factory.extract_entities_from_query(query, schema_name=schema_name)
+
+    # Execute query
+    response = sub_question_engine.query(query)
+
+    if response is not None:
+        rag_factory.print_response_diagnostics(response)
+        print(f"\n📝 RESPONSE:\n{response}\n")
+
+    # Cleanup resources
+    try:
+        if 'vector_store' in dir() and hasattr(vector_store, 'client'):
+            vector_store.client.release_collection(collection_name=collection_name_vector)
+            vector_store.client.close()
+    except:
+        pass
+
+    # Suppress warnings and force immediate exit
+    import warnings
+    warnings.filterwarnings('ignore')
+    os._exit(0)
 

@@ -394,15 +394,28 @@ def get_page_filter_tool(
             ) if section_index else (
                 '## Instruction:\n'
                 'Extract all page numbers from the user query. Return as a list of integers.\n'
+                'If a range like "pages 17 to 19" or "pages 17-19" is mentioned, return EVERY integer in that range: [17, 18, 19].\n'
                 'If no page numbers are mentioned, output [1].\n'
+                '## Output Format:\n'
+                'Return a JSON object: {{"type": "pages", "pages": [1, 2, 3]}}\n'
                 '**Query:** {query_str}\n'
             )
 
             prompt = PromptTemplate(prompt_text)
             result_str = llm.predict(prompt=prompt, query_str=query_str, section_list=section_list_str)
             
+            if verbose:
+                print(f"🔍 Raw LLM response for page resolution: {result_str}")
+            
             try:
-                result = json.loads(result_str)
+                # Basic JSON cleaning
+                cleaned_str = result_str.strip()
+                if "```json" in cleaned_str:
+                    cleaned_str = cleaned_str.split("```json")[-1].split("```")[0].strip()
+                elif "```" in cleaned_str:
+                    cleaned_str = cleaned_str.split("```")[-1].split("```")[0].strip()
+                
+                result = json.loads(cleaned_str)
                 if isinstance(result, list):
                     page_numbers = result
                 elif result.get('type') == 'section':
@@ -453,7 +466,9 @@ def get_page_filter_tool(
             except Exception:
                 page_numbers = [1]
 
-        if verbose: print(f"Resolved page numbers: {page_numbers}")
+        if verbose: 
+            print(f"🔍 Resolved page numbers: {page_numbers}")
+            print(f"🔍 Page numbers types: {[type(p) for p in page_numbers]}")
 
         # 2. Retrieve Nodes
         text_nodes = []
@@ -462,11 +477,15 @@ def get_page_filter_tool(
             if val is not None:
                 # Handle both string and int metadata
                 try:
-                    if int(val) in [int(p) for p in page_numbers]:
+                    target_pages = [int(p) for p in page_numbers]
+                    if int(val) in target_pages:
                         text_nodes.append(node)
-                except:
-                    if str(val) in [str(p) for p in page_numbers]:
+                except Exception as e:
+                    target_pages = [str(p) for p in page_numbers]
+                    if str(val) in target_pages:
                         text_nodes.append(node)
+        
+        if verbose: print(f"🔍 Found {len(text_nodes)} text nodes for pages {page_numbers}")
 
         # Ensure image nodes for detected figures or equations are included
         detected_nums = (fig_nums if 'fig_nums' in locals() else []) + (eq_nums if 'eq_nums' in locals() else [])
