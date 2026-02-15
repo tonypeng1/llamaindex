@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-02-15T15:31:30.535871",
+  "summary": {
+    "pipeline": {
+      "num_queries": 1,
+      "num_errors": 0,
+      "context_recall_mean": 0.9767441860465116,
+      "faithfulness_mean": 5.0,
+      "correctness_mean": 4.0,
+      "latency_mean": 58.060019969940186
+    },
+    "vanilla_baseline": {
+      "num_queries": 1,
+      "num_errors": 0,
+      "context_recall_mean": 1.0,
+      "faithfulness_mean": 5.0,
+      "correctness_mean": 5.0,
+      "latency_mean": 11.143975973129272
+    }
+  },
+  "per_query": [
+    {
+      "query_number": 4,
+      "query": "The author mentions his shift of interest towards Lisp, a programming language. What reasons does he provide for this shift and how did he further his understanding of Lisp?",
+      "pipeline": {
+        "context_recall": 0.9767441860465116,
+        "context_recall_matched": 42,
+        "context_recall_total": 43,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every factual claim in the answer is directly supported by the provided context, with accurate quotes and proper attribution to the author's experiences and motivations regarding Lisp.",
+        "correctness": 4,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer including the shift from AI disillusionment, finding Lisp interesting for its own sake, writing 'On Lisp' as a learning method, and the book being written during grad school, but provides significantly more detail and context than required by the query.",
+        "num_source_nodes": 85,
+        "response_length": 4662,
+        "latency": 58.060019969940186,
+        "query": "The author mentions his shift of interest towards Lisp, a programming language. What reasons does he provide for this shift and how did he further his understanding of Lisp?",
+        "response_text": "Based on the provided context, the author's shift toward Lisp programming language was driven by multiple interconnected reasons, and he pursued understanding through both theoretical and practical approaches.\n\n## Reasons for Shifting Interest to Lisp\n\n### 1. Initial AI Fascination\nThe author's journey to Lisp began through his interest in artificial intelligence:\n- **Literary inspiration**: He was influenced by Heinlein's novel \"The Moon is a Harsh Mistress,\" which featured an intelligent computer named Mike\n- **Academic exposure**: A PBS documentary showing Terry Winograd using SHRDLU sparked his interest\n- **Practical necessity**: Since \"in those days Lisp was regarded as the language of AI,\" learning Lisp became essential for pursuing AI work\n\n### 2. Transformative Educational Experience\nLisp provided a profound expansion of the author's programming concepts:\n- **Conceptual breakthrough**: \"Learning Lisp expanded my concept of a program so fast that it was years before I started to have a sense of where the new limits were\"\n- **Educational fulfillment**: He described it as \"more like it; this was what I had expected college to do\"\n- **Contrast with primitive alternatives**: The author noted that \"commonly used programming languages then were pretty primitive,\" citing Pascal-like languages such as PL/I as the default at Cornell\n\n### 3. Salvaging Value from AI Disillusionment\nWhen the author realized that \"AI, as practiced at the time, was a hoax,\" he strategically pivoted:\n- **Independent value recognition**: He \"knew from experience that Lisp was interesting for its own sake and not just for its association with AI\"\n- **Strategic focus**: This led him to \"decide to focus on Lisp\" as a worthwhile pursuit independent of AI applications\n\n### 4. Theoretical Elegance and Fundamental Nature\nThe author was attracted to Lisp's unique theoretical foundation:\n- **Self-defining nature**: \"The distinctive thing about Lisp is that its core is a language defined by writing an interpreter in itself\"\n- **Original purpose**: It \"wasn't originally intended as a programming language in the ordinary sense\" but \"was meant to be a formal model of computation, an alternative to the Turing machine\"\n- **Inherent superiority**: This gave Lisp \"a power and elegance that other languages couldn't match\"\n\n## Methods for Furthering Lisp Understanding\n\n### 1. Academic Writing and Research\n**Book authorship as learning tool**:\n- Wrote \"On Lisp\" (published 1993, largely written during grad school)\n- Applied the principle: \"there's nothing like writing a book about something to help you learn it\"\n- Acknowledged starting with limited knowledge: \"It's scary to think how little I knew about Lisp hacking when I started writing that book\"\n\n### 2. Commercial Application Experience\n**Practical implementation at Interleaf**:\n- Worked with a company that \"had done something pretty bold\" by adding a Lisp dialect as a scripting language\n- Gained experience as a \"Lisp hacker to write things in it\"\n- Noted limitations: \"Their Lisp was the thinnest icing on a giant C cake\"\n\n### 3. Entrepreneurial Application\n**Real-world software development**:\n- Built Viaweb's site generator \"in Lisp, of course\"\n- Shared knowledge through presentations about \"how we'd used Lisp at Viaweb\"\n- Gained significant attention when these talks were posted online\n\n### 4. Language Design and Development\n**Creating original Lisp dialects**:\n\n**Arc Development**:\n- Collaborated with Dan to work \"on this new dialect of Lisp, which I called Arc\"\n- Motivated by the common aspiration: \"A lot of Lisp hackers dream of building a new Lisp\"\n- Driven by the concept of \"a Platonic form of Lisp that all existing dialects fall short of\"\n\n**Bel Creation**:\n- Undertook a 4-year project (March 26, 2015 to October 12, 2019)\n- \"Wrote this new Lisp, called Bel, in itself in Arc\"\n- Achieved deep immersion: \"at any given time I had a decent chunk of the code in my head and could write more there\"\n\n### 5. Continuous Practical Application\n**Ongoing software development**:\n- \"Wrote all of YC's internal software in Arc\"\n- Maintained continuous hands-on experience with Lisp programming\n\n## Summary\n\nThe author's shift to Lisp represented an evolution from practical necessity (AI programming) to deep appreciation of the language's theoretical elegance and power. His learning approach combined academic rigor (book writing), commercial experience (Interleaf, Viaweb), entrepreneurial application (Y Combinator), and creative language design (Arc, Bel). This multi-faceted approach allowed him to develop both theoretical understanding and practical expertise over several decades."
+      },
+      "vanilla_baseline": {
+        "context_recall": 1.0,
+        "context_recall_matched": 43,
+        "context_recall_total": 43,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every factual claim in the answer is directly supported by the provided context, including the reasons for shifting to Lisp (AI being a hoax with unbridgeable gaps), his method of learning through writing 'On Lisp,' and the specific details about Lisp's unique characteristics and his later work on Arc and Bel.",
+        "correctness": 5,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer including the reasons for shifting to Lisp (AI approach wasn't working, Lisp was interesting for its own sake), the method of furthering understanding (writing a book), and details about 'On Lisp' being written during grad school, while also providing additional relevant context.",
+        "num_source_nodes": 10,
+        "response_length": 1663,
+        "latency": 11.143975973129272,
+        "query": "The author mentions his shift of interest towards Lisp, a programming language. What reasons does he provide for this shift and how did he further his understanding of Lisp?",
+        "response_text": "The author's shift toward Lisp occurred during his first year of graduate school when he realized that AI, as practiced at the time, was fundamentally flawed. He discovered that the approach of using explicit data structures to represent concepts and translating natural language into formal representations had an \"unbridgeable gap\" and would never achieve true understanding of natural language.\n\nLooking to salvage something from his disrupted AI plans, he turned to Lisp because he \"knew from experience that Lisp was interesting for its own sake and not just for its association with AI, even though that was the main reason people cared about it at the time.\"\n\nTo further his understanding of Lisp, the author decided to write a book about Lisp hacking called \"On Lisp.\" He admits he knew very little about Lisp hacking when he started writing the book, but found that \"there's nothing like writing a book about something to help you learn it.\" The book wasn't published until 1993, but he wrote much of it during graduate school.\n\nThe author was particularly drawn to Lisp's unique nature - its core being \"a language defined by writing an interpreter in itself.\" Originally intended as a formal model of computation rather than a conventional programming language, Lisp possessed \"a power and elegance that other languages couldn't match.\" This quality had attracted him in college, though he didn't understand why at the time.\n\nLater in his career, he continued deepening his Lisp expertise by creating a new dialect called Arc and eventually spending four years (2015-2019) developing another Lisp variant called Bel, which he wrote in itself using Arc."
+      }
+    }
+  ]
+}

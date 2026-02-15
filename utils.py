@@ -636,7 +636,7 @@ def get_fusion_tree_keyphrase_filter_sort_detail_engine(
                                 num_queries=num_queries,  # set this to 1 to disable query generation
                                 mode="reciprocal_rerank",
                                 # retriever_weights=[0.5, 0.5], # not used in reciprocal_rerank mode
-                                use_async=True,
+                    use_async=True,
                                 verbose=True,
                                 )
 

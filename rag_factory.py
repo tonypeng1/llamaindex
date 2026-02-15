@@ -1,8 +1,25 @@
+import gc
+import os
 import re
 import json
 import asyncio
 import tiktoken
 from typing import List, Dict, Any, Optional
+
+
+_DYNAMIC_AQUERY_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _get_dynamic_aquery_semaphore() -> asyncio.Semaphore:
+    """Get a shared semaphore to cap concurrent heavy sub-query execution."""
+    global _DYNAMIC_AQUERY_SEMAPHORE
+    if _DYNAMIC_AQUERY_SEMAPHORE is None:
+        try:
+            max_concurrency = int(os.environ.get("RAG_SUBQ_MAX_CONCURRENCY", "3"))
+        except ValueError:
+            max_concurrency = 2
+        _DYNAMIC_AQUERY_SEMAPHORE = asyncio.Semaphore(max(1, max_concurrency))
+    return _DYNAMIC_AQUERY_SEMAPHORE
 
 # Normalization utilities for matching queries and references
 NUM_MAP = {
@@ -85,6 +102,34 @@ from llama_index.storage.docstore.mongodb import MongoDocumentStore
 from langextract_integration import extract_query_metadata_filters
 from gliner_extractor import GLiNERExtractor
 from extraction_schemas import get_gliner_entity_labels
+
+# ---------------------------------------------------------------------------
+# GLiNER model singleton – avoids reloading the ~500 MB model per sub-question
+# ---------------------------------------------------------------------------
+_GLINER_CACHE: Dict[str, GLiNERExtractor] = {}
+
+
+def _get_gliner_extractor(schema_name: str = "general",
+                          model_name: str = "urchade/gliner_medium-v2.1",
+                          threshold: float = 0.5,
+                          device: str = "mps") -> GLiNERExtractor:
+    """Return a cached GLiNERExtractor, creating one only on first call per schema."""
+    key = f"{model_name}::{schema_name}"
+    if key not in _GLINER_CACHE:
+        entity_labels = get_gliner_entity_labels(schema_name=schema_name)
+        _GLINER_CACHE[key] = GLiNERExtractor(
+            model_name=model_name,
+            entity_labels=entity_labels,
+            threshold=threshold,
+            device=device,
+        )
+    else:
+        # Update labels in case schema changed but model is the same
+        entity_labels = get_gliner_entity_labels(schema_name=schema_name)
+        _GLINER_CACHE[key]._entity_labels = entity_labels
+    return _GLINER_CACHE[key]
+
+
 from utils import (
     get_fusion_tree_page_filter_sort_detail_engine,
     get_fusion_tree_keyphrase_filter_sort_detail_engine,
@@ -525,15 +570,7 @@ def extract_entities_from_query(
 ) -> Dict[str, List[str]]:
     """Extract named entities from a query string using GLiNER."""
     
-    # Use provided schema or fallback to general
-    entity_labels = get_gliner_entity_labels(schema_name=schema_name)
-    
-    entity_extractor = GLiNERExtractor(
-        model_name="urchade/gliner_medium-v2.1",
-        entity_labels=entity_labels,
-        threshold=0.5,
-        device="mps",
-    )
+    entity_extractor = _get_gliner_extractor(schema_name=schema_name)
     
     node = TextNode(text=query_str)
     try:
@@ -644,11 +681,21 @@ class DynamicFilterQueryEngine:
         )
     
     def query(self, query_str: str):
-        return self._build_engine_for_query(query_str).query(query_str)
+        engine = self._build_engine_for_query(query_str)
+        result = engine.query(query_str)
+        del engine
+        gc.collect()
+        return result
     
     async def aquery(self, query_str: str):
-        engine = self._build_engine_for_query(query_str)
-        return await engine.aquery(query_str) if hasattr(engine, 'aquery') else engine.query(query_str)
+        # Cap concurrent heavy sub-queries to reduce memory spikes, while still
+        # preserving async execution for better latency than fully synchronous mode.
+        async with _get_dynamic_aquery_semaphore():
+            engine = self._build_engine_for_query(query_str)
+            result = await engine.aquery(query_str) if hasattr(engine, 'aquery') else engine.query(query_str)
+            del engine
+            gc.collect()
+            return result
 
 def get_keyphrase_tool(
     query_str: str,

@@ -15,7 +15,7 @@ A high-performance hybrid RAG (Retrieval-Augmented Generation) system using Llam
 ### Installation
 
 ```bash
-git clone -b v0.3.0 https://github.com/tonypeng1/llamaindex.git
+git clone -b v0.4.0 https://github.com/tonypeng1/llamaindex.git
 cd llamaindex
 bash setup.sh
 ```
@@ -70,6 +70,41 @@ The parsing pipeline requires an isolated environment, which is automatically cr
 2. **Update config.py**: Add a new entry to `ARTICLE_CONFIGS` with its directory, filename, and preferred `schema` (e.g., `"academic"`, `"technical"`). Set `ACTIVE_ARTICLE` to your new key. Add `ARTICLE_RAG_OVERRIDES` if needed.
 3. **Update queries.py**: Add your queries to the file and map them in the `ACTIVE_QUERIES` dictionary.
 4. **Execute**: Run `uv run main.py`.
+
+### Benchmark & Evaluation
+
+The repository includes a benchmark framework to compare:
+- **Full Pipeline** (SubQuestion + hybrid retrieval + reranking + metadata filtering)
+- **Vanilla Baseline** (simple LlamaIndex vector retrieval)
+
+Measured metrics:
+- **Context Recall**
+- **Faithfulness** (LLM-as-judge, 1–5)
+- **Correctness** (LLM-as-judge, 1–5)
+
+Run examples:
+
+```bash
+# Full run (all queries)
+python -m benchmark.run_benchmark
+
+# First N queries
+python -m benchmark.run_benchmark --limit 5
+
+# Query range (1-based): 4-6
+python -m benchmark.run_benchmark --start 4 --limit 3
+
+# Full pipeline only
+python -m benchmark.run_benchmark --skip-baseline
+```
+
+Outputs are saved to `benchmark/results/` as both:
+- timestamped JSON
+- human-readable Markdown companion
+
+Filenames include query number(s), e.g.:
+- `benchmark_q5_YYYYMMDD_HHMMSS.json`
+- `benchmark_q4-6_YYYYMMDD_HHMMSS.md`
 
 ## Documentation
 
@@ -127,6 +162,7 @@ The pipeline explicitly handles complex document elements to ensure high-fidelit
 - **Optimized node splitting** — uses a 512-token default chunk size (configurable in `config.py` and aligned with ColBERT's limit) to ensure the reranker sees the entire context of every retrieved node.
 - **Safer embedding & lazy init** — reduced embedding batch sizes and deferred query-engine initialization to lower failure rates and startup cost.
 - **Robust Sub-Question Generation** — uses `LLMQuestionGenerator` with a 3-attempt retry mechanism to handle transient JSON parsing failures during query decomposition.
+- **Bounded sub-query concurrency** — `RAG_SUBQ_MAX_CONCURRENCY` controls heavy async sub-question fan-out (default `3`) to balance latency and memory/OOM risk.
 - **Optional detailed responses** — set `RESPONSE_MODE=TREE_SUMMARIZE` for verbose structured answers (higher token use).
 
 ---
@@ -251,6 +287,7 @@ Original Query → SubQuestionQueryEngine → Sub-question 1 ("What did Paul Gra
 | **Core Execution** | [main.py](main.py), [config.py](config.py), [queries.py](queries.py) |
 | **Parsing & Enrichment** | [mineru_wrapper.py](mineru_wrapper.py), [gliner_extractor.py](gliner_extractor.py), [langextract_integration.py](langextract_integration.py), [extraction_schemas.py](extraction_schemas.py) |
 | **RAG & Storage** | [rag_factory.py](rag_factory.py), [utils.py](utils.py), [db_operation.py](db_operation.py) |
+| **Benchmark & Evaluation** | [benchmark/run_benchmark.py](benchmark/run_benchmark.py), [benchmark/download_dataset.py](benchmark/download_dataset.py), [benchmark/evaluators/](benchmark/evaluators/) |
 | **Testing** | [test/](test/) (Evaluation and validation scripts) |
 | **Setup** | [pyproject.toml](pyproject.toml), [requirements_mineru.txt](requirements_mineru.txt) |
 

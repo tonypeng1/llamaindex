@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.4.0] - 2026-02-15
+
+### Benchmark & Evaluation Framework
+- **New benchmark runner**: Added [benchmark/run_benchmark.py](benchmark/run_benchmark.py) to evaluate the full pipeline vs a vanilla baseline on Paul Graham QA data.
+- **New dataset downloader/cache**: Added [benchmark/download_dataset.py](benchmark/download_dataset.py) with automatic local cache generation for the Paul Graham dataset.
+- **New evaluators package**: Added [benchmark/evaluators/retrieval_eval.py](benchmark/evaluators/retrieval_eval.py) and [benchmark/evaluators/llm_judge.py](benchmark/evaluators/llm_judge.py) for Context Recall, Faithfulness, and Correctness scoring.
+- **Context Recall metric fix**: Switched sentence matching to asymmetric word-containment (recall-oriented) to avoid penalizing larger retrieved chunks.
+
+### Benchmark UX & Reporting
+- **Query range support**: Added `--start` and `--limit` to run subsets (e.g., queries 4–6) in [benchmark/run_benchmark.py](benchmark/run_benchmark.py).
+- **Per-query report structure**: Reworked output format to group Full Pipeline and Vanilla Baseline side-by-side under each query.
+- **Dual report outputs**: Benchmark now writes both JSON and a fully renderable Markdown companion (`.md`) for each run.
+- **Filename improvements**: Output files now include evaluated query number/range (e.g., `benchmark_q5_*.json`, `benchmark_q4-6_*.md`).
+- **Dataset readability**: Added Markdown companion output for cached QA dataset (`paul_graham_qa.md`) to improve human inspection.
+
+### Judge Calibration
+- **Correctness prompt tightened**: Updated [benchmark/evaluators/llm_judge.py](benchmark/evaluators/llm_judge.py) to explicitly avoid penalizing answers for extra correct detail/verbosity; deductions now focus on missing or incorrect facts.
+
+### Stability, Memory, and Concurrency
+- **GLiNER model caching**: Added singleton-style extractor caching in [rag_factory.py](rag_factory.py) to avoid repeated model reloads per sub-question.
+- **OOM mitigation**: Added bounded async sub-query concurrency control in [rag_factory.py](rag_factory.py) via `RAG_SUBQ_MAX_CONCURRENCY`.
+- **Default concurrency tuning**: Set default `RAG_SUBQ_MAX_CONCURRENCY` fallback to `3`.
+- **Balanced async behavior**: Restored async retrieval paths in [utils.py](utils.py) while keeping bounded sub-query fan-out for better latency/memory trade-off.
+
+### Generated Benchmark Artifacts
+- Added benchmark result artifacts under [benchmark/results/](benchmark/results/) for query-range and single-query runs, including JSON and Markdown companions.
+- Added dataset Markdown artifact at [benchmark/datasets/paul_graham/paul_graham_qa.md](benchmark/datasets/paul_graham/paul_graham_qa.md).
+
 ## [0.3.0] - 2026-02-04
 
 ### Retrieval & Filtering Improvements

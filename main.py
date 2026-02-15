@@ -704,13 +704,13 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
     return img_text_nodes
 
 
-def create_and_save_vector_index_to_milvus_database(_base_nodes, _objects, _image_text_nodes):
+def create_and_save_vector_index_to_milvus_database(_base_nodes, _objects, _image_text_nodes, _storage_context_vector):
     """
     Creates a VectorStoreIndex from nodes and saves it to Milvus.
     """
     _recursive_index = VectorStoreIndex(
         nodes=_base_nodes + _objects + _image_text_nodes,
-        storage_context=storage_context_vector,
+        storage_context=_storage_context_vector,
         callback_manager=Settings.callback_manager,
     )
     return _recursive_index
@@ -720,8 +720,24 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 
-if __name__ == "__main__":
-    # Set OpenAI API key, LLM, and embedding model
+
+def setup_pipeline(article_key: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Initialize the full RAG pipeline for a given article.
+
+    Sets up LLM, embedding model, storage contexts (Milvus + MongoDB),
+    vector index, summary tool, section index, and reranker. This is the
+    expensive step but only needs to run once per article.
+
+    Parameters:
+        article_key: Article key from ARTICLE_CONFIGS. If None, uses ACTIVE_ARTICLE.
+
+    Returns:
+        Dict containing all pipeline components needed for run_query().
+    """
+    key = article_key or ACTIVE_ARTICLE
+
+    # LLM
     llm = Anthropic(
                 model="claude-sonnet-4-0",
                 temperature=0.0,
@@ -730,13 +746,13 @@ if __name__ == "__main__":
                 )
     Settings.llm = llm
 
-    # Create embedding model with smaller batch size to avoid token limits
+    # Embedding model
     embed_model = OpenAIEmbedding(
         model_name=EMBEDDING_CONFIG["model_name"],
         embed_batch_size=10  # Reduce batch size to avoid hitting 300k token limit
     )
 
-    # Create debug handler
+    # Debug handler
     llama_debug = LlamaDebugHandler(print_trace_on_end=False)
     callback_manager = CallbackManager([llama_debug])
     Settings.callback_manager = callback_manager
@@ -747,11 +763,9 @@ if __name__ == "__main__":
 
     # =============================================================================
     # Get ALL settings from config.py and set up variables
-    # NOTE: Set ACTIVE_ARTICLE in config.py to choose which document is processed
     # =============================================================================
 
-    # Get configuration from config.py
-    article_info = get_article_info()
+    article_info = get_article_info(key)
     rag_settings = article_info["rag_settings"]
 
     # Article details
@@ -780,14 +794,14 @@ if __name__ == "__main__":
 
     page_filter_verbose = rag_settings.get("page_filter_verbose", False)
 
-    # Create database name and colleciton names
-    (database_name, 
+    # Create database name and collection names
+    (database_name,
     collection_name_vector,
     collection_name_summary) = get_database_and_llamaparse_collection_name(
-                                                                article_dictory, 
-                                                                ACTIVE_ARTICLE,
-                                                                chunk_method, 
-                                                                embed_model_name, 
+                                                                article_dictory,
+                                                                key,
+                                                                chunk_method,
+                                                                embed_model_name,
                                                                 "mineru", # parse_method
                                                                 chunk_size,
                                                                 chunk_overlap,
@@ -826,8 +840,8 @@ if __name__ == "__main__":
     objects = []
     image_text_nodes = []
 
-    # Load documnet nodes if either vector index or docstore not saved.
-    if save_index_vector or add_document_vector or add_document_summary: 
+    # Load document nodes if either vector index or docstore not saved.
+    if save_index_vector or add_document_vector or add_document_summary:
         base_nodes, objects, image_text_nodes = ingest_document_mineru(
                                                                     article_dictory,
                                                                     article_name,
@@ -840,9 +854,10 @@ if __name__ == "__main__":
     if save_index_vector == True:
         recursive_index = create_and_save_vector_index_to_milvus_database(
                                                                     base_nodes,
-                                                                    objects, 
-                                                                    image_text_nodes
-                                                                    )                                 
+                                                                    objects,
+                                                                    image_text_nodes,
+                                                                    storage_context_vector
+                                                                    )
     else:
         # Load from Milvus database
         recursive_index = VectorStoreIndex.from_vector_store(
@@ -879,18 +894,8 @@ if __name__ == "__main__":
         storage_context_summary.docstore.add_documents(all_nodes_summary)
         print(f"\n✅ Stitched prev/next relationships in summary for {len(all_nodes_summary)} nodes")
 
-    # Hhybrid retrieval approach with fusion and reranking:
-    # 1. BM25 (keyword/lexical search) - good for exact matches like "equation (1)"
-    # 2. Vector embeddings (semantic search) - good for meaning-based retrieval
-    # 3. QueryFusionRetriever with reciprocal rank fusion
-    # 4. ColBERT reranking for final ranking
-
-    similarity_top_k_fusion = rag_settings["similarity_top_k_fusion"]
-    fusion_top_n = rag_settings["fusion_top_n"]
-    num_queries = rag_settings["num_queries"]
+    # Reranker
     rerank_top_n = rag_settings["rerank_top_n"]
-    num_nodes = rag_settings["num_nodes"]
-
     reranker = ColbertRerank(
         top_n=rerank_top_n,
         model="colbert-ir/colbertv2.0",
@@ -898,16 +903,57 @@ if __name__ == "__main__":
         keep_retrieval_score=True,
     )
 
-    query = QUERY
-
-    # Enable entity filtering when using entity metadata extraction AND use_entity_filtering is True
+    # Enable entity filtering
     enable_entity_filtering = use_entity_filtering and metadata in ["entity", "langextract", "both"]
+
+    return {
+        "llm": llm,
+        "recursive_index": recursive_index,
+        "storage_context_vector": storage_context_vector,
+        "storage_context_summary": storage_context_summary,
+        "vector_store": vector_store,
+        "summary_tool": summary_tool,
+        "section_index": section_index,
+        "reranker": reranker,
+        "rag_settings": rag_settings,
+        "schema_name": schema_name,
+        "metadata": metadata,
+        "enable_entity_filtering": enable_entity_filtering,
+        "page_filter_verbose": page_filter_verbose,
+        "collection_name_vector": collection_name_vector,
+        "article_key": key,
+    }
+
+
+def run_query(ctx: Dict[str, Any], query: str, verbose: bool = True) -> Dict[str, Any]:
+    """
+    Run a single query through the full RAG pipeline.
+
+    Parameters:
+        ctx: Pipeline context dict returned by setup_pipeline().
+        query: The query string to execute.
+        verbose: Whether to print diagnostics.
+
+    Returns:
+        Dict with keys: query, response, response_text, source_nodes, latency_seconds
+    """
+    llm = ctx["llm"]
+    recursive_index = ctx["recursive_index"]
+    docstore = ctx["storage_context_vector"].docstore
+    reranker = ctx["reranker"]
+    rag_settings = ctx["rag_settings"]
+    schema_name = ctx["schema_name"]
+    metadata = ctx["metadata"]
+    enable_entity_filtering = ctx["enable_entity_filtering"]
+    section_index = ctx["section_index"]
+    summary_tool = ctx["summary_tool"]
+    page_filter_verbose = ctx["page_filter_verbose"]
 
     # Build tools using the factory
     keyphrase_tool = rag_factory.get_keyphrase_tool(
         query,
         recursive_index,
-        storage_context_vector.docstore,
+        docstore,
         reranker,
         llm,
         rag_settings,
@@ -920,7 +966,7 @@ if __name__ == "__main__":
         query,
         reranker,
         recursive_index,
-        storage_context_vector.docstore,
+        docstore,
         llm,
         section_index=section_index,
         metadata_key="page",
@@ -937,25 +983,44 @@ if __name__ == "__main__":
     sub_question_engine = rag_factory.build_sub_question_engine(
         tools,
         llm,
-        verbose=True
+        verbose=verbose
     )
 
-    print(f"\n📝 QUERY: {query}\n")
+    if verbose:
+        print(f"\n📝 QUERY: {query}\n")
 
     # Extract and display entities for the main query
     if metadata in ["entity", "langextract", "both"]:
         rag_factory.extract_entities_from_query(query, schema_name=schema_name)
 
-    # Execute query
+    # Execute query with timing
+    start_time = time.time()
     response = sub_question_engine.query(query)
+    latency = time.time() - start_time
 
-    if response is not None:
+    if response is not None and verbose:
         rag_factory.print_response_diagnostics(response)
         print(f"\n📝 RESPONSE:\n{response}\n")
 
+    return {
+        "query": query,
+        "response": response,
+        "response_text": str(response) if response else "",
+        "source_nodes": response.source_nodes if response else [],
+        "latency_seconds": latency,
+    }
+
+
+if __name__ == "__main__":
+    ctx = setup_pipeline()
+
+    result = run_query(ctx, QUERY)
+
     # Cleanup resources
     try:
-        if 'vector_store' in dir() and hasattr(vector_store, 'client'):
+        vector_store = ctx.get("vector_store")
+        collection_name_vector = ctx.get("collection_name_vector")
+        if vector_store and hasattr(vector_store, 'client'):
             vector_store.client.release_collection(collection_name=collection_name_vector)
             vector_store.client.close()
     except:

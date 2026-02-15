@@ -1,0 +1,119 @@
+{
+  "timestamp": "2026-02-15T08:02:48.458474",
+  "summary": {
+    "pipeline": {
+      "num_queries": 3,
+      "num_errors": 0,
+      "context_recall_mean": 0.9755813953488373,
+      "faithfulness_mean": 5.0,
+      "correctness_mean": 5.0,
+      "latency_mean": 66.48611736297607
+    },
+    "vanilla_baseline": {
+      "num_queries": 3,
+      "num_errors": 0,
+      "context_recall_mean": 1.0,
+      "faithfulness_mean": 5.0,
+      "correctness_mean": 5.0,
+      "latency_mean": 10.249145269393921
+    }
+  },
+  "per_query": [
+    {
+      "query_number": 1,
+      "query": "In the essay, the author mentions his early experiences with programming. Describe the first computer he used for programming, the language he used, and the challenges he faced.",
+      "pipeline": {
+        "context_recall": 0.975,
+        "context_recall_matched": 39,
+        "context_recall_total": 40,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every factual claim in the answer is directly supported by the provided context, including specific details about the IBM 1401, early Fortran, the punch card system, the infinite loop incident, and later memory constraints with the TRS-80.",
+        "correctness": 5,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer including the IBM 1401 computer, early Fortran language, 9th grade usage, punched card input limitations, lack of data on punched cards, alternative of calculating pi approximations, insufficient math knowledge, and the conclusion that he couldn't do much with the system.",
+        "num_source_nodes": 88,
+        "response_length": 3736,
+        "latency": 74.95537424087524,
+        "query": "In the essay, the author mentions his early experiences with programming. Describe the first computer he used for programming, the language he used, and the challenges he faced.",
+        "response_text": "Based on the essay, the author's early programming experiences reveal a fascinating glimpse into computing in the early days of personal access to computers. Here is a comprehensive overview of his first programming experience:\n\n## The First Computer: IBM 1401\n\nThe author's first programming experience occurred when he was in **9th grade (age 13-14)** on an **IBM 1401** computer. This machine had several distinctive characteristics:\n\n**Location and Setup:**\n- Located in the basement of his junior high school\n- Used by the school district for \"data processing\"\n- The author described the environment as \"like a mini Bond villain's lair down there, with all these alien-looking machines - CPU, disk drives, printer, card reader - sitting up on a raised floor under bright fluorescent lights\"\n\n**Access:**\n- The author gained permission to use the system along with his friend Rich Draves\n- This was a shared computing resource without time-sharing capabilities\n\n## Programming Language: Early Fortran\n\nThe first programming language the author used was **an early version of Fortran**. The programming workflow involved:\n\n**Development Process:**\n1. Type programs on punch cards\n2. Stack the punch cards in the card reader\n3. Press a button to load the program into memory and run it\n4. Output would typically print on what he described as the \"spectacularly loud printer\"\n\n## Major Challenges Faced\n\nThe author encountered several significant obstacles during his early programming experiences:\n\n### Technical and Input Limitations\n\n**Data Input Constraints:**\n- The primary challenge was that \"the only form of input to programs was data stored on punched cards\"\n- The author \"didn't have any data stored on punched cards,\" severely limiting what he could accomplish\n- This constraint meant he \"couldn't figure out what to do with it\" regarding the IBM 1401\n\n**Limited Programming Options:**\n- Without external data, his only alternative was \"to do things that didn't rely on any input, like calculate approximations of pi\"\n- However, he \"didn't know enough math to do anything interesting of that type\"\n- Due to these limitations, he notes: \"I'm not surprised I can't remember any programs I wrote, because they can't have done much\"\n\n### Social and Technical Consequences\n\n**The Infinite Loop Incident:**\nThe author's most vivid memory involved a critical learning moment about program termination:\n- He discovered \"it was possible for programs not to terminate, when one of mine didn't\"\n- On the IBM 1401, which lacked time-sharing, this created both technical and social problems\n- The incident was significant enough that \"the data center manager's expression made clear\" this was a serious error\n- This highlighted how programming mistakes could have social consequences in shared computing environments\n\n### Later Hardware Constraints\n\nEven when the author eventually acquired his own computer (a **TRS-80 around 1980**), he continued to face hardware limitations:\n- When he wrote a word processor for his father's use, \"there was only room in memory for about 2 pages of text\"\n- His father had to \"write 2 pages at a time and then print them out\" due to these memory constraints\n\n## Summary\n\nThe author's early programming experience illustrates the significant barriers that existed in early computing: severely limited input/output options, restrictive hardware constraints, shared computing resources that made errors socially problematic, and the need for substantial mathematical knowledge to create meaningful programs. These challenges shaped his understanding of programming fundamentals, particularly the critical concept of program termination, while working within the constraints of 1970s computing technology."
+      },
+      "vanilla_baseline": {
+        "context_recall": 1.0,
+        "context_recall_matched": 40,
+        "context_recall_total": 40,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every factual claim in the answer is directly supported by the context, including the IBM 1401 computer, early Fortran language, punch card programming process, specific challenges faced, and the author's age and grade level.",
+        "correctness": 5,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer including the IBM 1401 computer, 9th grade usage, early Fortran language, and the specific challenges with punched card input limitations and lack of mathematical knowledge, while also providing additional contextual details that don't contradict the reference.",
+        "num_source_nodes": 10,
+        "response_length": 1760,
+        "latency": 13.864337921142578,
+        "query": "In the essay, the author mentions his early experiences with programming. Describe the first computer he used for programming, the language he used, and the challenges he faced.",
+        "response_text": "The author's first programming experience was on an IBM 1401 computer that his school district used for data processing. This happened when he was in 9th grade, around age 13 or 14. The computer was located in the basement of his junior high school and resembled \"a mini Bond villain's lair\" with various alien-looking machines including the CPU, disk drives, printer, and card reader, all sitting on a raised floor under bright fluorescent lights.\n\nHe programmed using an early version of Fortran. The programming process was quite cumbersome - he had to type programs on punch cards, stack them in the card reader, and press a button to load the program into memory and run it. The output would typically print on an extremely loud printer.\n\nThe author faced several significant challenges with this system:\n\n1. **Limited input options**: The only form of input to programs was data stored on punched cards, and he didn't have any data stored on cards.\n\n2. **Lack of mathematical knowledge**: The alternative was to create programs that didn't rely on input, like calculating approximations of pi, but he didn't know enough mathematics to do anything interesting.\n\n3. **Social constraints**: Since the machine didn't have time-sharing, when one of his programs failed to terminate (got stuck in an infinite loop), it was both a technical and social error, as evidenced by the data center manager's disapproving expression.\n\n4. **Forgettable results**: Due to these limitations, he can't remember any of the programs he wrote because they couldn't have accomplished much of significance.\n\nThe author notes that everything changed with the advent of microcomputers, which allowed for real-time interaction and made programming much more engaging and practical."
+      }
+    },
+    {
+      "query_number": 2,
+      "query": "The author switched his major from philosophy to AI during his college years. What were the two specific influences that led him to develop an interest in AI? Provide a brief description of each.",
+      "pipeline": {
+        "context_recall": 0.975,
+        "context_recall_matched": 39,
+        "context_recall_total": 40,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every factual claim in the answer is directly supported by the provided context, including specific quotes, details about both influences, and the author's reactions to them.",
+        "correctness": 5,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer, including both influences (Heinlein's novel and the PBS documentary), the specific details about Mike the computer character, Terry Winograd using SHRDLU, and the author's reactions to each influence.",
+        "num_source_nodes": 96,
+        "response_length": 2468,
+        "latency": 65.48795294761658,
+        "query": "The author switched his major from philosophy to AI during his college years. What were the two specific influences that led him to develop an interest in AI? Provide a brief description of each.",
+        "response_text": "Based on the provided context, when the author switched his major from philosophy to AI during his college years, he was influenced by two specific factors that sparked his interest in artificial intelligence. Here are the detailed descriptions of each influence:\n\n## First Influence: Heinlein's \"The Moon is a Harsh Mistress\"\n\nThe first influence was **a science fiction novel by Robert Heinlein titled \"The Moon is a Harsh Mistress,\"** which featured an intelligent computer character named Mike. \n\n**Key details about this influence:**\n- The author was completely captivated by the novel's world and the concept of the intelligent computer\n- The character Mike represented what seemed like an achievable form of artificial intelligence\n- The author's reaction was profound: \"I was drawn entirely into its world. It seemed only a matter of time before we'd have Mike\"\n- This novel made AI seem not just possible, but inevitable to the author\n- The author acknowledges uncertainty about how well the novel has aged, as he hasn't attempted to reread it since\n\n## Second Influence: PBS Documentary on SHRDLU\n\nThe second influence was **a PBS documentary that demonstrated Terry Winograd using SHRDLU,** an early natural language understanding computer program.\n\n**Key details about this influence:**\n- The documentary showed SHRDLU in actual operation, providing concrete evidence of AI capabilities\n- Seeing Winograd interact with SHRDLU made the timeline for achieving advanced AI seem very short to the author\n- The author's assessment was optimistic: \"when I saw Winograd using SHRDLU, it seemed like that time would be a few years at most\"\n- The author believed that creating more advanced AI was simply a matter of expanding SHRDLU's vocabulary: \"All you had to do was teach SHRDLU more words\"\n- This demonstration suggested to the author that existing systems were already \"climbing the lower slopes of intelligence\"\n\n## Context and Impact\n\nThe author notes that \"AI was in the air in the mid 1980s,\" indicating that there was general excitement about artificial intelligence during this period. However, these two specific influences stood out as the primary motivators for his career change. The combination of fictional inspiration (Heinlein's novel) and concrete demonstration (the SHRDLU documentary) created a compelling vision that AI was both desirable and achievable in the near term, ultimately leading him to abandon philosophy in favor of AI studies."
+      },
+      "vanilla_baseline": {
+        "context_recall": 1.0,
+        "context_recall_matched": 40,
+        "context_recall_total": 40,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every claim in the answer is directly supported by the context, which explicitly states these were the two specific influences that made the author want to work on AI, and accurately describes both the Heinlein novel featuring Mike and the PBS documentary showing Winograd using SHRDLU.",
+        "correctness": 5,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer, including both specific influences (Heinlein's novel and the PBS documentary), the names of key elements (Mike, Terry Winograd, SHRDLU), and the author's reactions to each influence.",
+        "num_source_nodes": 10,
+        "response_length": 838,
+        "latency": 6.67989182472229,
+        "query": "The author switched his major from philosophy to AI during his college years. What were the two specific influences that led him to develop an interest in AI? Provide a brief description of each.",
+        "response_text": "The author was influenced by two specific things that led him to develop an interest in AI:\n\n1. **A novel by Heinlein called \"The Moon is a Harsh Mistress\"** - This book featured an intelligent computer called Mike. The author was completely drawn into the world of this novel and felt it was only a matter of time before such intelligent computers would exist in reality.\n\n2. **A PBS documentary showing Terry Winograd using SHRDLU** - This documentary demonstrated an AI system in action. After seeing Winograd work with SHRDLU, the author believed that achieving true AI was just a few years away at most, and that it would simply be a matter of teaching the system more words.\n\nThese two influences made AI seem both compelling and achievable to the author, leading him to switch from philosophy to pursue AI during his college years."
+      }
+    },
+    {
+      "query_number": 3,
+      "query": "In the essay, the author discusses his initial interest in AI and his eventual disillusionment with it. According to the author, what were the two main influences that initially drew him to AI and what realization led him to believe that the approach to AI during his time was a hoax?",
+      "pipeline": {
+        "context_recall": 0.9767441860465116,
+        "context_recall_matched": 42,
+        "context_recall_total": 43,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every factual claim in the answer is directly supported by the provided context, including the two specific influences (Heinlein's novel and the PBS documentary), the author's realization about the limitations of symbolic AI during graduate school, and his conclusion that the approach was a 'hoax.'",
+        "correctness": 5,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer, correctly identifying the two main influences (Heinlein's novel featuring Mike and the PBS documentary showing Terry Winograd using SHRDLU) and the realization about the unbridgeable gap between AI programs' formal language processing and actual natural language understanding.",
+        "num_source_nodes": 92,
+        "response_length": 4129,
+        "latency": 59.0150249004364,
+        "query": "In the essay, the author discusses his initial interest in AI and his eventual disillusionment with it. According to the author, what were the two main influences that initially drew him to AI and what realization led him to believe that the approach to AI during his time was a hoax?",
+        "response_text": "Based on the essay, the author's journey with AI can be divided into two distinct phases: his initial fascination and subsequent disillusionment. Here is a detailed analysis of both aspects:\n\n## Initial Influences That Drew the Author to AI\n\nThe author explicitly identifies **two main influences** that sparked his interest in artificial intelligence during the mid-1980s:\n\n### 1. Literary Influence: Heinlein's \"The Moon is a Harsh Mistress\"\n- **Source**: A science fiction novel by Robert Heinlein\n- **Key Element**: Featured an intelligent computer character named \"Mike\"\n- **Impact on Author**: The author was \"drawn entirely into its world\" and believed that creating such an intelligent system \"seemed only a matter of time before we'd have Mike\"\n- **Significance**: This novel provided the author with a compelling vision of what AI could achieve, serving as an inspirational goal\n\n### 2. Technical Demonstration: PBS Documentary on SHRDLU\n- **Source**: A PBS documentary featuring Terry Winograd demonstrating SHRDLU\n- **System Description**: SHRDLU was an early natural language understanding program that could manipulate objects in a simulated blocks world\n- **Author's Reaction**: After viewing this demonstration, the author believed that achieving artificial intelligence \"seemed like that time would be a few years at most\"\n- **Perceived Solution**: The author thought the path to AI was straightforward: \"All you had to do was teach SHRDLU more words\"\n\nThese influences were so powerful that they motivated the author to:\n- Switch from philosophy (which he found boring) to AI\n- Teach himself the Lisp programming language\n- Reverse-engineer SHRDLU for his undergraduate thesis\n\n## The Realization That Led to Disillusionment\n\nThe author's disillusionment with AI occurred during his **first year of graduate school at Harvard** and centered on a fundamental understanding of the limitations of the prevailing AI approach.\n\n### The Flawed Approach\nThe author observed that AI programs of that era operated using the following methodology:\n- Programs would receive natural language input (e.g., \"the dog is sitting on the chair\")\n- They would translate this input into formal representations\n- These representations would be added to the program's knowledge base\n\n### The Critical Realization\nThe author's key insight was that **\"what these programs really showed was that there's a subset of natural language that's a formal language. But a very proper subset.\"**\n\nThis realization had several important implications:\n\n1. **Limited Scope**: The programs could only handle a very restricted subset of natural language that could be formalized\n2. **Unbridgeable Gap**: The author recognized \"it was clear that there was an unbridgeable gap between what they could do and actually understanding natural language\"\n3. **False Premise**: His undergraduate belief that creating AI like \"Mike\" was \"simply a matter of teaching SHRDLU more words\" was fundamentally incorrect\n\n### The Broader Implications\nThe author concluded that:\n- **Methodological Failure**: \"That whole way of doing AI, with explicit data structures representing concepts, was not going to work\"\n- **Academic Opportunism**: While this broken approach generated \"a lot of opportunities to write papers about various band-aims that could be applied to it,\" it was fundamentally flawed\n- **Unattainable Goal**: Most importantly, \"it was never going to get us Mike\" - the intelligent computer system he had originally hoped to help create\n\n### Consequence of This Realization\nThis fundamental understanding of the limitations of symbolic AI led the author to:\n- Abandon AI as his primary research focus\n- Concentrate instead on Lisp programming for its own intrinsic value\n- Recognize that the prevailing AI methodology was essentially a \"hoax\" in terms of its ability to achieve true artificial intelligence\n\nThe author's journey illustrates a classic pattern in AI research: initial optimism based on impressive but limited demonstrations, followed by a deeper understanding of the fundamental challenges involved in creating truly intelligent systems."
+      },
+      "vanilla_baseline": {
+        "context_recall": 1.0,
+        "context_recall_matched": 43,
+        "context_recall_total": 43,
+        "faithfulness": 5,
+        "faithfulness_reasoning": "Every claim in the answer is directly supported by the context, including the two specific influences (Heinlein's novel and the PBS documentary), the author's expectations about timeline, and his realization about the fundamental flaws in the AI approach of his time.",
+        "correctness": 5,
+        "correctness_reasoning": "The generated answer captures all key facts from the reference answer, including the two main influences (Heinlein's novel and the PBS documentary with Winograd/SHRDLU) and the realization about the unbridgeable gap between AI programs and actual natural language understanding, while providing additional relevant context.",
+        "num_source_nodes": 10,
+        "response_length": 1422,
+        "latency": 10.203206062316895,
+        "query": "In the essay, the author discusses his initial interest in AI and his eventual disillusionment with it. According to the author, what were the two main influences that initially drew him to AI and what realization led him to believe that the approach to AI during his time was a hoax?",
+        "response_text": "According to the essay, the two main influences that initially drew the author to AI were:\n\n1. **A novel by Heinlein called \"The Moon is a Harsh Mistress\"**, which featured an intelligent computer called Mike\n2. **A PBS documentary that showed Terry Winograd using SHRDLU**\n\nThe author was completely drawn into the world of Heinlein's novel and believed it was only a matter of time before they'd have Mike. When he saw Winograd using SHRDLU, it seemed like that time would be just a few years away - all you had to do was teach SHRDLU more words.\n\nThe realization that led him to believe the AI approach of his time was a hoax came during his first year of graduate school. He realized that the type of AI being practiced - where programs were told something like \"the dog is sitting on the chair\" and would translate this into formal representation and add it to their knowledge - was fundamentally flawed.\n\nWhat these programs actually demonstrated was that there's a subset of natural language that's a formal language, but only a very small subset. The author recognized there was an unbridgeable gap between what these programs could do and actually understanding natural language. It wasn't simply a matter of teaching SHRDLU more words. The entire approach of using explicit data structures to represent concepts was not going to work and would never achieve true artificial intelligence like Mike from the novel."
+      }
+    }
+  ]
+}
