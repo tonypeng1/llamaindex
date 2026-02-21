@@ -1,6 +1,6 @@
 # Advanced Hybrid RAG for Multi-Domain Document Analysis
 
-A high-performance hybrid RAG (Retrieval-Augmented Generation) system using LlamaIndex, designed for precision Q&A over complex PDF documents. It combines **MinerU** for structural parsing with **GLiNER** and **LangExtract** for deep metadata enrichment, enabling dynamic query routing via a **Sub-Question Query Engine**. The pipeline supports advanced retrieval strategies including BM25-Vector fusion, page-range filtering, and LaTeX-enabled response synthesis for technical and academic content.
+A high-performance hybrid RAG (Retrieval-Augmented Generation) system using LlamaIndex, designed for precision Q&A over complex PDF documents. Its key strength is **deeper answer synthesis**: It combines **MinerU** for structural parsing with **GLiNER** and **LangExtract** for deep metadata enrichment, enabling dynamic query routing via a **Sub-Question Query Engine**. The pipeline supports advanced retrieval strategies including BM25-Vector fusion, page-range filtering, and LaTeX-enabled response synthesis for technical and academic content.
 
 ## Quick Start
 
