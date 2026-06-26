@@ -739,7 +739,7 @@ def setup_pipeline(article_key: Optional[str] = None) -> Dict[str, Any]:
 
     # LLM
     llm = Anthropic(
-                model="claude-sonnet-4-0",
+                model="claude-sonnet-4-5",
                 temperature=0.0,
                 max_tokens=2500,
                 api_key=ANTHROPIC_API_KEY,

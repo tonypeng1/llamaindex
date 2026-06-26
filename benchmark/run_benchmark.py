@@ -70,7 +70,7 @@ def _build_vanilla_baseline() -> Any:
 
     # Same LLM/embeddings as the full pipeline
     llm = Anthropic(
-        model="claude-sonnet-4-0",
+        model="claude-sonnet-4-5",
         temperature=0.0,
         max_tokens=2500,
         api_key=os.environ.get("ANTHROPIC_API_KEY"),

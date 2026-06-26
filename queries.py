@@ -210,10 +210,24 @@ PUMP_DEPLETION_FRA_ACTIVE = "Please describe Figure 8 in detail. What is the def
 # 11. NF_Analysis_DFRA
 # =============================================================================
 
-# NF_Analysis_DFRA_ACTIVE = "Does anywhere in this paper mention the signal power used in the analysis/experiments?"
-# NF_Analysis_DFRA_ACTIVE = "How does NF dependent on fiber length and pump power?"
-NF_Analysis_DFRA_ACTIVE = "What is the definition of NF (noise figure)? How does NF dependent on fiber length and pump power?"
+# NF_ANALYSIS_DFRA_ACTIVE = "Does anywhere in this paper mention the signal power used in the analysis/experiments?"
+# NF_ANALYSIS_DFRA_ACTIVE = "How does NF dependent on fiber length and pump power?"
+NF_ANALYSIS_DFRA_ACTIVE = "What is the definition of NF (noise figure)? How does NF dependent on fiber length and pump power?"
 
+
+# =============================================================================
+# 12. Hybrid_EDFA_DRA
+# =============================================================================
+# HYBRID_EDFA_DRA_ACTIVE = "Could you please clarify the experimental setup used in the paper? Such as fiber spans, whether EDFAs are used, and signal and pump power levels?"
+# HYBRID_EDFA_DRA_ACTIVE = "Please describe the content in both Figure 1 and Figure 3 in detail. What are the major trends shown in the figures? How do the two figures contrast with each other?"
+HYBRID_EDFA_DRA_ACTIVE = "Please describe the content in Figure 2 in detail. What are the major trends shown in the figure? What are the pump power levels used in the simulations shown in the figure?"
+
+
+# =============================================================================
+# 12. Field_demo_DRA
+# =============================================================================
+# FIELD_DEMO_DRA_ACTIVE = "Could you please describe the experimental setup used in this paper in detail, including both Figure 1 and Figure 3?"
+FIELD_DEMO_DRA_ACTIVE = "Please describe the content in Figure 5, Figure 6, and Figure 8 in detail. How do the results shown in these figures contrast with each other? What are the pump power levels used in the experiments shown in these figures?"
 
 # =============================================================================
 # MAPPINGS (Used by config.py)
@@ -231,7 +245,9 @@ ACTIVE_QUERIES: Dict[str, str] = {
     "Noise_in_DRA": NOISE_IN_DRA_ACTIVE,
     "ASE_noise_pump_depletion": ASE_NOISE_PUMP_DEPL_ACTIVE,
     "Pump_depletion_FRA": PUMP_DEPLETION_FRA_ACTIVE,
-    "NF_Analysis_DFRA": NF_Analysis_DFRA_ACTIVE,
+    "NF_Analysis_DFRA": NF_ANALYSIS_DFRA_ACTIVE,
+    "Hybrid_EDFA_DRA": HYBRID_EDFA_DRA_ACTIVE,
+    "Field_demo_DRA": FIELD_DEMO_DRA_ACTIVE,
 }
 
 def get_query_for_article(article_key: str) -> str:

@@ -31,13 +31,15 @@ from queries import get_query_for_article
 # Must be a key from ARTICLE_CONFIGS
 
 # ACTIVE_ARTICLE = "RAG_Anything"
-ACTIVE_ARTICLE = "paul_graham_essay"
+# ACTIVE_ARTICLE = "paul_graham_essay"
 # ACTIVE_ARTICLE = "Laser_coprop_RA"
 # ACTIVE_ARTICLE = "Noise_in_DRA"
 # ACTIVE_ARTICLE = "ASE_noise_pump_depletion"
 # ACTIVE_ARTICLE = "NF_Analysis_DFRA"
 # ACTIVE_ARTICLE = "Pump_depletion_FRA"
-# ACTIVE_ARTICLE = "How_to_do_great_work"
+# ACTIVE_ARTICLE = "Hybrid_EDFA_DRA"
+# ACTIVE_ARTICLE = "Field_demo_DRA"
+ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"
 # ACTIVE_ARTICLE = "uber_10q_march_2022"
@@ -118,6 +120,19 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "filename": "NF_Analysis_DFRA.pdf",
         "schema": "academic",
         "description": "Analysis of noise figure in distributed fiber Raman amplifiers",
+    },
+    "Hybrid_EDFA_DRA": {
+        "directory": "DRA",
+        "filename": "Hybrid_EDFA_DRA.pdf",
+        "schema": "academic",
+        "description": "The impact of hybrid erbium-doped fiber amplifier (EDFA) distributed Raman amplification on a high bit rate wavelength-division-multiplexed optical communication system",
+    },
+
+    "Field_demo_DRA": {
+        "directory": "DRA",
+        "filename": "Field_demonstration_DRA.pdf",
+        "schema": "academic",
+        "description": "Field demonstration of distributed Raman amplification with 3.8-dB Q-improvement for 5x120-km transmission",
     },
     
     # -------------------------------------------------------------------------
@@ -245,6 +260,20 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
     "NF_Analysis_DFRA": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
+    },
+    "Hybrid_EDFA_DRA": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
+    },
+    "Field_demo_DRA": {
         "metadata": "both",
         "use_entity_filtering": True,
         "chunk_size": 256,
