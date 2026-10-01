@@ -39,11 +39,12 @@ from queries import get_query_for_article
 # ACTIVE_ARTICLE = "Pump_depletion_FRA"
 # ACTIVE_ARTICLE = "Hybrid_EDFA_DRA"
 # ACTIVE_ARTICLE = "Field_demo_DRA"
-ACTIVE_ARTICLE = "How_to_do_great_work"
+# ACTIVE_ARTICLE = "How_to_do_great_work"
 # ACTIVE_ARTICLE = "attention_all"
 # ACTIVE_ARTICLE = "metagpt"
 # ACTIVE_ARTICLE = "uber_10q_march_2022"
 # ACTIVE_ARTICLE = "eBook-How-to-Build-a-Career-in-AI"
+ACTIVE_ARTICLE = "Analytical_Gain_Pumps"
 
 # Get the active query for the selected article
 QUERY = get_query_for_article(ACTIVE_ARTICLE)
@@ -85,13 +86,13 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "schema": "academic",  # Uses academic paper schema
         "description": "Attention Is All You Need - Transformer architecture paper",
     },
-        "RAG_Anything": {
+    "RAG_Anything": {
         "directory": "Rag_anything",
         "filename": "RAG_Anything.pdf",
         "schema": "academic",
         "description": "RAG Anything - A multimodal RAG system paper",
     },
-        "Laser_coprop_RA": {
+    "Laser_coprop_RA": {
         "directory": "DRA",
         "filename": "Laser_coprop_RA.pdf",
         "schema": "academic",
@@ -127,12 +128,17 @@ ARTICLE_CONFIGS: Dict[str, Dict[str, Any]] = {
         "schema": "academic",
         "description": "The impact of hybrid erbium-doped fiber amplifier (EDFA) distributed Raman amplification on a high bit rate wavelength-division-multiplexed optical communication system",
     },
-
     "Field_demo_DRA": {
         "directory": "DRA",
         "filename": "Field_demonstration_DRA.pdf",
         "schema": "academic",
         "description": "Field demonstration of distributed Raman amplification with 3.8-dB Q-improvement for 5x120-km transmission",
+    },
+    "Analytical_Gain_Pumps": {
+        "directory": "DRA",
+        "filename": "Analytical_Gain_Pumps.pdf",
+        "schema": "academic",
+        "description": "A novel analytical approximated solution for the gain of broadband Raman amplifiers with multiple counter-pump lasers",
     },
     
     # -------------------------------------------------------------------------
@@ -280,6 +286,13 @@ ARTICLE_RAG_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "chunk_overlap": 64,
         "num_nodes": 1,  # For PrevNextNodePostprocessor
     },
+        "Analytical_Gain_Pumps": {
+        "metadata": "both",
+        "use_entity_filtering": True,
+        "chunk_size": 256,
+        "chunk_overlap": 64,
+        "num_nodes": 1,  # For PrevNextNodePostprocessor
+    }
 }
 
 # =============================================================================

@@ -224,10 +224,19 @@ HYBRID_EDFA_DRA_ACTIVE = "Please describe the content in Figure 2 in detail. Wha
 
 
 # =============================================================================
-# 12. Field_demo_DRA
+# 13. Field_demo_DRA
 # =============================================================================
 # FIELD_DEMO_DRA_ACTIVE = "Could you please describe the experimental setup used in this paper in detail, including both Figure 1 and Figure 3?"
 FIELD_DEMO_DRA_ACTIVE = "Please describe the content in Figure 5, Figure 6, and Figure 8 in detail. How do the results shown in these figures contrast with each other? What are the pump power levels used in the experiments shown in these figures?"
+
+
+# =============================================================================
+# 14. Analytical_Gain_Pumps
+# =============================================================================
+ANALYTICAL_GAIN_PUMPS_ACTIVE = "Please describe each parameter and its value in the gain equation (13) with the assistance of equation (11) and Table 1. The goal is to calculate the gain values in the study case from the first-principal equations."
+#
+
+
 
 # =============================================================================
 # MAPPINGS (Used by config.py)
@@ -248,6 +257,7 @@ ACTIVE_QUERIES: Dict[str, str] = {
     "NF_Analysis_DFRA": NF_ANALYSIS_DFRA_ACTIVE,
     "Hybrid_EDFA_DRA": HYBRID_EDFA_DRA_ACTIVE,
     "Field_demo_DRA": FIELD_DEMO_DRA_ACTIVE,
+    "Analytical_Gain_Pumps": ANALYTICAL_GAIN_PUMPS_ACTIVE,
 }
 
 def get_query_for_article(article_key: str) -> str:
