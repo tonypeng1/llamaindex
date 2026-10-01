@@ -700,6 +700,14 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
                 
         except Exception as e:
             print(f"⚠️ Error processing image {image_name}: {e}")
+            # Billing/auth errors (402, 401, 403) would fail every remaining image too. Abort rather
+            # than index the article without its figure descriptions; descriptions already generated
+            # stay in the cache, so a re-run resumes where this one stopped.
+            if getattr(e, "code", None) in (401, 402, 403):
+                raise RuntimeError(
+                    f"Gemini rejected the request (HTTP {e.code}). Aborting so the article is not "
+                    "indexed without its figure descriptions. Fix the API key or billing, then re-run."
+                ) from e
 
     return img_text_nodes
 
