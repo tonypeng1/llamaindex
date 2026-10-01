@@ -44,8 +44,11 @@ auto-compaction-retention: '1000'
 EOF
 
 # Need to change the two -v lines for it to work (remove pwd in both lines)
+    # --log-opt caps the container log: Milvus writes ~0.7 GB/day and an unrotated log once filled Docker's disk
     sudo docker run -d \
         --name milvus-standalone \
+        --log-opt max-size=200m \
+        --log-opt max-file=5 \
         --security-opt seccomp:unconfined \
         -e ETCD_USE_EMBED=true \
         -e ETCD_DATA_DIR=/var/lib/milvus/etcd \
@@ -65,26 +68,61 @@ EOF
         milvus run standalone  1> /dev/null
 }
 
+# Report why Milvus did not come up, then exit. $1: one-line reason
+milvus_start_failed() {
+    echo "❌ $1"
+    echo "---- last Milvus container logs ----"
+    sudo docker logs --tail 20 milvus-standalone 2>&1
+    echo "------------------------------------"
+    echo "A full Docker disk ('no space left on device') also makes Milvus exit right after starting."
+    echo "Check what is using the space with: docker system df"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "On Docker Desktop see Settings > Resources > Disk image size, and the daemon log:"
+        echo "  ~/Library/Containers/com.docker.docker/Data/log/vm/dockerd.log"
+    fi
+    exit 1
+}
+
 wait_for_milvus_running() {
-    echo "Wait for Milvus Starting..."
+    timeout=${MILVUS_START_TIMEOUT:-300}
+    echo "Wait for Milvus Starting... (giving up after ${timeout}s)"
+    start_time=$SECONDS
+    next_report=15
     while true
     do
-        res=`sudo docker ps|grep milvus-standalone|grep healthy|wc -l`
-        if [ $res -eq 1 ]
+        read -r state code health <<< "`sudo docker inspect -f '{{.State.Status}} {{.State.ExitCode}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' milvus-standalone 2>/dev/null`"
+        if [ "$state" = "running" ] && [ "$health" = "healthy" ]
         then
             echo "Start successfully."
             break
+        fi
+
+        # Crashed or stopped: waiting longer will not help
+        if [ "$state" != "running" ]
+        then
+            milvus_start_failed "Milvus container is not running (state: ${state:-unknown}, exit code: ${code:-unknown})."
+        fi
+
+        waited=$((SECONDS - start_time))
+        if [ $waited -ge $timeout ]
+        then
+            milvus_start_failed "Milvus is still not healthy after ${timeout}s (health: ${health:-unknown})."
+        fi
+        if [ $waited -ge $next_report ]
+        then
+            echo "  still waiting... ${waited}s (health: ${health:-unknown})"
+            next_report=$((next_report + 15))
         fi
         sleep 1
     done
 }
 
 start() {
-    res=`sudo docker ps|grep milvus-standalone|grep healthy|wc -l`
+    res=`sudo docker ps|grep milvus-standalone|grep -w healthy|wc -l`
     if [ $res -eq 1 ]
     then
         echo "Milvus is running."
-        exit 0
+        return 0
     fi
 
     res=`sudo docker ps -a|grep milvus-standalone|wc -l`
@@ -109,7 +147,7 @@ start_attu() {
     if [ $res -eq 1 ]
     then
         echo "Attu is running."
-        exit 0
+        return 0
     fi
 
     res=`sudo docker ps -a|grep milvus-attu|wc -l`
@@ -171,6 +209,14 @@ stop_attu() {
 }
 
 stop_mongo() {
+    # start_mongo creates no container when a local MongoDB (like Homebrew) already owns port 27017
+    res=`sudo docker ps|grep mongo-rag|wc -l`
+    if [ $res -eq 0 ]
+    then
+        echo "MongoDB container is not running. A local MongoDB (like Homebrew) is not managed by this script and is left running."
+        return 0
+    fi
+
     sudo docker stop mongo-rag 1> /dev/null
     echo "MongoDB stopped successfully."
 }
