@@ -739,9 +739,8 @@ def setup_pipeline(article_key: Optional[str] = None) -> Dict[str, Any]:
 
     # LLM
     llm = Anthropic(
-                model="claude-sonnet-4-5",
-                temperature=0.0,
-                max_tokens=2500,
+                model="claude-sonnet-5-5",
+                max_tokens=16000,  # Sonnet 5.x thinks before answering; thinking tokens count toward this cap
                 api_key=ANTHROPIC_API_KEY,
                 )
     Settings.llm = llm

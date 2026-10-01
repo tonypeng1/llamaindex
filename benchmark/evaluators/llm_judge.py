@@ -31,6 +31,9 @@ import anthropic
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+# Judge model: the same one the pipeline uses (see main.py)
+JUDGE_MODEL = "claude-sonnet-5-5"
+
 _CLIENT: anthropic.Anthropic | None = None
 
 
@@ -44,17 +47,19 @@ def _get_client() -> anthropic.Anthropic:
     return _CLIENT
 
 
-def _call_judge(system_prompt: str, user_prompt: str, model: str = "claude-sonnet-4-20250514") -> dict:
+def _call_judge(system_prompt: str, user_prompt: str, model: str = JUDGE_MODEL) -> dict:
     """Call Claude and parse the JSON response."""
     client = _get_client()
+    # No temperature: Claude 5 models reject it (HTTP 400).
+    # max_tokens leaves room for the model's thinking, which counts toward it.
     response = client.messages.create(
         model=model,
-        max_tokens=512,
-        temperature=0.0,
+        max_tokens=4096,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    text = response.content[0].text.strip()
+    # The reply can start with a thinking block, so take the text block rather than content[0]
+    text = next((b.text for b in response.content if b.type == "text"), "").strip()
     # Try to extract JSON from the response (handles markdown fences)
     json_match = re.search(r"\{.*\}", text, re.DOTALL)
     if json_match:
@@ -104,7 +109,7 @@ def evaluate_faithfulness(
     query: str,
     context: str,
     answer: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = JUDGE_MODEL,
 ) -> JudgeResult:
     """
     Evaluate whether the answer is faithful to the retrieved context.
@@ -174,7 +179,7 @@ def evaluate_correctness(
     query: str,
     reference_answer: str,
     generated_answer: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = JUDGE_MODEL,
 ) -> JudgeResult:
     """
     Evaluate whether the generated answer matches the gold reference answer.
