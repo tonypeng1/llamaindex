@@ -233,7 +233,7 @@ FIELD_DEMO_DRA_ACTIVE = "Please describe the content in Figure 5, Figure 6, and 
 # =============================================================================
 # 14. Analytical_Gain_Pumps
 # =============================================================================
-ANALYTICAL_GAIN_PUMPS_ACTIVE = "Please describe each parameter and its value in the gain equation (13) with the assistance of equation (11) and Table 1. The goal is to calculate the gain values in the study case from the first-principal equations."
+ANALYTICAL_GAIN_PUMPS_ACTIVE = "Please describe each parameter and its value in the gain equation (13) with the assistance of equation (11) and Table 1. The pump power in equation (11) needs to be plugged into (13), and all its parameters explained and listed. The goal is to calculate the gain values in the study case from the first-principal equations."
 #
 
 
