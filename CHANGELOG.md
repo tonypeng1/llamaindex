@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+### LLM & Dependencies
+- **Claude Sonnet 5.5 everywhere**: The pipeline LLM in [main.py](main.py), the vanilla baseline in [benchmark/run_benchmark.py](benchmark/run_benchmark.py) and the judge in [benchmark/evaluators/llm_judge.py](benchmark/evaluators/llm_judge.py) now use `claude-sonnet-5-5`. Before this the pipeline and baseline ran `claude-sonnet-4-5` (upgraded from `claude-sonnet-4-0`) and the judge ran `claude-sonnet-4-20250514`.
+- **No `temperature`**: Claude 5 models reject non-default temperatures (HTTP 400), so it was removed from all three call sites.
+- **Larger token budgets**: Sonnet 5.x thinks before answering and thinking tokens count toward `max_tokens`, so the pipeline and baseline now use `16000` and the judge `4096`. The judge reads the first text block of the reply instead of `content[0]`, which can be a thinking block.
+- **Judge model fix**: The judge's hard-coded `claude-sonnet-4-20250514` default now returns 404. The three defaults share a new `JUDGE_MODEL` constant set to `claude-sonnet-5-5`.
+- **Upgraded `llama-index-llms-anthropic`** to 0.12.2 (with `anthropic` 0.125.0) in `uv.lock`. Older releases validate model names against a hard-coded list and raised `Unknown model` for Sonnet 5/5.5.
+
+### Figure Processing
+- **Gemini 3.8 Flash**: Figure descriptions in [main.py](main.py) now use `gemini-3.8-flash` (previously `gemini-3-flash-preview`), still with code execution, and request high media resolution (`MEDIA_RESOLUTION_HIGH`).
+- **High-resolution re-crop**: MinerU cuts figures from a fixed 200 dpi page render, which discards most of the detail of the rasters embedded in the PDF. Each figure is now re-rendered from the PDF at 400 dpi (`IMAGE_RENDER_DPI`) with PyMuPDF, using the `bbox` from `content_list.json`, and saved to `images_hires/` beside MinerU's `images/`. It falls back to MinerU's crop if the PDF or `bbox` is missing or rendering fails.
+- **Tiny-image filter**: Crops whose longer side is under 300 px (`MIN_IMAGE_SIDE_PX`), such as author headshots, are skipped: no Gemini call and no image node. In `Analytical_Gain_Pumps` this drops 6 of 13 images.
+- **Fail fast on billing/auth errors**: An HTTP 401/402/403 from Gemini now aborts the image step before anything is indexed, instead of logging each failure and indexing the article without its figure descriptions. Cached descriptions are kept, so a re-run resumes.
+- **Cache note**: Image descriptions are cached by MinerU image name, so changing the model or DPI does not regenerate existing entries; delete the article's `*_mineru_image_descriptions.json` to re-describe it.
+
+### Database Tooling (`db.sh`)
+- **Milvus start no longer hangs**: `wait_for_milvus_running` inspects the container state, exit code and health, fails fast if it stops running, and times out after `MILVUS_START_TIMEOUT` seconds (default `300`). On failure it prints the last log lines and a hint when Docker's disk is full.
+- **Log rotation**: New Milvus containers are created with `--log-opt max-size=200m --log-opt max-file=5`; an unrotated log had filled Docker Desktop's disk and stopped Milvus from starting.
+- **Script fixes**: `start()` matches `healthy` as a whole word (not `unhealthy`), `start()` and `start_attu()` return instead of exiting the shell, and `stop_mongo` reports cleanly when no `mongo-rag` container is running.
+
+### Configuration & Documentation
+- **New article**: Registered `Analytical_Gain_Pumps` in [config.py](config.py) (DRA domain, academic schema, RAG settings), with its query in [queries.py](queries.py), and made it the active article.
+- **README**: Documented the Sonnet 5.5 and Gemini 3.8 Flash models, the Milvus startup checks, the figure re-crop and filter, and the fail-fast image step in [README.md](README.md).
+
 ## [0.4.0] - 2026-02-15
 
 ### Benchmark & Evaluation Framework

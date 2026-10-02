@@ -17,6 +17,7 @@ from google.genai import types
 
 from pathlib import Path
 from PIL import Image
+import fitz  # PyMuPDF
 import re
 from typing import List, Dict, Optional, Tuple, Any
 
@@ -520,6 +521,43 @@ def load_document_mineru(content_list_path):
     return documents
 
 
+# MinerU's VLM backend cuts figures from a fixed 200 dpi page render, which throws away most of the
+# detail of the rasters embedded in the PDF (~700-850 dpi). Re-cutting them straight from the PDF
+# gives Gemini sharper axes, tick labels and table digits.
+IMAGE_RENDER_DPI = 400
+# MinerU crops whose longer side is below this many pixels (200 dpi, so ~1.5 in) are author
+# headshots, logos or icons: not worth a Gemini call or an index node.
+MIN_IMAGE_SIDE_PX = 300
+
+
+def render_hires_figure(pdf_path, page_idx, bbox, out_path, dpi=IMAGE_RENDER_DPI):
+    """
+    Re-render one MinerU figure region straight from the PDF at `dpi`.
+    `bbox` is the content_list.json bbox: [x0, y0, x1, y1] normalised to 0-1000, origin top-left.
+    Returns out_path, or None if it could not be rendered (the caller then uses MinerU's crop).
+    """
+    if os.path.exists(out_path):
+        return out_path
+    try:
+        with fitz.open(pdf_path) as pdf:
+            page = pdf[page_idx]
+            w, h = page.rect.width, page.rect.height
+            pad = 1.0  # points; the content_list bbox is rounded to 1/1000 of the page
+            clip = fitz.Rect(
+                bbox[0] / 1000 * w - pad, bbox[1] / 1000 * h - pad,
+                bbox[2] / 1000 * w + pad, bbox[3] / 1000 * h + pad,
+            ) & page.rect
+            pix = page.get_pixmap(matrix=fitz.Matrix(dpi / 72, dpi / 72), clip=clip, alpha=False)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            tmp_path = out_path.replace(".png", ".tmp.png")
+            pix.save(tmp_path)
+            os.replace(tmp_path, out_path)  # never leave a half-written file that a re-run would trust
+        return out_path
+    except Exception as e:
+        print(f"   ⚠️ High-res re-crop failed ({e}); using MinerU's crop instead")
+        return None
+
+
 def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, article_name):
     """
     Extract images from MinerU output and generate descriptions using Claude Vision API.
@@ -536,14 +574,37 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
 
     # Prepare image_dicts in the format expected by the logic
     image_dicts = []
+    skipped_tiny = 0
     for item in image_items:
         # MinerU img_path is relative to the output dir
         full_path = os.path.join(base_dir, item['img_path'])
+        try:
+            with Image.open(full_path) as im:
+                tiny = max(im.size) < MIN_IMAGE_SIDE_PX
+        except Exception:
+            tiny = False  # unreadable here: keep it and let the normal processing report the problem
+        if tiny:
+            skipped_tiny += 1
+            continue
         image_dicts.append({
             "path": full_path,
             "page_number": item.get('page_idx', 0) + 1,
+            "page_idx": item.get('page_idx', 0),
+            "bbox": item.get('bbox'),
             "caption": " ".join(item.get('image_caption', []))
         })
+
+    if skipped_tiny:
+        print(f"📷 Skipping {skipped_tiny} tiny image(s) (< {MIN_IMAGE_SIDE_PX}px: author photos, logos, icons)")
+    if not image_dicts:
+        print("📷 No figure images left to describe.")
+        return []
+
+    # Source PDF for the high-res re-crops (fall back to MinerU's own crops if it is not there)
+    pdf_path = f"./data/{article_dir}/{article_name}"
+    if not os.path.exists(pdf_path):
+        print(f"⚠️ {pdf_path} not found; sending MinerU's 200 dpi crops to Gemini instead of high-res ones")
+        pdf_path = None
 
     # Initialize Gemini client with Agentic Vision (code execution enabled)
     client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -561,7 +622,7 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
         except:
             descriptions_cache = {}
     
-    print(f"\n📷 Processing {len(image_dicts)} MinerU images with Gemini 3 Flash Agentic Vision...")
+    print(f"\n📷 Processing {len(image_dicts)} MinerU images with Gemini 3.8 Flash Agentic Vision...")
     
     img_text_nodes = []
     
@@ -608,13 +669,26 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
         try:
             print(f"   🔄 [{i+1}/{len(image_dicts)}] Processing {image_name}...")
             
-            # Call Gemini 3 Flash Agentic Vision API with code execution
+            # Send a high-res re-crop from the PDF when possible, else MinerU's own crop
+            send_path = image_path
+            if pdf_path and image_dict.get("bbox"):
+                stem = os.path.splitext(image_name)[0]
+                hires_path = render_hires_figure(
+                    pdf_path,
+                    image_dict["page_idx"],
+                    image_dict["bbox"],
+                    os.path.join(base_dir, "images_hires", f"{stem}_{IMAGE_RENDER_DPI}dpi.png"),
+                )
+                if hires_path:
+                    send_path = hires_path
+
+            # Call Gemini 3.8 Flash Agentic Vision API with code execution
             # Load image as bytes for the native SDK
-            with open(image_path, "rb") as img_file:
+            with open(send_path, "rb") as img_file:
                 image_bytes = img_file.read()
-            
+
             # Determine mime type
-            ext = os.path.splitext(image_path)[1].lower()
+            ext = os.path.splitext(send_path)[1].lower()
             mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
             
             image_part = types.Part.from_bytes(
@@ -632,9 +706,10 @@ def load_image_text_nodes_mineru(content_list_path, base_dir, article_dir, artic
             for attempt in range(max_retries):
                 try:
                     response = client.models.generate_content(
-                        model="gemini-3-flash-preview",
+                        model="gemini-3.8-flash",
                         contents=[image_part, prompt],
                         config=types.GenerateContentConfig(
+                            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_HIGH,  # dense plots and tables
                             tools=[types.Tool(code_execution=types.ToolCodeExecution())]
                         ),
                     )
